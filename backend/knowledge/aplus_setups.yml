@@ -1,0 +1,110 @@
+# A+ Setups déclarés séparément pour SAFE/AGGRESSIVE
+# Ces définitions seront transformées en playbooks internes par le loader.
+
+day_setups:
+  - name: "DAY_Aplus_1_Liquidity_Sweep_OB_Retest"
+    description: "Reversal/continuation A+ après sweep de liquidité + retest d'Order Block dans le sens du biais HTF."
+    trade_type: "DAILY"
+    symbols: ["SPY", "QQQ"]
+
+    session:
+      name: "NY"
+      time_range: ["09:30", "12:00", "13:00", "15:00"]
+
+    bias:
+      htf_timeframe: "H1"
+      direction: "both"          # "long" ou "short" selon structure
+      require_bos: true          # BOS obligatoire sur LTF dans le sens du biais
+
+    liquidity:
+      require_sweep: true
+      sweep_side: "both"         # "high" pour shorts, "low" pour longs
+      atr_buffer: 0.2            # 0.2 * ATR comme marge au-delà du swing balayé
+
+    ict:
+      use_order_block: true
+      ob_timeframe: "M5"
+      ob_role: "reversal_or_continuation"
+      allow_fvg: true
+      fvg_timeframe: "M5"
+      target_fvg_or_htf_level: true
+
+    candles:
+      long_required_families: ["hammer", "engulfing", "morning_star", "doji"]
+      short_required_families: ["shooting_star", "engulfing", "evening_star", "doji"]
+      direction: "contrarian"    # Rejet contre le spike de sweep
+
+    entry:
+      timeframe: "M5"
+      confirmation_tf: "M1"
+      type: "LIMIT_OR_CONFIRMATION"
+      zone: "order_block"        # Entrée dans la zone OB ou sur clôture de la bougie de rejet
+      max_retests_per_level: 1
+
+    stop:
+      rule: "below_sweep_and_ob" # ou "above_sweep_and_ob" selon direction
+      atr_buffer: 0.3
+
+    rr:
+      min_rr: 3.0
+      tp1_rr: 3.0
+      tp2_rr: 5.0
+      breakeven_at_rr: 1.5
+
+    meta:
+      grade: "APLUS"
+      category: "A_PLUS_ONLY"
+      family: "ICT_LIQUIDITY_OB"
+
+scalp_setups:
+  - name: "SCALP_Aplus_1_Mini_FVG_Retest_NY_Open"
+    description: "Scalp A+ sur retest de mini FVG créé à l'ouverture NY, dans le sens du biais intraday."
+    trade_type: "SCALP"
+    symbols: ["SPY", "QQQ"]
+
+    session:
+      name: "ny"
+      time_range: ["09:30", "10:00"]
+
+    bias:
+      htf_timeframe: "M15"
+      direction: "both"          # long/short selon micro-biais
+      require_bos: false         # micro-BOS possible mais pas obligatoire
+
+    liquidity:
+      require_sweep: false       # préférable mais non strict pour ce scalp
+      sweep_side: "optional"
+      atr_buffer: 0.1
+
+    ict:
+      use_fvg: true
+      fvg_timeframe: "M1"
+      fvg_role: "mini_impulse_open"
+      allow_order_block: false
+
+    candles:
+      # Élargi pour matcher plus de patterns détectés par CandlestickPatternEngine
+      long_required_families: ["hammer", "engulfing", "doji", "morning_star", "three_soldiers", "marubozu"]
+      short_required_families: ["shooting_star", "engulfing", "doji", "evening_star", "three_crows", "marubozu"]
+      direction: "trend_continuation"   # on scalp dans le sens de la micro-impulsion
+
+    entry:
+      timeframe: "M1"
+      type: "LIMIT_OR_CONFIRMATION"
+      zone: "fvg_edges_or_mid"         # entrée sur bord/50% du FVG
+      max_retests_per_level: 2
+
+    stop:
+      rule: "outside_fvg_and_confirmation_wick"
+      atr_buffer: 0.1
+
+    rr:
+      min_rr: 2.0
+      tp1_rr: 2.0
+      tp2_rr: 3.0
+      breakeven_at_rr: 1.0
+
+    meta:
+      grade: "APLUS"
+      category: "A_PLUS_ONLY"
+      family: "ICT_MINI_FVG_SCALP"

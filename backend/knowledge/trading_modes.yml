@@ -1,0 +1,45 @@
+# Configuration des modes de trading SAFE vs AGGRESSIVE
+# Phase 2.2 - DexterioBOT
+
+modes:
+  SAFE:
+    description: "Mode sniper - Setups A+ uniquement (1 Day + 1 Scalp max par jour)"
+    allowed_categories:
+      - "A_PLUS_ONLY"
+    min_grade: "A"  # Seuls les playbooks APLUS passeront de toute façon
+    max_trades_per_day:
+      DAYTRADE: 1
+      SCALP: 1
+    risk_per_trade_pct: 0.02  # 2% base, puis règle 2%→1%→2%
+    
+  AGGRESSIVE:
+    description: "Mode opportuniste - Toutes les opportunités excellentes (CORE + LAB + A+)"
+    allowed_categories:
+      - "DAYTRADE"
+      - "SCALP"
+      - "A_PLUS_ONLY"
+    min_grade: "A"  # A+ et A acceptés
+    max_trades_per_day:
+      DAYTRADE: 3
+      SCALP: 5
+    risk_per_trade_pct: 0.02  # 2% base, puis règle 2%→1%→2%
+
+# Règle universelle 2% → 1% → 2%
+risk_adjustment_rule:
+  base_risk_pct: 0.02
+  reduced_risk_pct: 0.01
+  trigger_reduction: "loss"  # Après une perte
+  trigger_restoration: "win"  # Après un gain suivant
+
+# Limites journalières communes
+daily_limits:
+  max_loss_pct: 0.03  # -3% max par jour
+  max_loss_r: 3.0  # -3R max par jour
+  max_consecutive_losses: 3  # Kill-switch après 3 pertes
+  max_drawdown_pct: 0.10  # -10% max depuis peak
+
+# Gestion multi-actifs SPY/QQQ
+multi_asset:
+  allow_simultaneous: true
+  max_simultaneous_positions: 2
+  correlation_check: true  # Vérifier SMT avant double position

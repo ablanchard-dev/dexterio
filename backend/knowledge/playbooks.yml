@@ -1,0 +1,749 @@
+# DexterioBOT - Playbooks DAYTRADE & SCALPING
+# Univers : ICT / TJR / Alex + Patterns Chandelles
+# Structure : context → triggers → entry/SL/TP → scoring
+
+# ============================================================================
+# PLAYBOOKS DAYTRADE (6)
+# ============================================================================
+
+- playbook_name: "NY_Open_Reversal"
+  category: "DAYTRADE"
+  description: "Reversal à l'ouverture NY après sweep de liquidité London"
+  
+  enabled_in_modes:
+    - "SAFE"
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "NY"
+    time_range: ["09:30", "11:00"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "manipulation_reversal"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: true
+    volatility_min: null
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: true
+  
+  candlestick_patterns:
+    required_families:
+      - "engulfing"
+      - "pin_bar"
+      - "morning_star"
+      - "evening_star"
+    direction: "contrarian"
+  
+  entry_logic:
+    type: "LIMIT"
+    zone: "pattern_close"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "SWING"
+    distance: "recent_swing"
+    padding_ticks: 1
+  
+  take_profit_logic:
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.0
+  
+  scoring:
+    weights:
+      liquidity_sweep: 0.30
+      pattern_quality: 0.25
+      fvg_alignment: 0.20
+      smt_divergence: 0.15
+      context_strength: 0.10
+    grade_thresholds:
+      A_plus: 0.85
+      A: 0.75
+      B: 0.65
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "London_Sweep_NY_Continuation"
+  category: "DAYTRADE"
+  description: "Continuation NY dans le sens du mouvement London après sweep"
+  
+  enabled_in_modes:
+    - "SAFE"
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "NY"
+    time_range: ["09:30", "12:00"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: true
+    volatility_min: null
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: true
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "marubozu"
+      - "three_soldiers"
+      - "three_crows"
+      - "engulfing"
+    direction: "trend_continuation"
+  
+  entry_logic:
+    type: "MARKET"
+    zone: "bos_confirmation"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "SWING"
+    distance: "recent_swing"
+    padding_ticks: 2
+  
+  take_profit_logic:
+    min_rr: 2.5
+    tp1_rr: 2.5
+    tp2_rr: 4.0
+    breakeven_at_rr: 1.0
+  
+  scoring:
+    weights:
+      bos_strength: 0.35
+      pattern_quality: 0.25
+      fvg_alignment: 0.20
+      context_strength: 0.20
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.70
+      B: 0.60
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "Trend_Continuation_FVG_Retest"
+  category: "DAYTRADE"
+  description: "Continuation de trend HTF après retest d'un FVG"
+  
+  enabled_in_modes:
+    - "SAFE"
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "ANY"
+    time_range: ["09:30", "15:30"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: true
+  
+  candlestick_patterns:
+    required_families:
+      - "pin_bar"
+      - "engulfing"
+      - "doji"
+    direction: "trend_continuation"
+  
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"
+    confirmation_tf: "5m"
+  
+  stop_loss_logic:
+    type: "SWING"
+    distance: "fvg_low_high"
+    padding_ticks: 2
+  
+  take_profit_logic:
+    min_rr: 2.5
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.5
+  
+  scoring:
+    weights:
+      fvg_quality: 0.35
+      pattern_quality: 0.25
+      trend_strength: 0.25
+      smt_divergence: 0.15
+    grade_thresholds:
+      A_plus: 0.85
+      A: 0.75
+      B: 0.65
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "Morning_Trap_Reversal"
+  category: "DAYTRADE"
+  description: "Reversal après faux breakout (trap) dans la première heure NY"
+  
+  enabled_in_modes:
+    - "SAFE"
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "NY"
+    time_range: ["09:30", "10:30"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["manipulation_reversal", "range"]
+    structure_htf: ["uptrend", "downtrend", "range"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "shooting_star"
+      - "hammer"
+      - "engulfing"
+      - "evening_star"
+      - "morning_star"
+    direction: "contrarian"
+  
+  entry_logic:
+    type: "LIMIT"
+    zone: "pattern_close"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "SWING"
+    distance: "trap_extreme"
+    padding_ticks: 1
+  
+  take_profit_logic:
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.0
+  
+  scoring:
+    weights:
+      liquidity_sweep: 0.35
+      pattern_quality: 0.30
+      rejection_strength: 0.25
+      context_strength: 0.10
+    grade_thresholds:
+      A_plus: 0.85
+      A: 0.75
+      B: 0.65
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "Power_Hour_Expansion"
+  category: "DAYTRADE"
+  description: "Expansion directionnelle dans les 30-60 dernières minutes"
+  
+  enabled_in_modes:
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "NY"
+    time_range: ["15:00", "15:45"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+    volatility_min: 0.05
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: true
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "marubozu"
+      - "three_soldiers"
+      - "three_crows"
+    direction: "trend_continuation"
+  
+  entry_logic:
+    type: "MARKET"
+    zone: "bos_confirmation"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "SWING"
+    distance: "recent_swing"
+    padding_ticks: 3
+  
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: 3.0
+    breakeven_at_rr: 0.5
+  
+  scoring:
+    weights:
+      bos_strength: 0.40
+      pattern_quality: 0.30
+      day_momentum: 0.30
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.70
+      B: 0.60
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "News_Fade"
+  category: "DAYTRADE"
+  description: "Fade du spike post-news majeur (CPI, FOMC) - Fenêtres sélectives strictes"
+  
+  enabled_in_modes:
+    - "SAFE"
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "NY"
+    # PATCH C FINAL: Deux fenêtres distinctes (09:30-11:00 ET 14:00-15:30)
+    time_windows:
+      - ["09:30", "11:00"]
+      - ["14:00", "15:30"]
+    news_events_only: true
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    # PATCH C FINAL: day_type strict (manipulation_reversal, range)
+    day_type_allowed: ["manipulation_reversal", "range"]
+    structure_htf: ["uptrend", "downtrend", "range"]
+    london_sweep_required: false
+    # PATCH C FINAL: Volatilité minimale stricte (0.8 = spike significatif)
+    volatility_min: 0.8
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "shooting_star"
+      - "hammer"
+      - "doji"
+      - "engulfing"
+    direction: "contrarian"
+  
+  entry_logic:
+    type: "LIMIT"
+    zone: "rejection_body"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "spike_extreme"
+    padding_ticks: 5
+  
+  take_profit_logic:
+    # RR globalement exigeant, >= 3R
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.0
+  
+  scoring:
+    # On garde le même schema d'origine pour conserver l'ADN du run +88R
+    weights:
+      rejection_strength: 0.40
+      pattern_quality: 0.25
+      wick_size: 0.20
+      volume_spike: 0.15
+    grade_thresholds:
+      A_plus: 0.85
+      A: 0.75
+      B: 0.65
+
+# ============================================================================
+# PLAYBOOKS SCALPING (5)
+# ============================================================================
+
+- playbook_name: "Liquidity_Sweep_Scalp"
+  category: "SCALP"
+  description: "Scalp rapide après micro-sweep de liquidité locale M1"
+  
+  enabled_in_modes:
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "ANY"
+    time_range: ["09:30", "15:30"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "range"]
+    structure_htf: ["uptrend", "downtrend", "range"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "hammer"
+      - "shooting_star"
+      - "doji"
+      - "engulfing"
+    direction: "contrarian"
+  
+  entry_logic:
+    type: "LIMIT"
+    zone: "pattern_close"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "local_extreme"
+    padding_ticks: 1
+  
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: 2.5
+    breakeven_at_rr: 0.5
+  
+  max_duration_minutes: 30
+  
+  scoring:
+    weights:
+      liquidity_sweep: 0.40
+      pattern_quality: 0.35
+      rejection_speed: 0.25
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.70
+      B: 0.60
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "FVG_Fill_Scalp"
+  category: "SCALP"
+  description: "Scalp sur remplissage partiel d'un FVG M1/M5"
+  
+  enabled_in_modes:
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "ANY"
+    time_range: ["09:30", "15:30"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "doji"
+      - "spinning_top"
+      - "pin_bar"
+    direction: "trend_continuation"
+  
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "fvg_extreme"
+    padding_ticks: 1
+  
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: 2.0
+    breakeven_at_rr: 0.5
+  
+  max_duration_minutes: 30
+  
+  scoring:
+    weights:
+      fvg_quality: 0.45
+      pattern_quality: 0.30
+      trend_alignment: 0.25
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.70
+      B: 0.60
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "BOS_Momentum_Scalp"
+  category: "SCALP"
+  description: "Scalp momentum immédiat après BOS net sur M1"
+  
+  enabled_in_modes:
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "ANY"
+    time_range: ["09:30", "15:30"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: true
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "marubozu"
+      - "three_soldiers"
+      - "three_crows"
+    direction: "trend_continuation"
+  
+  entry_logic:
+    type: "MARKET"
+    zone: "bos_confirmation"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "bos_level"
+    padding_ticks: 2
+  
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: 2.0
+    breakeven_at_rr: 0.5
+  
+  max_duration_minutes: 20
+  
+  scoring:
+    weights:
+      bos_strength: 0.50
+      pattern_quality: 0.30
+      momentum: 0.20
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.70
+      B: 0.60
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "Session_Open_Scalp"
+  category: "SCALP"
+  description: "Scalp sur la première réaction d'ouverture London/NY"
+  
+  enabled_in_modes:
+    - "AGGRESSIVE"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "ANY"
+    time_range: ["03:00", "03:15", "09:30", "09:45"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "range"]
+    structure_htf: ["uptrend", "downtrend", "range"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+  
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "marubozu"
+      - "engulfing"
+      - "hammer"
+      - "shooting_star"
+    direction: "any"
+  
+  entry_logic:
+    type: "MARKET"
+    zone: "range_break"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "opening_range"
+    padding_ticks: 1
+  
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: 2.0
+    breakeven_at_rr: 0.5
+  
+  max_duration_minutes: 15
+  
+  scoring:
+    weights:
+      range_quality: 0.40
+      pattern_quality: 0.35
+      volume: 0.25
+    grade_thresholds:
+      A_plus: 0.75
+      A: 0.65
+      B: 0.55
+
+# ----------------------------------------------------------------------------
+
+- playbook_name: "Lunch_Range_Scalp"
+  category: "SCALP"
+  description: "Scalp sur rejection/breakout du range lunch (12:00-13:30)"
+  
+  enabled_in_modes:
+    # Désactivé temporairement en AGGRESSIVE_LAB (trop toxique dans les backtests actuels)
+    # - "AGGRESSIVE"
+    - "DISABLED"
+  
+  instruments:
+    - "SPY"
+    - "QQQ"
+  
+  timefilters:
+    session: "NY"
+    time_range: ["12:00", "13:30"]
+  
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["range", "trend"]
+    structure_htf: ["uptrend", "downtrend", "range"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: 0.10
+  
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+  
+  candlestick_patterns:
+    required_families:
+      - "pin_bar"
+      - "doji"
+      - "engulfing"
+    direction: "any"
+  
+  entry_logic:
+    type: "LIMIT"
+    zone: "range_boundary"
+    confirmation_tf: "1m"
+  
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "range_extreme"
+    padding_ticks: 1
+  
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: 2.0
+    breakeven_at_rr: 0.5
+  
+  max_duration_minutes: 30
+  
+  scoring:
+    weights:
+      range_touches: 0.40
+      pattern_quality: 0.35
+      rejection_strength: 0.25
+    grade_thresholds:
+      A_plus: 0.75
+      A: 0.65
+      B: 0.55

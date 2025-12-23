@@ -1,0 +1,60 @@
+# PATCH C: News_Fade selective
+# Dans /app/backend/knowledge/playbooks.yml
+# Remplacer le playbook News_Fade par:
+
+- playbook_name: "News_Fade"
+  category: SCALP
+  description: "Fade spike news (selective: NY only, volatility spike)"
+  enabled_in_modes:
+    - AGGRESSIVE
+  instruments:
+    - SPY
+    - QQQ
+  
+  timefilters:
+    session: "NY"
+    time_range:
+      - "09:30"
+      - "11:00"
+      - "14:00"
+      - "15:30"
+    news_events_only: false  # Pas de calendrier news, proxy via day_type
+  
+  context_requirements:
+    htf_bias_allowed:
+      - bullish
+      - bearish
+    day_type_allowed:
+      - manipulation_reversal
+      - range
+    structure_htf:
+      - range
+      - uptrend
+      - downtrend
+    london_sweep_required: false
+    volatility_min: 0.8  # Spike obligatoire
+    volatility_max: null
+  
+  pattern_requirements:
+    ict_patterns:
+      - liquidity_sweep
+      - fvg
+    ict_pattern_direction: opposite_to_spike
+    candlestick_patterns:
+      - hammer
+      - shooting_star
+      - bullish_engulfing
+      - bearish_engulfing
+    candle_confirmation: true
+  
+  scoring:
+    base_score: 60
+    ict_confluences_weight: 0.4
+    candle_confluences_weight: 0.3
+    htf_alignment_weight: 0.2
+    volatility_spike_weight: 0.1
+  
+  invalidation:
+    min_rr: 2.0
+    tp1_rr: 1.5
+    tp2_rr: 2.5
