@@ -14,10 +14,17 @@ from uuid import uuid4
 from models.backtest import BacktestConfig, BacktestResult, TradeResult
 from models.market_data import MarketState, Candle
 from models.setup import Setup, ICTPattern, CandlestickPattern, PatternDetection
+from backtest.costs import calculate_total_execution_costs  # PHASE B
 from engines.market_state import MarketStateEngine
 from engines.liquidity import LiquidityEngine
 from engines.patterns.candlesticks import CandlestickPatternEngine
 from engines.patterns.ict import ICTPatternEngine
+# Unified detectors for BOS/FVG and custom ICT patterns
+from engines.patterns.custom_detectors import (
+    detect_custom_patterns,
+    detect_smt_pattern,
+    detect_choch_pattern,
+)
 from engines.setup_engine_v2 import SetupEngineV2, filter_setups_by_mode
 from engines.risk_engine import RiskEngine
 from engines.execution.paper_trading import ExecutionEngine
@@ -56,8 +63,15 @@ class BacktestEngine:
         self.ict_engine = ICTPatternEngine()
         self.setup_engine = SetupEngineV2()
         self.risk_engine = RiskEngine(initial_capital=config.initial_capital)
-        # Forcer le mode de trading du RiskEngine selon la config (SAFE/AGGRESSIVE)
+        # P0 TÂCHE 1B: Forcer explicitement le mode de trading du RiskEngine selon la config
+        old_mode = self.risk_engine.state.trading_mode
         self.risk_engine.state.trading_mode = config.trading_mode
+        logger.warning(
+            f"[P0] BacktestEngine forced risk mode => "
+            f"{self.risk_engine.state.trading_mode} (config={config.trading_mode}, was={old_mode})"
+        )
+        assert self.risk_engine.state.trading_mode == config.trading_mode, \
+            f"RiskEngine mode mismatch: {self.risk_engine.state.trading_mode} != {config.trading_mode}"
         self.execution_engine = ExecutionEngine(self.risk_engine)
         
         # OPTIMISATION: Timeframe aggregator et caches
@@ -88,6 +102,9 @@ class BacktestEngine:
         # structure: {date_str: {symbol: {...}}}
         self.setup_stats: Dict[str, Dict[str, Dict[str, Any]]] = {}
         
+        # Collecteur de tous les setups générés (pour funnel post-run)
+        self.all_generated_setups: List[Setup] = []
+        
         # P0.6.1: Circuit breaker tracking
         self._stop_run_triggered: bool = False
         self._stop_run_time: Optional[datetime] = None
@@ -99,11 +116,75 @@ class BacktestEngine:
         self.blocked_by_session_limit: int = 0
         self.blocked_by_cooldown_details: Dict[str, int] = {}  # playbook -> count
         self.blocked_by_session_limit_details: Dict[str, int] = {}  # playbook -> count
+        
+        # P2-2.B: Market state stream (instrumentation)
+        self.market_state_records = [] if config.export_market_state else None
 
-
-
+        # DIAGNOSTIC: Compteurs d'instrumentation
+        self.debug_counts = {
+            "candles_loaded_1m": 0,
+            "candles_loaded_htf": {},  # {timeframe: count}
+            "setups_detected_total": 0,
+            "setups_rejected_total": 0,
+            "setups_accepted_total": 0,
+            "setups_rejected_by_mode": 0,
+            "setups_rejected_by_trade_types": 0,
+            "trades_opened_total": 0,
+            "trades_closed_total": 0,
+            "reject_reasons": {},  # {reason: count}
+            "bars_processed": 0,  # P0 DEBUG
+            # P0 ÉTAPE 3: Instrumentation playbooks
+            "playbooks_registered_count": 0,
+            "playbooks_registered_names": [],
+            "playbooks_evaluated_total": 0,
+            "playbooks_evaluated_unique": {},  # {playbook_name: count}
+            # P0 FIX: Compteurs distincts matches vs setups vs trades
+            "matches_total": 0,  # Avant tout filtre
+            "matches_by_playbook": {},  # {playbook_name: count}
+            "setups_created_total": 0,  # Setups réellement créés
+            "setups_created_by_playbook": {},  # {playbook_name: count}
+            "setups_after_risk_filter_total": 0,  # Après RiskEngine
+            "setups_after_risk_filter_by_playbook": {},  # {playbook_name: count}
+            "trades_open_attempted_total": 0,  # Tentatives d'ouverture
+            "trades_opened_total": 0,
+            "trades_open_rejected_by_reason": {},  # {reason: count, max 10}
+            # Legacy (gardé pour compatibilité)
+            "setups_detected_by_playbook": {},  # Alias de setups_created_by_playbook
+            "setups_rejected_by_reason": {},  # {reason: count}
+            "setups_rejected_by_mode_by_playbook": {},  # {playbook_name: count}
+            "setups_rejected_by_mode_examples": [],  # Max 5 exemples
+            "missing_playbook_name": 0,  # Setups sans playbook_name
+            # P0 TÂCHE 3: Champs détaillés pour diagnostic
+            "risk_mode_used": "",  # Mode réellement utilisé par RiskEngine
+            "risk_allowlist_snapshot": {},  # Snapshot des allowlists (len + first5)
+            "risk_rejects_by_playbook": {},  # Rejets détaillés par playbook
+            "risk_reject_examples": [],  # Exemples détaillés de rejets (max 5)
+            # P0 PLUMBING: Diagnostic entrée/sortie RiskEngine
+            "risk_input_setups_len": 0,
+            "risk_output_setups_len": 0,
+            "risk_first3_input_playbooks": [],
+            "risk_first3_output_playbooks": [],
+        }
         
         logger.info(f"BacktestEngine initialized - Mode: {config.trading_mode}, Types: {config.trade_types}")
+        
+        # P0 ÉTAPE 2: Vérifier que les playbooks sont bien enregistrés
+        if hasattr(self.setup_engine, 'playbook_loader') and hasattr(self.setup_engine.playbook_loader, 'playbooks'):
+            playbook_names = [pb.name for pb in self.setup_engine.playbook_loader.playbooks]
+            self.debug_counts["playbooks_registered_count"] = len(playbook_names)
+            self.debug_counts["playbooks_registered_names"] = playbook_names[:30]  # Max 30
+            logger.warning(f"[DEBUG] Registered playbooks: {playbook_names}")
+            logger.warning(f"[DEBUG] Total playbooks count: {len(playbook_names)}")
+        else:
+            logger.error("[DEBUG] ⚠️  Cannot access playbooks! setup_engine structure:")
+            logger.error(f"  hasattr setup_engine: {hasattr(self, 'setup_engine')}")
+            if hasattr(self, 'setup_engine'):
+                logger.error(f"  hasattr playbook_loader: {hasattr(self.setup_engine, 'playbook_loader')}")
+                if hasattr(self.setup_engine, 'playbook_loader'):
+                    logger.error(f"  playbook_loader type: {type(self.setup_engine.playbook_loader)}")
+                    logger.error(f"  playbook_loader attrs: {dir(self.setup_engine.playbook_loader)}")
+        if config.export_market_state:
+            logger.info(f"  Market state export: ENABLED (stride={config.market_state_export_stride})")
     
     def load_data(self):
         """Charge et combine les données historiques"""
@@ -119,28 +200,66 @@ class BacktestEngine:
             
             try:
                 df = pd.read_parquet(path)
-
-                # Support Parquet contract v1: DatetimeIndex stored as index.
-                if 'datetime' not in df.columns:
-                    if isinstance(df.index, pd.DatetimeIndex):
-                        df['datetime'] = df.index
-                    elif '__index_level_0__' in df.columns:
-                        df['datetime'] = pd.to_datetime(df['__index_level_0__'], utc=True, errors='coerce')
-
-                df['datetime'] = pd.to_datetime(df['datetime'], utc=True, errors='coerce')
                 
-                # Extraire le symbole du nom du fichier
-                filename = path.name.lower()
-                if 'spy' in filename:
-                    df['symbol'] = 'SPY'
-                elif 'qqq' in filename:
-                    df['symbol'] = 'QQQ'
+                # P0 BUGFIX: Normalize datetime to avoid index/column ambiguity
+                # Step 1: If index is DatetimeIndex, move it to column safely
+                if isinstance(df.index, pd.DatetimeIndex):
+                    df = df.copy()
+                    # Temporarily name the index so reset_index creates a column with that name
+                    index_name = df.index.name if df.index.name else "datetime"
+                    df.index.name = index_name
+                    df = df.reset_index()
+                    logger.debug(f"  Moved DatetimeIndex to column: {index_name}")
+                
+                # Step 2: Handle __index_level_0__ if present (parquet multi-index fallback)
+                if '__index_level_0__' in df.columns and 'datetime' not in df.columns:
+                    df['datetime'] = pd.to_datetime(df['__index_level_0__'], utc=True, errors='coerce')
+                    df = df.drop(columns=['__index_level_0__'])
+                
+                # Step 3: Ensure exactly ONE "datetime" column exists
+                datetime_cols = [col for col in df.columns if col == 'datetime']
+                if len(datetime_cols) > 1:
+                    # Keep the first one, drop duplicates
+                    df = df.loc[:, ~df.columns.duplicated(keep='first')]
+                    logger.warning(f"  Removed duplicate 'datetime' columns, keeping first")
+                elif len(datetime_cols) == 0:
+                    # No datetime column at all - this is an error
+                    raise ValueError(f"No 'datetime' column or DatetimeIndex found in {path.name}")
+                
+                # Step 4: Ensure datetime column is tz-aware UTC
+                df['datetime'] = pd.to_datetime(df['datetime'], utc=True, errors='coerce')
+                if df['datetime'].dt.tz is None:
+                    df['datetime'] = df['datetime'].dt.tz_localize('UTC')
                 else:
-                    logger.warning(f"Could not determine symbol from {filename}")
+                    df['datetime'] = df['datetime'].dt.tz_convert('UTC')
+                
+                # Step 5: Ensure index is clean (RangeIndex, no name)
+                df = df.reset_index(drop=True)
+                
+                # GUARD: Assert single source of truth
+                assert "datetime" in df.columns, f"'datetime' column missing after normalization"
+                assert not (isinstance(df.index, pd.DatetimeIndex) and df.index.name == "datetime"), \
+                    f"Index still has 'datetime' name, causing ambiguity"
+                assert df.columns.tolist().count("datetime") == 1, \
+                    f"Multiple 'datetime' columns found: {df.columns.tolist()}"
+                
+                # Inférer le symbol depuis le filename
+                filename = path.stem
+                if '_' in filename:
+                    symbol = filename.split('_')[0].upper()
+                else:
+                    symbol = filename.upper()
+                
+                if symbol not in self.config.symbols:
+                    logger.warning(f"Symbol {symbol} not in config.symbols, skipping")
                     continue
                 
+                # Ajouter colonne symbol si absente (single-symbol parquet)
+                if 'symbol' not in df.columns:
+                    df['symbol'] = symbol
+                
                 all_dfs.append(df)
-                logger.info(f"  Loaded {path.name}: {len(df)} bars")
+                logger.info(f"  Loaded {path.name}: {len(df)} bars, symbol={symbol}")
             
             except Exception as e:
                 logger.error(f"Error loading {path}: {e}")
@@ -151,7 +270,160 @@ class BacktestEngine:
         
         # Combiner et trier
         self.combined_data = pd.concat(all_dfs, ignore_index=True)
+        
+        # GUARD: Assert single source of truth before slicing
+        assert "datetime" in self.combined_data.columns, "'datetime' column missing after concat"
+        assert not (isinstance(self.combined_data.index, pd.DatetimeIndex) and self.combined_data.index.name == "datetime"), \
+            "Index still has 'datetime' name after concat, causing ambiguity"
+        assert self.combined_data.columns.tolist().count("datetime") == 1, \
+            f"Multiple 'datetime' columns after concat: {self.combined_data.columns.tolist()}"
+        
+        # DIAGNOSTIC: Ensure datetime column is tz-aware UTC before slicing
+        if self.combined_data['datetime'].dt.tz is None:
+            self.combined_data['datetime'] = self.combined_data['datetime'].dt.tz_localize('UTC')
+        else:
+            self.combined_data['datetime'] = self.combined_data['datetime'].dt.tz_convert('UTC')
+        
+        # Sort by datetime (using column, never index)
         self.combined_data = self.combined_data.sort_values('datetime').reset_index(drop=True)
+        
+        # P2-1.B: Date slicing si spécifié dans config
+        if self.config.start_date or self.config.end_date:
+            before_slice = len(self.combined_data)
+            
+            # DIAGNOSTIC: Log before slice
+            logger.info(f"📅 Before slice: {before_slice} bars")
+            if len(self.combined_data) > 0:
+                logger.info(f"   Datetime range: {self.combined_data['datetime'].min()} to {self.combined_data['datetime'].max()}")
+                logger.info(f"   Datetime tz: {self.combined_data['datetime'].dt.tz}")
+            
+            # Build slicing bounds as tz-aware UTC
+            if self.config.start_date:
+                # Ensure start_dt is tz-aware UTC
+                start_dt_raw = pd.to_datetime(self.config.start_date)
+                if start_dt_raw.tz is None:
+                    start_dt = start_dt_raw.tz_localize('UTC')
+                else:
+                    start_dt = start_dt_raw.tz_convert('UTC')
+                
+                logger.info(f"   Slicing start: {start_dt} (tz-aware: {start_dt.tz is not None})")
+                self.combined_data = self.combined_data[self.combined_data['datetime'] >= start_dt]
+            
+            if self.config.end_date:
+                # End date is inclusive (entire day) - use end-exclusive slice
+                end_dt_raw = pd.to_datetime(self.config.end_date)
+                if end_dt_raw.tz is None:
+                    end_dt = end_dt_raw.tz_localize('UTC')
+                else:
+                    end_dt = end_dt_raw.tz_convert('UTC')
+                
+                # End-exclusive: add 1 day and use < (not <=)
+                end_excl = end_dt + pd.Timedelta(days=1)
+                
+                logger.info(f"   Slicing end (exclusive): {end_excl} (tz-aware: {end_excl.tz is not None})")
+                self.combined_data = self.combined_data[self.combined_data['datetime'] < end_excl]
+            
+            after_slice = len(self.combined_data)
+            logger.info(f"📅 Date slicing: {before_slice} → {after_slice} bars ({self.config.start_date} to {self.config.end_date})")
+            
+            # DIAGNOSTIC: Log after slice
+            if after_slice > 0:
+                # Ensure sorted after slice
+                self.combined_data = self.combined_data.sort_values('datetime').reset_index(drop=True)
+                logger.info(f"   After slice range: {self.combined_data['datetime'].min()} to {self.combined_data['datetime'].max()}")
+                logger.info(f"   After slice shape: {self.combined_data.shape}")
+            else:
+                logger.warning(f"   ⚠️  EMPTY SLICE! Check timezone alignment.")
+                logger.warning(f"   Config: start_date={self.config.start_date}, end_date={self.config.end_date}")
+                if len(self.combined_data) > 0:
+                    logger.warning(f"   Data range: {self.combined_data['datetime'].min()} to {self.combined_data['datetime'].max()}")
+        
+        # P2-2.B: HTF Warmup - Load extended HTF data for context
+        # This provides historical HTF candles BEFORE start_date for day_type calculation
+        # while keeping intraday (1m) strictly within start_date/end_date
+        if self.config.start_date and self.config.htf_warmup_days > 0:
+            # Build warmup bounds as tz-aware UTC
+            start_dt_raw = pd.to_datetime(self.config.start_date)
+            if start_dt_raw.tz is None:
+                start_dt_utc = start_dt_raw.tz_localize('UTC')
+            else:
+                start_dt_utc = start_dt_raw.tz_convert('UTC')
+            
+            warmup_start_dt = start_dt_utc - pd.Timedelta(days=self.config.htf_warmup_days)
+            
+            logger.info(f"🔧 HTF Warmup: Loading {self.config.htf_warmup_days} days before {self.config.start_date}")
+            logger.info(f"   Warmup period: {warmup_start_dt.strftime('%Y-%m-%d')} → {self.config.start_date}")
+            
+            # Load warmup data for HTF only (not for 1m iteration)
+            self.htf_warmup_data = {}
+            for i, path in enumerate(self.config.data_paths):
+                symbol = self.config.symbols[i]
+                path_obj = Path(path)
+                df_warmup = pd.read_parquet(path_obj)
+                
+                # P0 BUGFIX: Normalize datetime for warmup (same as main load)
+                if isinstance(df_warmup.index, pd.DatetimeIndex):
+                    df_warmup = df_warmup.copy()
+                    index_name = df_warmup.index.name if df_warmup.index.name else "datetime"
+                    df_warmup.index.name = index_name
+                    df_warmup = df_warmup.reset_index()
+                
+                if '__index_level_0__' in df_warmup.columns and 'datetime' not in df_warmup.columns:
+                    df_warmup['datetime'] = pd.to_datetime(df_warmup['__index_level_0__'], utc=True, errors='coerce')
+                    df_warmup = df_warmup.drop(columns=['__index_level_0__'])
+                
+                # Ensure exactly ONE "datetime" column
+                datetime_cols = [col for col in df_warmup.columns if col == 'datetime']
+                if len(datetime_cols) > 1:
+                    df_warmup = df_warmup.loc[:, ~df_warmup.columns.duplicated(keep='first')]
+                elif len(datetime_cols) == 0:
+                    raise ValueError(f"No 'datetime' column found in warmup data for {symbol}")
+                
+                df_warmup['datetime'] = pd.to_datetime(df_warmup['datetime'], utc=True, errors='coerce')
+                
+                # DIAGNOSTIC: Ensure datetime is tz-aware UTC
+                if df_warmup['datetime'].dt.tz is None:
+                    df_warmup['datetime'] = df_warmup['datetime'].dt.tz_localize('UTC')
+                else:
+                    df_warmup['datetime'] = df_warmup['datetime'].dt.tz_convert('UTC')
+                
+                # Clean index
+                df_warmup = df_warmup.reset_index(drop=True)
+                
+                # Filter warmup: [warmup_start, start_date) - both tz-aware UTC
+                df_warmup = df_warmup[
+                    (df_warmup['datetime'] >= warmup_start_dt) &
+                    (df_warmup['datetime'] < start_dt_utc)
+                ]
+                
+                # Sort by datetime (using column, never index)
+                df_warmup = df_warmup.sort_values('datetime').reset_index(drop=True)
+                
+                self.htf_warmup_data[symbol] = df_warmup
+                logger.info(f"   {symbol}: {len(df_warmup)} warmup bars loaded")
+        else:
+            self.htf_warmup_data = {}
+        
+        # Filtrer par période si spécifié dans run_name (ex: rolling_2025-06)
+        if 'rolling_' in self.config.run_name and '-' in self.config.run_name:
+            try:
+                month_str = self.config.run_name.split('rolling_')[-1]  # 2025-06
+                year, month = month_str.split('-')
+                start_date = pd.Timestamp(f'{year}-{month}-01', tz='UTC')
+                # Fin de mois
+                if int(month) == 12:
+                    end_date = pd.Timestamp(f'{int(year)+1}-01-01', tz='UTC')
+                else:
+                    end_date = pd.Timestamp(f'{year}-{int(month)+1:02d}-01', tz='UTC')
+                
+                before_filter = len(self.combined_data)
+                self.combined_data = self.combined_data[
+                    (self.combined_data['datetime'] >= start_date) &
+                    (self.combined_data['datetime'] < end_date)
+                ]
+                logger.info(f"📅 Filtered to {month_str}: {len(self.combined_data)} bars (was {before_filter})")
+            except:
+                pass  # Pas un run rolling, on garde tout
         
         # Séparer par symbole ET créer index par timestamp pour accès O(1)
         self.candles_1m_by_timestamp: Dict[str, Dict[datetime, Candle]] = {}
@@ -177,9 +449,13 @@ class BacktestEngine:
                     )
                 self.candles_1m_by_timestamp[symbol] = candles_dict
                 
+                # DIAGNOSTIC: Compter candles 1m chargés
+                self.debug_counts["candles_loaded_1m"] += len(symbol_data)
+                
                 logger.info(f"  {symbol}: {len(symbol_data)} bars, {len(candles_dict)} candles indexed")
         
         logger.info(f"✅ Data loaded: {len(self.combined_data)} total bars")
+        logger.info(f"✅ Total 1m candles loaded: {self.debug_counts['candles_loaded_1m']}")
         
         # PERF: Ne JAMAIS appeler _build_multi_timeframe_candles (legacy path bloquant)
         # L'agrégation se fait de manière incrémentale via TimeframeAggregator dans le loop
@@ -340,15 +616,82 @@ class BacktestEngine:
         )
         logger.info("=" * 80)
 
-        # Load data
-        self.load_data()
+        # Load data (only if not already loaded)
+        if self.combined_data is None:
+            self.load_data()
 
         start_date = self.combined_data["datetime"].min()
         end_date = self.combined_data["datetime"].max()
 
         # OPTIMISATION: Plus de pre-build multi-TF, on utilise l'agrégateur incrémental
         # self._build_multi_timeframe_candles()
-
+        
+        # P2-2.B: CHECKPOINT - Capture état AVANT prefeed gate
+        prefeed_gate_state = {
+            "hasattr_htf_warmup_data": hasattr(self, 'htf_warmup_data'),
+            "htf_warmup_data_is_none": getattr(self, 'htf_warmup_data', None) is None,
+            "id_htf_warmup_data": id(self.htf_warmup_data) if hasattr(self, 'htf_warmup_data') else None,
+            "type_htf_warmup_data": str(type(self.htf_warmup_data)) if hasattr(self, 'htf_warmup_data') else None,
+            "len_htf_warmup_data": len(self.htf_warmup_data) if hasattr(self, 'htf_warmup_data') and isinstance(self.htf_warmup_data, dict) else -1,
+            "bool_htf_warmup_data": bool(self.htf_warmup_data) if hasattr(self, 'htf_warmup_data') else None,
+            "keys_htf_warmup_data": list(self.htf_warmup_data.keys())[:5] if hasattr(self, 'htf_warmup_data') and isinstance(self.htf_warmup_data, dict) else [],
+            "combined_data_is_none": self.combined_data is None,
+            "config_start_date": self.config.start_date,
+            "config_end_date": self.config.end_date,
+            "config_htf_warmup_days": self.config.htf_warmup_days,
+        }
+        
+        # Add symbol-specific counts if dict exists
+        if hasattr(self, 'htf_warmup_data') and isinstance(self.htf_warmup_data, dict):
+            for symbol in self.config.symbols[:2]:  # Max 2 symbols
+                if symbol in self.htf_warmup_data:
+                    val = self.htf_warmup_data[symbol]
+                    prefeed_gate_state[f"{symbol}_type"] = str(type(val))
+                    prefeed_gate_state[f"{symbol}_len"] = len(val) if hasattr(val, '__len__') else -1
+        
+        # Export checkpoint for debug
+        if not hasattr(self, '_debug_checkpoints'):
+            self._debug_checkpoints = []
+        self._debug_checkpoints.append(("prefeed_gate", prefeed_gate_state))
+        
+        logger.info(f"🔍 Prefeed gate: hasattr={prefeed_gate_state['hasattr_htf_warmup_data']}, "
+                   f"len={prefeed_gate_state['len_htf_warmup_data']}, "
+                   f"bool={prefeed_gate_state['bool_htf_warmup_data']}")
+        
+        # P2-2.B: Pre-feed TimeframeAggregator with warmup data
+        if hasattr(self, 'htf_warmup_data') and self.htf_warmup_data:
+            logger.info("🔧 Pre-feeding HTF warmup data to TimeframeAggregator...")
+            warmup_bars_fed = 0
+            for symbol, df_warmup in self.htf_warmup_data.items():
+                # Convert warmup bars to Candle objects and feed to aggregator
+                for _, row in df_warmup.iterrows():
+                    candle_1m = Candle(
+                        timestamp=row['datetime'],
+                        open=row['open'],
+                        high=row['high'],
+                        low=row['low'],
+                        close=row['close'],
+                        volume=row['volume'],
+                        symbol=symbol,
+                        timeframe='1m'
+                    )
+                    self.tf_aggregator.add_1m_candle(candle_1m)
+                    warmup_bars_fed += 1
+            
+            # Log HTF candles after warmup
+            for symbol in self.config.symbols:
+                candles_1d = self.tf_aggregator.get_candles(symbol, "1d")
+                candles_4h = self.tf_aggregator.get_candles(symbol, "4h")
+                candles_1h = self.tf_aggregator.get_candles(symbol, "1h")
+                logger.info(f"   {symbol}: {len(candles_1d)} daily, {len(candles_4h)} 4h, {len(candles_1h)} 1h candles after warmup (fed {warmup_bars_fed} 1m bars)")
+                
+                # DIAGNOSTIC: Compter candles HTF chargés
+                if "candles_loaded_htf" not in self.debug_counts:
+                    self.debug_counts["candles_loaded_htf"] = {}
+                self.debug_counts["candles_loaded_htf"][f"{symbol}_1d"] = len(candles_1d)
+                self.debug_counts["candles_loaded_htf"][f"{symbol}_4h"] = len(candles_4h)
+                self.debug_counts["candles_loaded_htf"][f"{symbol}_1h"] = len(candles_1h)
+        
         # Group by minute (pour traiter SPY et QQQ ensemble)
         self.combined_data["minute"] = self.combined_data["datetime"].dt.floor("1min")
         minutes = sorted(self.combined_data["datetime"].unique())  # Toutes les bougies 1m
@@ -373,6 +716,20 @@ class BacktestEngine:
                 candle_1m = self.candles_1m_by_timestamp.get(symbol, {}).get(current_time)
                 if candle_1m is None:
                     continue
+                
+                # P0 DEBUG - Étape 1: Vérifier que la boucle de traitement des bougies tourne
+                self.debug_counts["bars_processed"] = self.debug_counts.get("bars_processed", 0) + 1
+                if self.debug_counts["bars_processed"] <= 5:
+                    logger.warning(
+                        f"[DEBUG] BAR {self.debug_counts['bars_processed']} "
+                        f"dt={candle_1m.timestamp} "
+                        f"O={candle_1m.open} H={candle_1m.high} L={candle_1m.low} C={candle_1m.close}"
+                    )
+                
+                # P0 DEBUG - Étape 3: Forcer un setup artificiel (preuve absolue)
+                if self.debug_counts["bars_processed"] == 100:
+                    self.debug_counts["setups_detected_total"] += 1
+                    logger.error("🔥 DEBUG: FAKE SETUP TRIGGERED AT BAR 100")
                 
                 # Ajouter à l'agrégateur et récupérer les flags de clôture HTF
                 events = self.tf_aggregator.add_1m_candle(candle_1m)
@@ -421,6 +778,9 @@ class BacktestEngine:
 
         # Générer résultats
         result = self._generate_result(start_date, end_date, len(minutes))
+
+        # DIAGNOSTIC: Exporter debug_counts.json
+        self._export_debug_counts()
 
         # Sauvegarder
         self._save_results(result)
@@ -487,8 +847,8 @@ class BacktestEngine:
                 "5m": candles_5m[-200:],
                 "15m": candles_15m[-100:],
                 "1h": candles_1h[-50:],
-                "4h": candles_4h[-20:],
-                "1d": candles_1d[-10:]
+                "4h": candles_4h[-30:],  # P2-2.B: Increased
+                "1d": candles_1d[-30:]   # P2-2.B: Increased to support detect_structure (>= 20)
             }
             
             market_state = self.market_state_engine.create_market_state(
@@ -513,8 +873,8 @@ class BacktestEngine:
                     "5m": candles_5m[-200:],
                     "15m": candles_15m[-100:],
                     "1h": candles_1h[-50:],
-                    "4h": candles_4h[-20:],
-                    "1d": candles_1d[-10:]
+                    "4h": candles_4h[-30:],  # P2-2.B
+                    "1d": candles_1d[-30:]   # P2-2.B
                 }
                 
                 market_state = self.market_state_engine.create_market_state(
@@ -538,13 +898,36 @@ class BacktestEngine:
                 raw_candle_patterns = self.candlestick_engine.detect_patterns(candles_5m[-100:], timeframe="5m")
                 candle_patterns = self._convert_candlestick_patterns(raw_candle_patterns)
             
-            # ICT patterns (BOS/FVG)
+            # ICT patterns via unified custom detectors (BOS/FVG + IFVG/OB/EQ/BB)
             if len(candles_5m) > 10:
-                ict_patterns.extend(self.ict_engine.detect_bos(candles_5m[-100:], timeframe="5m"))
-                ict_patterns.extend(self.ict_engine.detect_fvg(candles_5m[-100:], timeframe="5m"))
+                detections_5m = detect_custom_patterns(candles_5m[-100:], "5m")
+                for plist in detections_5m.values():
+                    if plist:
+                        ict_patterns.extend(plist)
             
             if len(candles_15m) > 10 and htf_events.get("is_close_15m"):
-                ict_patterns.extend(self.ict_engine.detect_fvg(candles_15m[-100:], timeframe="15m"))
+                detections_15m = detect_custom_patterns(candles_15m[-100:], "15m")
+                for plist in detections_15m.values():
+                    if plist:
+                        ict_patterns.extend(plist)
+        
+        # P0 ÉTAPE 2: Instrumentation - Log évaluation playbooks (rate limit)
+        bar_num = self.debug_counts.get("bars_processed", 0)
+        if bar_num == 1 or (bar_num > 0 and bar_num % 200 == 0):
+            playbook_count = self.debug_counts.get("playbooks_registered_count", 0)
+            logger.warning(
+                f"[DEBUG] BAR {bar_num} - Evaluating playbooks | "
+                f"dt={current_time} | "
+                f"playbooks={playbook_count} | "
+                f"mode={self.config.trading_mode} | "
+                f"trade_types={self.config.trade_types} | "
+                f"ict_patterns={len(ict_patterns)} | "
+                f"candle_patterns={len(candle_patterns)}"
+            )
+        
+        # P0 ÉTAPE 3: Compter évaluation playbooks
+        # On compte chaque appel à generate_setups comme une évaluation
+        self.debug_counts["playbooks_evaluated_total"] = self.debug_counts.get("playbooks_evaluated_total", 0) + 1
         
         # Générer setup via SetupEngine
         setups = self.setup_engine.generate_setups(
@@ -557,13 +940,133 @@ class BacktestEngine:
             trading_mode=self.config.trading_mode
         )
         
+        # P0 FIX: Compter matches (après génération, matches stockés dans _last_matches)
+        if hasattr(self.setup_engine, '_last_matches') and self.setup_engine._last_matches:
+            matches = self.setup_engine._last_matches
+            self.debug_counts["matches_total"] += len(matches)
+            for match in matches:
+                pb_name = match.get('playbook_name', 'unknown')
+                if pb_name not in self.debug_counts["matches_by_playbook"]:
+                    self.debug_counts["matches_by_playbook"][pb_name] = 0
+                self.debug_counts["matches_by_playbook"][pb_name] += 1
+        
+        # P0 FIX: Compter setups créés
+        if setups:
+            self.debug_counts["setups_created_total"] += len(setups)
+            for setup in setups:
+                # P0 FIX: Utiliser setup.playbook_name (source de vérité unique)
+                playbook_name = setup.playbook_name if setup.playbook_name else "unknown"
+                
+                logger.error(
+                    f"[DEBUG] SETUP MATCHED | "
+                    f"bar={bar_num} | "
+                    f"playbook={playbook_name} | "
+                    f"type={getattr(setup, 'trade_type', 'N/A')} | "
+                    f"direction={getattr(setup, 'direction', 'N/A')} | "
+                    f"quality={getattr(setup, 'quality', 'N/A')}"
+                )
+                # P0 FIX: Compter setups créés par playbook
+                if playbook_name not in self.debug_counts["setups_created_by_playbook"]:
+                    self.debug_counts["setups_created_by_playbook"][playbook_name] = 0
+                self.debug_counts["setups_created_by_playbook"][playbook_name] += 1
+                
+                # Legacy (compatibilité)
+                if playbook_name not in self.debug_counts["setups_detected_by_playbook"]:
+                    self.debug_counts["setups_detected_by_playbook"][playbook_name] = 0
+                self.debug_counts["setups_detected_by_playbook"][playbook_name] += 1
+        
+        # Collecter tous les setups générés (pour funnel)
+        if setups:
+            self.all_generated_setups.extend(setups)
+            
+            # P2-2.B: Collect market_state data (if export enabled)
+            if self.market_state_records is not None:
+                for setup in setups:
+                    self.market_state_records.append({
+                        'timestamp': setup.timestamp.isoformat(),
+                        'symbol': setup.symbol,
+                        'market_bias': setup.market_bias,
+                        'session': setup.session,
+                        'day_type': getattr(setup, 'day_type', 'unknown'),
+                        'daily_structure': getattr(setup, 'daily_structure', 'unknown'),
+                    })
+        
         if not setups:
             return None
         
         # Filtrer selon le mode (SAFE/AGGRESSIVE)
         filtered_setups = filter_setups_by_mode(setups, self.risk_engine)
         
+        # P0 PLUMBING: Diagnostic entrée/sortie RiskEngine sur ce bar
+        # Entrée
+        self.debug_counts["risk_input_setups_len"] = len(setups)
+        self.debug_counts["risk_first3_input_playbooks"] = [
+            (s.playbook_name or "unknown") for s in setups[:3]
+        ]
+
+        # Appel RiskEngine (autorité finale sur les playbooks)
+        filtered_setups = filter_setups_by_mode(setups, self.risk_engine)
+
+        # Sortie
+        self.debug_counts["risk_output_setups_len"] = len(filtered_setups)
+        self.debug_counts["risk_first3_output_playbooks"] = [
+            (s.playbook_name or "unknown") for s in filtered_setups[:3]
+        ]
+
+        # P0 FIX: Compter setups après RiskEngine
+        self.debug_counts["setups_after_risk_filter_total"] += len(filtered_setups)
+        for setup in filtered_setups:
+            playbook_name = setup.playbook_name if setup.playbook_name else "unknown"
+            if playbook_name not in self.debug_counts["setups_after_risk_filter_by_playbook"]:
+                self.debug_counts["setups_after_risk_filter_by_playbook"][playbook_name] = 0
+            self.debug_counts["setups_after_risk_filter_by_playbook"][playbook_name] += 1
+        
+        # P0 TÂCHE 3: Récupérer rejets détaillés depuis RiskEngine et propager vers debug_counts
+        rejects = self.risk_engine.get_last_filter_rejects()
+        
+        # Stocker rejets par playbook
+        for playbook_name, count in rejects.get('by_playbook', {}).items():
+            if playbook_name not in self.debug_counts["setups_rejected_by_mode_by_playbook"]:
+                self.debug_counts["setups_rejected_by_mode_by_playbook"][playbook_name] = 0
+            self.debug_counts["setups_rejected_by_mode_by_playbook"][playbook_name] += count
+        
+        # Stocker exemples détaillés (max 5)
+        existing_count = len(self.debug_counts["setups_rejected_by_mode_examples"])
+        for example in rejects.get('examples', [])[:5 - existing_count]:
+            self.debug_counts["setups_rejected_by_mode_examples"].append(example)
+        
+        # P0 TÂCHE 3: Stocker mode réel + allowlist snapshot (une seule fois, au premier appel)
+        if "risk_mode_used" not in self.debug_counts or not self.debug_counts["risk_mode_used"]:
+            self.debug_counts["risk_mode_used"] = self.risk_engine.state.trading_mode
+            from engines.risk_engine import AGGRESSIVE_ALLOWLIST, SAFE_ALLOWLIST
+            aggressive_len = len(AGGRESSIVE_ALLOWLIST)
+            safe_len = len(SAFE_ALLOWLIST)
+            aggressive_first5 = list(AGGRESSIVE_ALLOWLIST[:5])
+            safe_first5 = list(SAFE_ALLOWLIST[:5])
+            self.debug_counts["risk_allowlist_snapshot"] = {
+                "aggressive": {
+                    "len": aggressive_len,
+                    "first5": aggressive_first5
+                },
+                "safe": {
+                    "len": safe_len,
+                    "first5": safe_first5
+                }
+            }
+
+        # Stocker aussi les rejets détaillés avec clés claires (toujours à jour)
+        self.debug_counts["risk_rejects_by_playbook"] = rejects.get('by_playbook', {}).copy()
+        self.debug_counts["risk_reject_examples"] = rejects.get('examples', []).copy()
+        
+        # Compter missing_playbook_name
+        self.debug_counts["missing_playbook_name"] += rejects.get('missing_playbook_name', 0)
+        
         if not filtered_setups:
+            # P0 ÉTAPE 3: Compter rejet par mode
+            self.debug_counts["setups_rejected_by_mode"] = self.debug_counts.get("setups_rejected_by_mode", 0) + len(setups)
+            if "rejected_by_mode" not in self.debug_counts["setups_rejected_by_reason"]:
+                self.debug_counts["setups_rejected_by_reason"]["rejected_by_mode"] = 0
+            self.debug_counts["setups_rejected_by_reason"]["rejected_by_mode"] += len(setups)
             return None
         
         # Retourner le meilleur setup
@@ -652,16 +1155,21 @@ class BacktestEngine:
             self.candlestick_engine.detect_patterns(candles_15m, timeframe="15m")
         candle_patterns = self._convert_candlestick_patterns(raw_candle_patterns)
 
-        # ICT patterns (BOS/FVG sur les TF supérieurs)
+        # ICT patterns via unified custom detectors on higher timeframes (5m/15m)
         ict_patterns: List[ICTPattern] = []
         if candles_5m:
-            # Limiter à 100 dernières bougies pour la détection (garde la logique complète)
+            # Limit to the last 100 candles for detection
             recent_5m = candles_5m[-100:] if len(candles_5m) > 100 else candles_5m
-            ict_patterns.extend(self.ict_engine.detect_bos(recent_5m, timeframe="5m"))
-            ict_patterns.extend(self.ict_engine.detect_fvg(recent_5m, timeframe="5m"))
+            detections_5m = detect_custom_patterns(recent_5m, "5m")
+            for plist in detections_5m.values():
+                if plist:
+                    ict_patterns.extend(plist)
         if candles_15m:
             recent_15m = candles_15m[-100:] if len(candles_15m) > 100 else candles_15m
-            ict_patterns.extend(self.ict_engine.detect_fvg(recent_15m, timeframe="15m"))
+            detections_15m = detect_custom_patterns(recent_15m, "15m")
+            for plist in detections_15m.values():
+                if plist:
+                    ict_patterns.extend(plist)
 
         # SMT inter-actifs (SPY vs QQQ) si les deux symboles sont présents
         # OPTIMISATION: Désactiver SMT (non critique pour les playbooks actuels)
@@ -683,9 +1191,9 @@ class BacktestEngine:
         # Eventuel CHOCH si sweep récent et données M5 suffisantes (réactivé)
         if sweeps and candles_5m:
             recent_5m_for_choch = candles_5m[-50:] if len(candles_5m) > 50 else candles_5m
-            choch = self.ict_engine.detect_choch(recent_5m_for_choch, sweeps[-1])
-            if choch:
-                ict_patterns.append(choch)
+            choch_patterns = detect_choch_pattern(recent_5m_for_choch, sweeps[-1])
+            if choch_patterns:
+                ict_patterns.extend(choch_patterns)
 
         # Générer setups via playbooks
         setups = self.setup_engine.generate_setups(
@@ -699,6 +1207,10 @@ class BacktestEngine:
             last_price=last_close,
         )
         
+        # DIAGNOSTIC: Compter setups détectés
+        if setups:
+            self.debug_counts["setups_detected_total"] += len(setups)
+        
         # Instrumentation: compter les setups bruts
         self._record_setups_stats(symbol, current_time, setups, stage="raw")
 
@@ -706,14 +1218,29 @@ class BacktestEngine:
             return None
         
         # Filtrer selon mode (RiskEngine est l'autorité finale pour playbooks)
+        setups_before_mode = len(setups)
         setups = filter_setups_by_mode(setups, risk_engine=self.risk_engine)
+        setups_after_mode = len(setups)
+        
+        # DIAGNOSTIC: Compter rejets par mode
+        if setups_before_mode > setups_after_mode:
+            self.debug_counts["setups_rejected_by_mode"] += (setups_before_mode - setups_after_mode)
 
         # Filtrer selon trade_types demandés
+        setups_before_types = len(setups)
         setups = [s for s in setups if s.trade_type in self.config.trade_types]
+        setups_after_types = len(setups)
+        
+        # DIAGNOSTIC: Compter rejets par trade_types
+        if setups_before_types > setups_after_types:
+            self.debug_counts["setups_rejected_by_trade_types"] += (setups_before_types - setups_after_types)
 
         # Instrumentation: compter les setups après mode + trade_types
         if setups:
             self._record_setups_stats(symbol, current_time, setups, stage="after_mode")
+            self.debug_counts["setups_accepted_total"] += len(setups)
+        else:
+            self.debug_counts["setups_rejected_total"] += setups_before_mode
 
         if not setups:
             return None
@@ -854,15 +1381,22 @@ class BacktestEngine:
     def _execute_setup(self, setup: Setup, current_time: datetime):
         """Exécute un setup (via RiskEngine + ExecutionEngine) avec 2R/1R money management."""
         
+        # P0 FIX: Compter tentative d'ouverture
+        self.debug_counts["trades_open_attempted_total"] += 1
+        
         # P0.6.1: Vérifier si stop_run a été déclenché
         if self._stop_run_triggered:
-            logger.debug(f"⚠️ Setup refusé: STOP_RUN actif depuis {self._stop_run_time}")
+            reason = f"STOP_RUN actif depuis {self._stop_run_time}"
+            logger.debug(f"⚠️ Setup refusé: {reason}")
+            self._increment_reject_reason("stop_run_triggered")
             return
         
         # Vérifier si le setup peut être pris (circuit breakers, quotas, etc.)
         can_take = self.risk_engine.can_take_setup(setup)
         if not can_take['allowed']:
-            logger.debug(f"⚠️ Setup refusé par RiskEngine: {can_take['reason']}")
+            reason = can_take.get('reason', 'unknown')
+            logger.debug(f"⚠️ Setup refusé par RiskEngine: {reason}")
+            self._increment_reject_reason(reason)
             return
         
         # PATCH A: Vérifier cooldown et limite par session (ANTI-SPAM)
@@ -878,26 +1412,31 @@ class BacktestEngine:
         if not cooldown_ok:
             logger.debug(f"⚠️ Setup bloqué (anti-spam): {cooldown_reason}")
             # PATCH D: Tracker les rejets anti-spam
-            playbook_name = setup.playbook_matches[0].playbook_name if setup.playbook_matches else "UNKNOWN"
+            playbook_name = setup.playbook_name if setup.playbook_name else "UNKNOWN"
             if "Cooldown" in cooldown_reason:
                 self.blocked_by_cooldown += 1
                 self.blocked_by_cooldown_details[playbook_name] = self.blocked_by_cooldown_details.get(playbook_name, 0) + 1
-            elif "session" in cooldown_reason:
+                self._increment_reject_reason("cooldown_active")
+            elif "session" in cooldown_reason.lower():
                 self.blocked_by_session_limit += 1
                 self.blocked_by_session_limit_details[playbook_name] = self.blocked_by_session_limit_details.get(playbook_name, 0) + 1
+                self._increment_reject_reason("session_limit_reached")
             return
         
         # Vérifier cap trades par symbole
         allowed, reason = self.risk_engine.check_trades_cap(setup.symbol, current_time.date())
         if not allowed:
             logger.debug(f"⚠️ Setup refusé: {reason}")
+            self._increment_reject_reason(reason)
             return
         
         # Position sizing avec 2R/1R
         position_calc = self.risk_engine.calculate_position_size(setup)
         
         if not position_calc.valid:
-            logger.info(f"⚠️ Setup non exécuté (position sizing invalide): {position_calc.reason}")
+            reason = position_calc.reason or "position_sizing_invalid"
+            logger.info(f"⚠️ Setup non exécuté (position sizing invalide): {reason}")
+            self._increment_reject_reason(reason)
             return
         
         # Execute via paper trading engine
@@ -911,11 +1450,18 @@ class BacktestEngine:
         order_result = self.execution_engine.place_order(setup, risk_allocation, current_time=current_time)
         
         if order_result['success']:
+            # DIAGNOSTIC: Compter trade ouvert
+            self.debug_counts["trades_opened_total"] += 1
+            
             # Incrémenter le compteur de trades pour ce symbole
             self.risk_engine.increment_trades_count(setup.symbol, current_time.date())
             # PATCH A: Record pour anti-spam (cooldown + session limit)
             self.risk_engine.record_trade_for_cooldown(setup, current_time, current_session)
             logger.debug(f"  ✅ Trade opened: {setup.symbol} {setup.direction} @ {setup.entry_price:.2f} (tier={position_calc.risk_tier}R)")
+        else:
+            # P0 FIX: Compter rejet par ExecutionEngine
+            reason = order_result.get('reason', 'execution_engine_failed')
+            self._increment_reject_reason(reason)
 
     
     def _update_positions(self, current_time: datetime):
@@ -1008,21 +1554,29 @@ class BacktestEngine:
         
         winrate = (len(wins) / total_trades) * 100 if total_trades > 0 else 0.0
         
-        # R stats
-        total_r = sum(t.pnl_r for t in self.trades)
-        avg_r = total_r / total_trades if total_trades > 0 else 0.0
-        avg_win_r = sum(t.pnl_r for t in wins) / len(wins) if wins else 0.0
-        avg_loss_r = sum(t.pnl_r for t in losses) / len(losses) if losses else 0.0
+        # R stats (NET by default)
+        total_r_net = sum(t.pnl_net_R for t in self.trades)
+        total_r_gross = sum(t.pnl_gross_R for t in self.trades)
+        total_costs = sum(t.total_costs for t in self.trades)
         
-        # Expectancy
+        avg_r = total_r_net / total_trades if total_trades > 0 else 0.0
+        avg_win_r = sum(t.pnl_net_R for t in wins) / len(wins) if wins else 0.0
+        avg_loss_r = sum(t.pnl_net_R for t in losses) / len(losses) if losses else 0.0
+        
+        # Expectancy (net)
         win_prob = winrate / 100
         loss_prob = 1 - win_prob
         expectancy_r = (win_prob * avg_win_r) + (loss_prob * avg_loss_r)
         
-        # Profit factor
-        gross_profit = sum(t.pnl_dollars for t in wins)
-        gross_loss = abs(sum(t.pnl_dollars for t in losses))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
+        # Profit factor (net)
+        gross_profit_net = sum(t.pnl_net_dollars for t in wins)
+        gross_loss_net = abs(sum(t.pnl_net_dollars for t in losses))
+        profit_factor_net = gross_profit_net / gross_loss_net if gross_loss_net > 0 else 0.0
+        
+        # Profit factor (gross for comparison)
+        gross_profit_gross = sum(t.pnl_gross_dollars for t in wins)
+        gross_loss_gross = abs(sum(t.pnl_gross_dollars for t in losses))
+        profit_factor_gross = gross_profit_gross / gross_loss_gross if gross_loss_gross > 0 else 0.0
         
         # Drawdown
         max_dd_r = self._calculate_max_drawdown(self.equity_curve_r)
@@ -1060,9 +1614,16 @@ class BacktestEngine:
             total_days=(end_date - start_date).days,
             initial_capital=self.config.initial_capital,
             final_capital=final_capital,
+            # PHASE B: Gross vs Net
+            total_pnl_gross_dollars=sum(t.pnl_gross_dollars for t in self.trades),
+            total_pnl_net_dollars=total_pnl_dollars,
+            total_pnl_gross_R=total_r_gross,
+            total_pnl_net_R=total_r_net,
+            total_costs_dollars=total_costs,
+            # Legacy (use net)
             total_pnl_dollars=total_pnl_dollars,
             total_pnl_pct=total_pnl_pct,
-            total_pnl_r=total_r,
+            total_pnl_r=total_r_net,
             equity_curve_r=self.equity_curve_r,
             equity_curve_dollars=self.equity_curve_dollars,
             equity_timestamps=self.equity_timestamps,
@@ -1078,7 +1639,7 @@ class BacktestEngine:
             avg_win_r=avg_win_r,
             avg_loss_r=avg_loss_r,
             expectancy_r=expectancy_r,
-            profit_factor=profit_factor,
+            profit_factor=profit_factor_net,  # PHASE B: Use net
             max_win_streak=max_win_streak,
             max_loss_streak=max_loss_streak,
             current_streak=0,
@@ -1203,24 +1764,49 @@ class BacktestEngine:
             if trade.id in self._journaled_trade_ids:
                 continue
 
+            # DIAGNOSTIC: Compter trade fermé
+            self.debug_counts["trades_closed_total"] += 1
+
             # Marquer comme traité
             self._journaled_trade_ids.add(trade.id)
 
-            # Déterminer le résultat du trade
-            trade_result_str = 'win' if trade.pnl_dollars > 0 else ('loss' if trade.pnl_dollars < 0 else 'breakeven')
-            
             # Récupérer le tier de risque utilisé (default 2 si pas enregistré)
             risk_tier = getattr(trade, 'risk_tier', 2)
             risk_dollars = getattr(trade, 'risk_amount', self.risk_engine.state.base_r_unit_dollars * risk_tier)
             
+            # PHASE B: Calculate execution costs
+            entry_costs, exit_costs = calculate_total_execution_costs(
+                shares=int(trade.position_size),
+                entry_price=trade.entry_price,
+                exit_price=trade.exit_price,
+                commission_model=self.config.commission_model,
+                enable_reg_fees=self.config.enable_reg_fees,
+                slippage_model=self.config.slippage_model,
+                slippage_pct=self.config.slippage_cost_pct,
+                slippage_ticks=self.config.slippage_ticks,
+                spread_model=self.config.spread_model,
+                spread_bps=self.config.spread_bps
+            )
+            
+            total_costs = entry_costs.total + exit_costs.total
+            
+            # Calculate gross and net PnL
+            pnl_gross_dollars = trade.pnl_dollars or 0.0
+            pnl_net_dollars = pnl_gross_dollars - total_costs
+            pnl_gross_R = pnl_gross_dollars / risk_dollars if risk_dollars > 0 else 0.0
+            pnl_net_R = pnl_net_dollars / risk_dollars if risk_dollars > 0 else 0.0
+            
+            # Outcome based on NET PnL
+            trade_result_str = 'win' if pnl_net_dollars > 0 else ('loss' if pnl_net_dollars < 0 else 'breakeven')
+            
             # Nom du playbook pour stats
             pb_name = getattr(trade, "playbook", None) or "UNKNOWN"
             
-            # Mettre à jour RiskEngine avec 2R/1R money management
+            # Mettre à jour RiskEngine avec 2R/1R money management (use NET PnL)
             current_day = (trade.time_exit or timestamp).date()
             risk_update = self.risk_engine.update_risk_after_trade(
                 trade_result=trade_result_str,
-                trade_pnl_dollars=trade.pnl_dollars or 0.0,
+                trade_pnl_dollars=pnl_net_dollars,  # PHASE B: Use NET
                 trade_risk_dollars=risk_dollars,
                 trade_tier=risk_tier,
                 playbook_name=pb_name,
@@ -1264,9 +1850,27 @@ class BacktestEngine:
                 position_size=trade.position_size,
                 risk_pct=trade.risk_pct,
                 risk_amount=risk_dollars,
-                pnl_dollars=trade.pnl_dollars,
-                pnl_r=trade.r_multiple,
-                outcome=trade.outcome,
+                # PHASE B: Cost breakdown
+                entry_commission=entry_costs.commission,
+                entry_reg_fees=entry_costs.regulatory_fees,
+                entry_slippage=entry_costs.slippage,
+                entry_spread_cost=entry_costs.spread_cost,
+                entry_total_cost=entry_costs.total,
+                exit_commission=exit_costs.commission,
+                exit_reg_fees=exit_costs.regulatory_fees,
+                exit_slippage=exit_costs.slippage,
+                exit_spread_cost=exit_costs.spread_cost,
+                exit_total_cost=exit_costs.total,
+                total_costs=total_costs,
+                # PnL gross vs net
+                pnl_gross_dollars=pnl_gross_dollars,
+                pnl_net_dollars=pnl_net_dollars,
+                pnl_gross_R=pnl_gross_R,
+                pnl_net_R=pnl_net_R,
+                # Legacy (backward compat, use net)
+                pnl_dollars=pnl_net_dollars,
+                pnl_r=pnl_net_R,
+                outcome=trade_result_str,
                 exit_reason=trade.exit_reason,
             )
             self.trades.append(trade_result)
@@ -1711,8 +2315,51 @@ class BacktestEngine:
             logger.warning(f"P0 stats export failed: {e}")
 
         logger.info("\n💾 Results saved to: %s", output_dir)
+    
+    def _increment_reject_reason(self, reason: str):
+        """P0 FIX: Incrémente compteur de rejet (max 10 raisons)"""
+        if reason not in self.debug_counts["trades_open_rejected_by_reason"]:
+            if len(self.debug_counts["trades_open_rejected_by_reason"]) >= 10:
+                # Limiter à 10 raisons max
+                return
+            self.debug_counts["trades_open_rejected_by_reason"][reason] = 0
+        self.debug_counts["trades_open_rejected_by_reason"][reason] += 1
         logger.info("  - Summary: %s", summary_path)
         logger.info("  - Trades : %s", trades_path)
         logger.info("  - Equity : %s", equity_path)
-        if setup_stats_path is not None:
-            logger.info("  - Setup stats: %s", setup_stats_path)
+    
+    def _export_debug_counts(self):
+        """Export debug_counts.json pour diagnostic"""
+        try:
+            output_dir = Path(self.config.output_dir)
+            run_id = self.run_id
+            
+            # Ajouter métadonnées au debug_counts
+            debug_data = {
+                "run_id": run_id,
+                "config": {
+                    "start_date": self.config.start_date,
+                    "end_date": self.config.end_date,
+                    "htf_warmup_days": self.config.htf_warmup_days,
+                    "trading_mode": self.config.trading_mode,
+                    "trade_types": self.config.trade_types,
+                    "symbols": self.config.symbols,
+                },
+                "counts": self.debug_counts.copy(),
+            }
+            
+            # Convertir les dict en dict simples pour JSON
+            if "htf_warmup_bars" in debug_data["counts"]:
+                debug_data["counts"]["htf_warmup_bars"] = {
+                    k: int(v) if isinstance(v, (int, float)) else str(v)
+                    for k, v in debug_data["counts"]["htf_warmup_bars"].items()
+                }
+            
+            debug_path = output_dir / f"debug_counts_{run_id}.json"
+            import json
+            with open(debug_path, 'w', encoding='utf-8') as f:
+                json.dump(debug_data, f, indent=2, ensure_ascii=False)
+            
+            logger.info("  - Debug counts: %s", debug_path)
+        except Exception as e:
+            logger.warning(f"Failed to export debug_counts: {e}")

@@ -13,6 +13,7 @@ from typing import List
 
 from models.backtest import BacktestConfig
 from backtest.engine import BacktestEngine
+from utils.path_resolver import historical_data_path
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data-dir",
         type=str,
-        default="/app/data/historical/1m",
+        default=None,  # Will use path_resolver default
         help="Répertoire contenant les fichiers Parquet M1",
     )
 
@@ -60,11 +61,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def discover_data_paths(data_dir: str, symbols: List[str]) -> List[str]:
+def discover_data_paths(data_dir: str = None, symbols: List[str] = None) -> List[str]:
     """Trouve les fichiers Parquet pertinents pour les symboles donnés"""
-    base = Path(data_dir)
+    # Use path_resolver if no explicit data_dir
+    if data_dir is None:
+        base = historical_data_path()
+    else:
+        base = Path(data_dir)
+    
     if not base.exists():
-        raise FileNotFoundError(f"Data directory not found: {data_dir}")
+        raise FileNotFoundError(f"Data directory not found: {base}")
 
     paths: List[str] = []
     for symbol in symbols:
@@ -84,7 +90,7 @@ def discover_data_paths(data_dir: str, symbols: List[str]) -> List[str]:
             paths.append(str(p))
 
     if not paths:
-        raise FileNotFoundError(f"Aucun fichier Parquet trouvé pour {symbols} dans {data_dir}")
+        raise FileNotFoundError(f"Aucun fichier Parquet trouvé pour {symbols} dans {base}")
 
     return sorted(set(paths))
 

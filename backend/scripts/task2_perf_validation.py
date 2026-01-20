@@ -29,10 +29,7 @@ print("="*80)
 # PRÉPARATION : Extraire exactement 3 jours de données
 # ============================================================================
 print("\n[PREP] Extracting 3-day dataset...")
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parents[2]
-source_path = BASE_DIR / "data" / "historical" / "1m" / "SPY.parquet"
+source_path = Path('/app/data/historical/1m/SPY.parquet')
 df = pd.read_parquet(source_path)
 
 # Reset index to get datetime column
@@ -53,13 +50,7 @@ if len(df_3days) == 0:
     sys.exit(1)
 
 # Sauvegarder temporairement
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parents[2]
-TEMP_DIR = BASE_DIR / "backend" / "tmp"
-TEMP_DIR.mkdir(parents=True, exist_ok=True)
-
-temp_path = TEMP_DIR / "spy_3days.parquet"
+temp_path = Path('/tmp/spy_3days_task2.parquet')
 df_3days.to_parquet(temp_path, index=False)
 
 print(f"✅ Dataset prepared: {len(df_3days)} bars")

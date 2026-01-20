@@ -1,0 +1,85 @@
+================================================================================
+TÂCHE 1 (P0.6.4.1) — FIX SESSION/TIMEZONE: VALIDATION PROOF
+================================================================================
+
+## PROBLÈME IDENTIFIÉ
+- Le timefilter session/time_range était évalué en UTC au lieu de US/Eastern
+- Résultat: SCALP_Aplus_1 fenêtre NY 09:30-10:00 ne match jamais → N_pass_both = 0
+
+## FIX APPLIQUÉ
+- Fichier: /app/backend/engines/playbook_loader.py
+- Fonction: _check_basic_filters()
+- Changement:
+  1. current_time converti en ET via zoneinfo/pytz
+  2. Session re-calculée basée sur ET (via get_session_info(current_time_et))
+  3. Time range comparée avec time(hour, minute) en ET
+
+## PREUVE 1: Validation manuelle (10 timestamps)
+```
+ts_utc                 ts_et                  session_et   within(09:30-10:00)   
+------------------------------------------------------------------------------------------------------------------------
+13:28 UTC              09:28:00 ET            LONDON       False                  (both=False)
+13:29 UTC              09:29:00 ET            LONDON       False                  (both=False)
+13:30 UTC              09:30:00 ET            NY           True                   (both=True)  ✅
+13:31 UTC              09:31:00 ET            NY           True                   (both=True)  ✅
+13:35 UTC              09:35:00 ET            NY           True                   (both=True)  ✅
+13:59 UTC              09:59:00 ET            NY           True                   (both=True)  ✅
+14:00 UTC              10:00:00 ET            NY           True                   (both=True)  ✅
+14:01 UTC              10:01:00 ET            NY           False                  (both=False) ✅
+20:01 UTC              16:01:00 ET            OFF_HOURS    False                  (both=False) ✅
+07:00 UTC              03:00:00 ET            LONDON       False                  (both=False) ✅
+```
+
+## PREUVE 2: Short-run backtest (5 jours, 2025-06-02 → 2025-06-06)
+- Mode: SAFE
+- Trade types: SCALP
+- Symboles: SPY, QQQ
+
+### Résultat debug_timefilter:
+```json
+{
+  "N_total_bars_checked": 9112,
+  "N_pass_session": 3910,
+  "N_pass_time_range": 310,
+  "N_pass_both": 310    ✅ (avant: 0, maintenant: 310)
+}
+```
+
+### Échantillons timefilter (samples):
+```json
+{
+  "timestamp_utc": "2025-06-02T13:30:00+00:00",
+  "timestamp_ny": "2025-06-02T09:30:00-04:00",
+  "tzname": "EDT",
+  "session_computed_et": "NY",    ✅ (avant: LONDON)
+  "current_time_hm": "09:30",
+  "start": "09:30",
+  "end": "10:00"
+}
+```
+
+### Trades générés:
+- Total: 4 trades (100% WR)
+- Playbook: SCALP_Aplus_1_Mini_FVG_Retest_NY_Open
+- Total R: +7.91R
+- Preuve: Les setups A+ SCALP sont maintenant détectés et exécutés dans la fenêtre NY 09:30-10:00
+
+## PREUVE 3: Cas tests requis
+✅ 13:30 UTC → 09:30 ET → session=NY → within=True
+✅ 13:29 UTC → 09:29 ET → within=False
+✅ 20:01 UTC → 16:01 ET → NY False
+✅ 07:00 UTC → 03:00 ET → London correct
+
+## FICHIERS MODIFIÉS
+- /app/backend/engines/playbook_loader.py (lignes 435-470)
+
+## DIFF SUMMARY (5 lignes)
+1. Conversion current_time → ET via ZoneInfo/pytz
+2. Re-calcul session via get_session_info(current_time_et) au lieu de market_state
+3. Normalisation session names (NY/LONDON/ASIA)
+4. Time range comparée en ET (time(hour, minute) de current_time_et)
+5. Debug samples mis à jour pour capturer session_computed_et
+
+================================================================================
+FIN TÂCHE 1 ✅
+================================================================================

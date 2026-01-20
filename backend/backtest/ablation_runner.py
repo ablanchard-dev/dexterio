@@ -84,12 +84,12 @@ class AblationRunner:
         symbols: List[str] = None,
         trade_types: List[str] = None,
         output_dir: str = None,
-        data_dir: str = "/app/data/historical/1m",
+        data_dir: str = str(historical_data_path('1m')),
     ):
         self.mode = mode
         self.symbols = symbols or ["SPY", "QQQ"]
         self.trade_types = trade_types or ["DAILY", "SCALP"]
-        self.output_dir = Path(output_dir or "/app/data/backtest_results/ablation")
+        self.output_dir = Path(output_dir or str(backtest_results_path('ablation')))
         self.data_dir = Path(data_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -357,8 +357,8 @@ def main():
     parser.add_argument("--playbooks", nargs="+", help="Playbooks à activer")
     parser.add_argument("--ablation-all", action="store_true", help="Lancer tous les scénarios d'ablation")
     parser.add_argument("--symbols", default="SPY,QQQ", help="Symboles séparés par virgule (ex: SPY,QQQ)")
-    parser.add_argument("--data-dir", default="/app/data/historical/1m", help="Répertoire des Parquet 1m")
-    parser.add_argument("--output-dir", default="/app/data/backtest_results/ablation", help="Répertoire de sortie")
+    parser.add_argument("--data-dir", default=str(historical_data_path('1m')), help="Répertoire des Parquet 1m")
+    parser.add_argument("--output-dir", default=str(backtest_results_path('ablation')), help="Répertoire de sortie")
     
     args = parser.parse_args()
 

@@ -29,6 +29,8 @@ class SetupEngineV2:
     def __init__(self):
         self.playbook_loader = get_playbook_loader()
         self.playbook_evaluator = PlaybookEvaluator(self.playbook_loader)
+        # P0 FIX: Attribut temporaire pour stocker matches (accessible depuis engine.py)
+        self._last_matches = []
         logger.info("SetupEngineV2 initialized with playbooks")
     
     def generate_setups(
@@ -73,6 +75,10 @@ class SetupEngineV2:
             'session_profile': market_state.session_profile
         }
         
+        # P0 ÉTAPE 3: Compter évaluation playbooks (via attribut externe si disponible)
+        # Note: On ne peut pas accéder directement à debug_counts depuis ici,
+        # donc on log et on comptera dans engine.py
+        
         # Évaluer tous les playbooks
         playbook_matches = self.playbook_evaluator.evaluate_all_playbooks(
             symbol=symbol,
@@ -82,6 +88,9 @@ class SetupEngineV2:
             current_time=current_time,
             trading_mode=trading_mode
         )
+        
+        # P0 FIX: Stocker matches pour instrumentation (accessible depuis engine.py)
+        self._last_matches = playbook_matches
         
         if not playbook_matches:
             logger.debug(f"No playbook matches for {symbol} at {current_time}")
@@ -155,6 +164,9 @@ class SetupEngineV2:
             reward = abs(tp1 - entry_price)
             risk_reward = reward / risk if risk > 0 else 0
             
+            # P0 FIX: Extraire playbook_name comme source de vérité unique
+            playbook_name = match['playbook_name']
+            
             # Créer le Setup
             setup = Setup(
                 id=str(uuid4()),
@@ -171,6 +183,9 @@ class SetupEngineV2:
                 risk_reward=risk_reward,
                 market_bias=market_state.bias,
                 session=market_state.current_session,
+                day_type=market_state.day_type,  # P2-2.B
+                daily_structure=market_state.daily_structure,  # P2-2.B
+                playbook_name=playbook_name,  # P0 FIX: Source de vérité unique
                 ict_patterns=ict_patterns,
                 candlestick_patterns=[
                     PatternDetection(
@@ -189,13 +204,13 @@ class SetupEngineV2:
                 ],
                 playbook_matches=[
                     PlaybookMatch(
-                        playbook_name=match['playbook_name'],
+                        playbook_name=playbook_name,
                         confidence=match['score'],
                         matched_conditions=list(match['details'].keys())
                     )
                 ],
                 confluences_count=self._count_confluences(ict_patterns, candle_patterns),
-                notes=f"Playbook: {match['playbook_name']} | Score: {match['score']:.2f}"
+                notes=f"Playbook: {playbook_name} | Score: {match['score']:.2f}"
             )
             
             logger.info(f"  • {match['playbook_name']}: {match['grade']} ({match['score']:.2f}) | {direction} @ {entry_price:.2f}")
@@ -339,15 +354,21 @@ def filter_setups_by_mode(setups: List[Setup], risk_engine=None) -> List[Setup]:
     from config.settings import settings
     mode = settings.TRADING_MODE
     
-    # Pré-filtrage: exclure les grades C
-    filtered = [s for s in setups if s.quality in ['A+', 'A', 'B']]
-    
-    logger.info(f"{mode} pre-filter (grades): {len(setups)} → {len(filtered)} setups (A+/A/B only)")
-    
+    # Pré-filtrage des grades
+    # En mode SAFE, on exclut les setups de grade C.  En mode AGGRESSIVE,
+    # on garde également les setups de grade C pour explorer toutes les
+    # opportunités (les filtrages ultérieurs géreront les allowlist/denylist).
+    if mode == 'SAFE':
+        filtered = [s for s in setups if s.quality in ['A+', 'A', 'B']]
+    else:
+        filtered = [s for s in setups if s.quality in ['A+', 'A', 'B', 'C']]
+
+    logger.info(f"{mode} pre-filter (grades): {len(setups)} → {len(filtered)} setups")
+
     # Si RiskEngine fourni, appliquer le filtrage playbook (autorité finale)
     if risk_engine:
         filtered = risk_engine.filter_setups_by_playbook(filtered)
-    
+
     return filtered
 
 

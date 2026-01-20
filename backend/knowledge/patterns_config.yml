@@ -1,0 +1,51 @@
+# Patterns configuration for DexterioBOT.
+#
+# This YAML file centralizes all thresholds and parameters used by the ICT
+# detectors added in Phase 2.  Parameters are grouped by detector.  Any
+# parameter defined here is loaded dynamically at runtime, so no hard‑coded
+# numbers remain in the code.  Sessions/windows definitions used by the
+# timefilter are also declared here to avoid duplication.
+
+ifvg:
+  # Minimum displacement required to confirm an inverse FVG in percent of the
+  # closing price.  When the price crosses the FVG zone by at least this
+  # percentage, the IFVG signal is considered valid.  Lower values make the
+  # detector more sensitive.
+  min_displacement_pct: 0.05
+  # Length of the ATR lookback (in candles) used to compute displacement.
+  atr_length: 14
+
+order_block:
+  # Lookback period (in candles) used to search for swing highs/lows when
+  # identifying a Break of Structure.  Larger values increase stability but
+  # reduce reactivity.
+  lookback_bos: 20
+  # Range type: either "body" (use candle bodies) or "full" (use high/low) to
+  # define the order block zone.
+  range_type: "body"
+
+equilibrium:
+  # Lookback period to determine the recent swing high/low used to compute
+  # equilibrium.  A value between 10–30 candles is typical.
+  lookback_swing: 20
+  # Tolerance around the exact midpoint, expressed as a percentage of the price.
+  # If the price falls within +/- tolerance_pct of the midpoint, a touch
+  # signal is emitted.
+  tolerance_pct: 0.10
+
+breaker_block:
+  # Lookback period for considering recent order blocks for a breaker setup.
+  lookback_ob: 20
+  # Tolerance as a percentage of price when testing if price has retested the
+  # broken order block zone.
+  tolerance_pct: 0.05
+
+sessions:
+  # Time windows are defined in the America/New_York timezone and will be
+  # converted to UTC as needed.  Times must be specified in 24‑h format.
+  # Standard pre‑market window in NY timezone.  Use PRE_MARKET as the canonical
+  # name; alias PREMARKET will be accepted by the code for backward compatibility.
+  PRE_MARKET: "07:00-09:30"
+  MKT_OPEN_WINDOW: "09:30-10:00"
+  NY: "09:30-16:00"
+  TIMEZONE: "America/New_York"

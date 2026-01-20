@@ -1,0 +1,184 @@
+WARNING | engines.timeframe_aggregator | 🔧 TimeframeAggregator: Initialized buffers for SPY
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-02 17:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=1 | 4h=0 | 1d=0
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-02 18:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=2 | 4h=0 | 1d=0
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-02 19:59 | 1h=True | 4h=True | 1d=True | Total stored: 1h=3 | 4h=1 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-02 19:59 | 1m=178 | 5m=36 | 15m=12 | 1h=3 | 4h=1 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-02 19:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=True | 1d_close=True
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-02 20:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=4 | 4h=1 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-02 20:59 | 1m=236 | 5m=48 | 15m=16 | 1h=4 | 4h=1 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-02 20:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-02 21:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=5 | 4h=1 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-02 21:59 | 1m=271 | 5m=56 | 15m=20 | 1h=5 | 4h=1 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-02 21:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-02 22:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=6 | 4h=1 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-02 22:59 | 1m=318 | 5m=65 | 15m=23 | 1h=6 | 4h=1 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-02 22:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-02 23:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=7 | 4h=1 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-02 23:59 | 1m=368 | 5m=76 | 15m=27 | 1h=7 | 4h=1 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-02 23:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 08:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=8 | 4h=1 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 08:59 | 1m=413 | 5m=84 | 15m=30 | 1h=8 | 4h=1 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 08:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 10:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=9 | 4h=1 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 10:59 | 1m=492 | 5m=100 | 15m=36 | 1h=9 | 4h=1 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 09:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 11:59 | 1h=True | 4h=True | 1d=False | Total stored: 1h=10 | 4h=2 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 11:59 | 1m=500 | 5m=111 | 15m=40 | 1h=10 | 4h=2 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 11:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 20:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=True | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 12:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=11 | 4h=2 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 12:59 | 1m=500 | 5m=123 | 15m=44 | 1h=11 | 4h=2 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 12:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 20:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 13:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=12 | 4h=2 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 13:59 | 1m=500 | 5m=135 | 15m=48 | 1h=12 | 4h=2 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 13:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 20:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 14:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=13 | 4h=2 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 14:59 | 1m=500 | 5m=147 | 15m=52 | 1h=13 | 4h=2 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 14:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-02 20:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 15:59 | 1h=True | 4h=True | 1d=False | Total stored: 1h=14 | 4h=3 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 15:59 | 1m=500 | 5m=159 | 15m=56 | 1h=14 | 4h=3 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 15:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 12:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=True | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 16:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=15 | 4h=3 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 16:59 | 1m=500 | 5m=171 | 15m=60 | 1h=15 | 4h=3 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 12:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 17:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=16 | 4h=3 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 17:59 | 1m=500 | 5m=183 | 15m=64 | 1h=16 | 4h=3 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 17:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 12:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 18:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=17 | 4h=3 | 1d=1
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 18:59 | 1m=500 | 5m=195 | 15m=68 | 1h=17 | 4h=3 | 1d=1
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 18:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 12:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 19:59 | 1h=True | 4h=True | 1d=True | Total stored: 1h=18 | 4h=4 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 19:59 | 1m=500 | 5m=200 | 15m=72 | 1h=18 | 4h=4 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 19:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=True | 1d_close=True
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 21:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=19 | 4h=4 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 21:59 | 1m=500 | 5m=200 | 15m=77 | 1h=19 | 4h=4 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 20:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-03 23:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=20 | 4h=4 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-03 23:59 | 1m=500 | 5m=200 | 15m=82 | 1h=20 | 4h=4 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-03 22:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 08:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=21 | 4h=4 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 08:59 | 1m=500 | 5m=200 | 15m=85 | 1h=21 | 4h=4 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 08:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 10:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=22 | 4h=4 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 10:59 | 1m=500 | 5m=200 | 15m=90 | 1h=22 | 4h=4 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 09:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 12:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=23 | 4h=4 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 12:59 | 1m=500 | 5m=200 | 15m=96 | 1h=23 | 4h=4 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 11:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 13:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=24 | 4h=4 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 13:59 | 1m=500 | 5m=200 | 15m=100 | 1h=24 | 4h=4 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 13:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 14:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=25 | 4h=4 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 14:59 | 1m=500 | 5m=200 | 15m=100 | 1h=25 | 4h=4 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 14:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 15:59 | 1h=True | 4h=True | 1d=False | Total stored: 1h=26 | 4h=5 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 15:59 | 1m=500 | 5m=200 | 15m=100 | 1h=26 | 4h=5 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 15:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 20:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=True | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 16:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=27 | 4h=5 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 16:59 | 1m=500 | 5m=200 | 15m=100 | 1h=27 | 4h=5 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 16:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 20:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 17:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=28 | 4h=5 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 17:59 | 1m=500 | 5m=200 | 15m=100 | 1h=28 | 4h=5 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 17:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 20:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 18:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=29 | 4h=5 | 1d=2
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 18:59 | 1m=500 | 5m=200 | 15m=100 | 1h=29 | 4h=5 | 1d=2
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 18:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-03 20:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-02 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 19:59 | 1h=True | 4h=True | 1d=True | Total stored: 1h=30 | 4h=6 | 1d=3
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 19:59 | 1m=500 | 5m=200 | 15m=100 | 1h=30 | 4h=6 | 1d=3
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 19:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-04 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-03 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=True | 1d_close=True
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 20:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=31 | 4h=6 | 1d=3
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 20:59 | 1m=500 | 5m=200 | 15m=100 | 1h=31 | 4h=6 | 1d=3
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 20:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-04 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-03 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | engines.timeframe_aggregator | 🔥 HTF CLOSE DETECTED [SPY] @ 2025-06-04 21:59 | 1h=True | 4h=False | 1d=False | Total stored: 1h=32 | 4h=6 | 1d=3
+WARNING | backtest.engine | 📊 HTF PIPELINE CHECK [SPY] @ 2025-06-04 21:59 | 1m=500 | 5m=200 | 15m=100 | 1h=32 | 4h=6 | 1d=3
+WARNING | backtest.engine |   ├─ 1h: 2025-06-02 17:00:00+00:00 → 2025-06-04 21:00:00+00:00
+WARNING | backtest.engine |   ├─ 4h: 2025-06-02 16:00:00+00:00 → 2025-06-04 16:00:00+00:00
+WARNING | backtest.engine |   └─ 1d: 2025-06-02 00:00:00+00:00 → 2025-06-03 00:00:00+00:00
+WARNING | backtest.engine |   └─ Events: 1h_close=True | 4h_close=False | 1d_close=False
+WARNING | backtest.engine | No trades executed!

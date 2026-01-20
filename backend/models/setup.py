@@ -97,6 +97,9 @@ class Setup(BaseModel):
     candlestick_patterns: List[PatternDetection] = []
     playbook_matches: List[PlaybookMatch] = []
     
+    # P0 FIX: Source de vérité unique pour le playbook
+    playbook_name: str = ''  # Nom du playbook principal (obligatoire)
+    
     # Trading recommendation
     trade_type: str  # 'DAILY' or 'SCALP'
     direction: str  # 'LONG' or 'SHORT'
@@ -110,5 +113,9 @@ class Setup(BaseModel):
     market_bias: str
     session: str
     confluences_count: int = 0
+    
+    # P2-2.B: HTF context for instrumentation
+    day_type: str = 'unknown'
+    daily_structure: str = 'unknown'
     
     notes: str = ''

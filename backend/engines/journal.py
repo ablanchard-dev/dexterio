@@ -8,6 +8,7 @@ from datetime import datetime, date
 from pydantic import BaseModel, Field
 from models.trade import Trade
 import uuid
+from utils.path_resolver import data_path
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,9 @@ class TradeJournalEntry(BaseModel):
 class TradeJournal:
     """Gestion du journal de trades (Parquet)"""
     
-    def __init__(self, journal_path: str = '/app/data/trade_journal.parquet'):
+    def __init__(self, journal_path: str = None):
+        if journal_path is None:
+            journal_path = str(data_path('trade_journal.parquet'))
         self.journal_path = journal_path
         self.entries = []
         

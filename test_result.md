@@ -211,6 +211,19 @@ backend:
         agent: "testing"
         comment: "✅ TESTS POLYGON COMPLETS RÉUSSIS: (1) CLI --help affiche --provider avec choix yfinance|polygon ✓, (2) Intégration Polygon correctement implémentée avec gestion d'erreurs API (401 'Unknown API Key' pour clé invalide), (3) Pagination next_url OK, (4) Rate-limit 429 géré via sleep configurable + retries/backoff, (5) Require POLYGON_API_KEY env var (sécurité OK - pas hardcodée), (6) Data discovery fonctionne avec SPY.parquet."
 
+frontend:
+  - task: "Backtest UI - Complete Flow Testing"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/Backtests.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ COMPLETE BACKTEST UI TESTING SUCCESSFUL: (1) Page loads correctly with all form elements visible (Symbols dropdown, Start/End Date inputs, Trading Mode dropdown, Trade Types checkboxes, HTF Warmup input, Commission Model dropdown, Run Backtest button), (2) Recent Jobs section displays existing jobs correctly with job details, status, and configuration, (3) Form submission works - successfully submitted backtest job with SPY, 2025-08-01 dates, AGGRESSIVE mode, DAILY trade type, (4) Job status polling works correctly - job progressed from 'running' to 'done' status, (5) Results display correctly with all metrics (Total Trades: 4, Total R Net: 0.391R, Win Rate: 50%, Profit Factor: 2.71, etc.), (6) Job log section works and displays log content, (7) All API calls successful (POST /api/backtests/run -> 200, GET /api/backtests/{job_id} -> 200, GET /api/backtests/{job_id}/log -> 200). Minor: Download links not visible in UI despite artifact_paths being present in API response - this is a cosmetic issue that doesn't affect core functionality."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
@@ -219,13 +232,38 @@ metadata:
 
 test_plan:
   current_focus:
-    - "P0.6.4 - Dataset 6 mois (Polygon) SPY+QQQ single-file"
-    - "P0.6.4 - Ablation runner multi-mois (ablation-all)"
+    - "Backtest UI - Complete Flow Testing"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
+  - agent: "testing"
+    message: |
+      ✅ BACKTEST UI TESTING COMPLETED SUCCESSFULLY:
+      
+      === COMPLETE FLOW TESTED ===
+      1. Page Loading: ✅ All form elements render correctly
+      2. Form Interaction: ✅ All inputs, dropdowns, checkboxes functional
+      3. Recent Jobs: ✅ Displays existing jobs with proper formatting
+      4. Job Submission: ✅ POST /api/backtests/run successful
+      5. Status Polling: ✅ Real-time job status updates (queued → running → done)
+      6. Results Display: ✅ All metrics shown correctly (trades, R values, win rate, etc.)
+      7. Job Log: ✅ Log content accessible and displays properly
+      8. API Integration: ✅ All endpoints working (GET /api/backtests, POST /api/backtests/run, GET /api/backtests/{id}, GET /api/backtests/{id}/log)
+      
+      === TEST RESULTS ===
+      - Successfully ran backtest: SPY, 2025-08-01, AGGRESSIVE mode, DAILY trades
+      - Job completed in ~16 seconds with 4 trades, 50% win rate
+      - All backend APIs responding correctly after restart
+      - No console errors or critical UI issues
+      
+      === MINOR ISSUE IDENTIFIED ===
+      - Download links not visible in UI despite artifact_paths present in API response
+      - This is cosmetic only - core backtest functionality works perfectly
+      
+      RECOMMENDATION: Backtest UI is fully functional and ready for production use.
+
   - agent: "main"
     message: |
       P0.4 Ablation Runner + Audit Math implémentés et testés:

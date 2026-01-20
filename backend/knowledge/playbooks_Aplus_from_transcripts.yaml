@@ -1,0 +1,153 @@
+playbooks:
+- id: Aplus_01_MarketOpen_Sweep_IFVG_Breaker
+  grade: A+
+  name: Market Open Sweep → IFVG → Breaker/OB/FVG (entrée 1m)
+  source_files:
+  - 'MASTER_FINAL.txt (segment: ''Video 064 — This 1 Hour Day Trading Strategy Works Every Day'')'
+  universe:
+  - SPY
+  - QQQ
+  timeframes:
+    context:
+    - 1H
+    - 4H
+    setup:
+    - 5m
+    entry:
+    - 1m
+  session_filter:
+  - MARKET_OPEN_WINDOW
+  conditions:
+  - Key levels = London session high/low, Market Open high/low, Asian session high/low ("draw on liquidity").
+  - 'During/around Market Open: price sweeps a key level (takes it) and then shifts direction.'
+  - An inverse fair value gap (IFVG) forms after the sweep (or a prior FVG gets invalidated and flips).
+  - Entry area is inside/near a breaker block OR order block OR FVG fill zone (confluence).
+  - 'Optional filter: ''last FVG on the stack'' must be invalidated (per transcript).'
+  triggers:
+  - 'Trigger A (preferred): 1m breaker-structure in trade direction.'
+  - 'Trigger B: 1m IFVG confirmation (invalidation/flip + retest).'
+  entry:
+    type: limit_or_market
+    rule: Enter on trigger, ideally after price returns into the confluence area (breaker/OB/FVG fill).
+  invalidation:
+  - 'Stop for SHORT: above the swept highs.'
+  - 'Stop for LONG: below the swept lows.'
+  take_profit:
+  - 'TP1: next liquidity ''bands'' / next obvious high/low (nearest draw on liquidity).'
+  - 'TP2: next higher timeframe draw on liquidity (if momentum continues).'
+  risk_notes:
+  - Only trade when the full sweep→IFVG→confluence chain is present; otherwise 'no trade' days.
+- id: Aplus_02_PremarketSweep_5mConfirm_5mContinuation_EntryConfluence
+  grade: A+
+  name: Pre-market Liquidity Sweep → 5m Confirm → 5m Continuation → Entrée confluence
+  source_files:
+  - MASTER_FINAL.txt (checklist steps 1–10)
+  universe:
+  - SPY
+  - QQQ
+  timeframes:
+    context:
+    - D
+    - 4H
+    setup:
+    - 5m
+    entry:
+    - 5m
+    - 1m
+  session_filter:
+  - PREMARKET
+  - NY_SESSION
+  conditions:
+  - 'Step 1: A liquidity sweep happens during pre-market (filter).'
+  - 'Step 3: 5m confirmation confluence = (BOS OR IFVG OR 79% extension closure OR SMT divergence) + 5m liquidity
+    sweep.'
+  - 'Step 4: 5m continuation confluence (continuation structure after confirmation).'
+  - 'Step 6: Entry confluence is one of: order block, breaker block, equilibrium, fair value gap fill.'
+  - 'Step 7: A candle closure in the entry confluence area is required.'
+  triggers:
+  - 5m candle closes in entry confluence area after confirmation+continuation.
+  entry:
+    type: market_or_limit
+    rule: Enter on (Step 7) candle closure within the confluence zone.
+  invalidation:
+  - 'Stop-loss: under the wick (LONG) or above the wick (SHORT) that defines the entry reaction.'
+  take_profit:
+  - 'Targets: highs and lows (draws on liquidity) as defined in the top-down plan.'
+  risk_notes:
+  - This playbook is designed to filter hard (A+), not to trade every day; it trades when the checklist is fully
+    satisfied.
+- id: Aplus_03_IFVG_Flip_from_FVG_Invalidation
+  grade: A+
+  name: IFVG Flip (invalidation d’un FVG → trade dans le sens du flip)
+  source_files:
+  - How_To_Start_Day_Trading_As_A_Beginner_In_2025_9_hours-[aobHuNcI1QM].txt
+  universe:
+  - SPY
+  - QQQ
+  timeframes:
+    setup:
+    - 5m
+    - 15m
+    entry:
+    - 1m
+    - 5m
+  session_filter:
+  - ANY
+  definitions:
+    FVG_bullish: 3-candle pattern; if candle3.low > candle1.high (no wick overlap) then bullish FVG zone = [candle1.high,
+      candle3.low].
+    FVG_bearish: 3-candle pattern; if candle3.high < candle1.low (no wick overlap) then bearish FVG zone = [candle3.high,
+      candle1.low].
+  conditions:
+  - Detect a bearish FVG (for potential long flip) or bullish FVG (for potential short flip).
+  - 'IFVG event = the FVG gets invalidated (price closes beyond it):'
+  - ' - Bearish FVG invalidated: price closes ABOVE the bearish FVG → look for LONG.'
+  - ' - Bullish FVG invalidated: price closes BELOW the bullish FVG → look for SHORT.'
+  triggers:
+  - 'Trigger A: immediate entry on the invalidation close.'
+  - 'Trigger B (higher R): retest into the invalidated FVG zone, then entry.'
+  entry:
+    type: market_or_limit
+    rule: Enter LONG after bearish-FVG invalidation; enter SHORT after bullish-FVG invalidation.
+  invalidation:
+  - 'LONG stop-loss: under the old bearish FVG (the one that got invalidated).'
+  - 'SHORT stop-loss: above the old bullish FVG (the one that got invalidated).'
+  take_profit:
+  - 'Targets: next obvious highs/lows (liquidity) consistent with the higher-timeframe plan.'
+- id: Aplus_04_HTF_Bias_15m_Sweep_BOS_EntryConfluence
+  grade: A+
+  name: HTF Bias (D/4H) → 15m Sweep → 15m BOS → Entrée confluence (OB/FVG/EQ/Breaker)
+  source_files:
+  - How_To_Start_Day_Trading_As_A_Beginner_In_2025_9_hours-[aobHuNcI1QM].txt
+  - How To Find Daily Bias (Step By Step)-e_FV0Q14k8E.txt
+  universe:
+  - SPY
+  - QQQ
+  timeframes:
+    context:
+    - D
+    - 4H
+    setup:
+    - 15m
+    entry:
+    - 5m
+    - 1m
+  session_filter:
+  - NY_SESSION
+  conditions:
+  - Determine bias on Daily + 4H (top-down).
+  - Identify a 15m high-timeframe liquidity sweep aligned with the narrative.
+  - Identify a 15m break of structure (BOS) after the sweep.
+  - 'Then, only take entries at a confluence: order block OR fair value gap OR equilibrium OR breaker block.'
+  triggers:
+  - Entry confirmation = candle closure / micro-structure confirmation inside the confluence zone.
+  entry:
+    type: market_or_limit
+    rule: Enter in direction of BOS + HTF bias when the confluence zone is tapped and confirmation prints.
+  invalidation:
+  - Invalidate if price closes beyond the confluence zone (or beyond the sweep extreme).
+  take_profit:
+  - 'Targets: highs/lows (draws on liquidity) identified in the top-down analysis.'
+  risk_notes:
+  - 'Bias module can be built from ''draw on liquidity'' levels: 1H/4H highs/lows, session highs/lows, previous
+    day highs/lows, weekly highs/lows.'

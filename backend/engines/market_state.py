@@ -168,6 +168,39 @@ class MarketStateEngine:
             'reasoning': 'Signaux mixés, rester prudent'
         }
     
+    def calculate_day_type(self, daily_structure: str, ict_patterns: List) -> str:
+        """
+        Calculate day_type for playbook filtering (P1 implementation)
+        
+        Args:
+            daily_structure: 'uptrend', 'downtrend', 'range', 'unknown'
+            ict_patterns: List[ICTPattern] (may be empty in current call)
+        
+        Returns:
+            'trend', 'manipulation_reversal', 'range', or 'unknown'
+        """
+        # Count pattern types if available
+        bos_count = len([p for p in ict_patterns if p.pattern_type == 'bos']) if ict_patterns else 0
+        sweep_count = len([p for p in ict_patterns if p.pattern_type == 'sweep']) if ict_patterns else 0
+        
+        # Rule 1: Range structure → range day
+        if daily_structure == 'range':
+            return 'range'
+        
+        # Rule 2: Sweep + BOS → manipulation_reversal
+        if sweep_count >= 1 and bos_count >= 1:
+            return 'manipulation_reversal'
+        
+        # Rule 3: Clear trend structure + multiple BOS → trend day
+        if daily_structure in ['uptrend', 'downtrend']:
+            if bos_count >= 2:
+                return 'trend'
+            # Default to trend if structure is clear (even without BOS count)
+            return 'trend'
+        
+        # Rule 4: Unknown structure → unknown day_type
+        return 'unknown'
+    
     def mark_htf_levels(self, daily: List[Candle], h4: List[Candle], 
                         session_highs_lows: Dict[str, float]) -> Dict[str, float]:
         """
@@ -222,7 +255,7 @@ class MarketStateEngine:
         h1 = multi_tf_data.get('1h', [])
         t_prepare_inputs = (time.perf_counter() - t0) * 1000
         
-        # 2. Detect structure (SUSPECT PRINCIPAL)
+        # 2. Detect structure
         t0 = time.perf_counter()
         structures = self.analyze_htf_structure(daily, h4, h1)
         t_detect_structure = (time.perf_counter() - t0) * 1000
@@ -246,6 +279,14 @@ class MarketStateEngine:
         htf_levels = self.mark_htf_levels(daily, h4, session_info.get('session_levels', {}))
         t_profile_confluence = (time.perf_counter() - t0) * 1000
         
+        # 4b. Day_type calculation (P1: trend/manipulation_reversal/range)
+        t0 = time.perf_counter()
+        day_type = self.calculate_day_type(
+            daily_structure=structures.get('daily_structure', 'unknown'),
+            ict_patterns=[]  # Placeholder: will be populated by BacktestEngine
+        )
+        t_day_type = (time.perf_counter() - t0) * 1000
+        
         # 5. Finalize state
         t0 = time.perf_counter()
         market_state = MarketState(
@@ -257,6 +298,7 @@ class MarketStateEngine:
             daily_structure=structures.get('daily_structure', 'unknown'),
             h4_structure=structures.get('h4_structure', 'unknown'),
             h1_structure=structures.get('h1_structure', 'unknown'),
+            day_type=day_type,  # Inject calculated day_type
             pdh=htf_levels.get('pdh'),
             pdl=htf_levels.get('pdl'),
             asia_high=htf_levels.get('asia_high'),
