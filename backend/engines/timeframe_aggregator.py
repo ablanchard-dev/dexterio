@@ -38,8 +38,8 @@ class TimeframeAggregator:
             "10m": 150,
             "15m": 100,
             "1h": 50,
-            "4h": 20,
-            "1d": 10
+            "4h": 30,  # Increased for HTF analysis
+            "1d": 30   # P2-2.B: Increased to support detect_structure (needs >= 20)
         }
     
     def add_1m_candle(self, candle: Candle) -> Dict[str, bool]:

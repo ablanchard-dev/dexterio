@@ -7,12 +7,22 @@ from engines.market_state import MarketStateEngine
 from engines.liquidity import LiquidityEngine
 from engines.patterns.candlesticks import CandlestickPatternEngine
 from engines.patterns.ict import ICTPatternEngine
+# Import the unified custom detectors.  These functions encapsulate all ICT pattern
+# detection (BOS, FVG, IFVG, Order Blocks, Equilibrium, Breaker Blocks) and expose
+# additional wrappers for SMT and CHOCH that always return lists.  Using
+# these functions decouples the pipeline from the internal implementation of
+# the detectors and simplifies future extensions.
+from engines.patterns.custom_detectors import (
+    detect_custom_patterns,
+    detect_smt_pattern,
+    detect_choch_pattern,
+)
 from engines.playbooks import PlaybookEngine
 from engines.setup_engine import SetupEngine, filter_setups_safe_mode, filter_setups_aggressive_mode
 from engines.risk_engine import RiskEngine
 from engines.execution.paper_trading import ExecutionEngine
 from engines.journal import TradeJournal, PerformanceStats
-from models.setup import Setup
+from models.setup import Setup, ICTPattern
 from models.trade import Trade
 from config.settings import settings
 from utils.timeframes import get_session_info
@@ -125,37 +135,39 @@ class TradingPipeline:
                 logger.info(f"  Detected {len(candlestick_patterns)} candlestick patterns")
                 
                 # 5. ICT Patterns
-                logger.info("[5/8] ICT Patterns...")
-                ict_patterns = []
-                
-                # BOS sur M5
-                if candles_m5:
-                    bos_list = self.ict_engine.detect_bos(candles_m5, timeframe='5m')
-                    ict_patterns.extend(bos_list)
-                
-                # FVG sur M5 et M15
+                #
+                # Use unified custom detectors for all ICT patterns.  This wrapper
+                # runs the legacy BOS/FVG detections as well as the custom
+                # extensions (IFVG, order blocks, equilibrium and breaker blocks).
+                logger.info("[5/8] ICT Patterns via custom detectors...")
+                ict_patterns: List[ICTPattern] = []
+
+                # Detect patterns on 5m and 15m timeframes
                 for tf in ['5m', '15m']:
-                    candles = multi_tf_data.get(tf, [])
-                    if candles:
-                        fvg_list = self.ict_engine.detect_fvg(candles, timeframe=tf)
-                        ict_patterns.extend(fvg_list)
-                
-                # SMT (SPY vs QQQ)
+                    candles_tf = multi_tf_data.get(tf, [])
+                    if candles_tf:
+                        detections = detect_custom_patterns(candles_tf, tf)
+                        for plist in detections.values():
+                            if plist:
+                                ict_patterns.extend(plist)
+
+                # SMT (SPY vs QQQ) using the custom wrapper
                 if symbol == 'SPY' and 'QQQ' in symbols:
                     qqq_data = self.data_feed.get_multi_timeframe_data('QQQ')
                     spy_h1 = multi_tf_data.get('1h', [])
                     qqq_h1 = qqq_data.get('1h', [])
                     if spy_h1 and qqq_h1:
-                        smt = self.ict_engine.detect_smt(spy_h1, qqq_h1)
-                        if smt:
-                            ict_patterns.append(smt)
-                
-                # CHOCH (si sweep récent)
+                        smt_patterns = detect_smt_pattern(spy_h1, qqq_h1)
+                        ict_patterns.extend(smt_patterns)
+
+                # CHOCH detection if there was a recent sweep
                 if sweeps:
-                    choch = self.ict_engine.detect_choch(candles_m5, sweeps[-1])
-                    if choch:
-                        ict_patterns.append(choch)
-                
+                    # Use the most recent 50 candles on 5m (or all if fewer) for CHOCH detection
+                    recent_5m = candles_m5[-50:] if len(candles_m5) > 50 else candles_m5
+                    choch_patterns = detect_choch_pattern(recent_5m, sweeps[-1])
+                    if choch_patterns:
+                        ict_patterns.extend(choch_patterns)
+
                 logger.info(f"  Detected {len(ict_patterns)} ICT patterns")
                 
                 # 6. Playbook Matching

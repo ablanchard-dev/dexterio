@@ -368,6 +368,10 @@ async def full_analysis(request: MultiSymbolRequest):
 
 # ==================== INCLUDE ROUTER ====================
 
+# Import backtest routes (PHASE C)
+from routes import backtests
+api_router.include_router(backtests.router)
+
 app.include_router(api_router)
 
 # ==================== SHUTDOWN ====================

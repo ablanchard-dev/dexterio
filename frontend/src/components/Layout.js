@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Target, TrendingUp, BookOpen, BarChart3, Shield, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Target, TrendingUp, BookOpen, BarChart3, Shield, PlayCircle, Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const Layout = ({ children }) => {
@@ -14,6 +14,7 @@ const Layout = ({ children }) => {
     { name: 'Trade Journal', href: '/journal', icon: BookOpen },
     { name: 'Market Analysis', href: '/market', icon: BarChart3 },
     { name: 'Risk Management', href: '/risk', icon: Shield },
+    { name: 'Backtests', href: '/backtests', icon: PlayCircle },
   ];
 
   return (

@@ -7,6 +7,7 @@ import Performance from "@/pages/Performance";
 import Journal from "@/pages/Journal";
 import MarketAnalysis from "@/pages/MarketAnalysis";
 import RiskManagement from "@/pages/RiskManagement";
+import Backtests from "@/pages/Backtests";
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
             <Route path="/journal" element={<Journal />} />
             <Route path="/market" element={<MarketAnalysis />} />
             <Route path="/risk" element={<RiskManagement />} />
+            <Route path="/backtests" element={<Backtests />} />
           </Routes>
         </Layout>
       </BrowserRouter>

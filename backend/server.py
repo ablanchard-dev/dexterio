@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -14,10 +14,13 @@ from datetime import datetime, timezone
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# MongoDB connection (optional - only needed for /status routes)
+mongo_url = os.environ.get('MONGO_URL')
+db = None
+client = None
+if mongo_url:
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[os.environ.get('DB_NAME', 'dexteriobot')]
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -44,6 +47,8 @@ async def root():
 
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
+    if not db:
+        raise HTTPException(503, "MongoDB not configured. Set MONGO_URL in .env")
     status_dict = input.model_dump()
     status_obj = StatusCheck(**status_dict)
     
@@ -56,6 +61,8 @@ async def create_status_check(input: StatusCheckCreate):
 
 @api_router.get("/status", response_model=List[StatusCheck])
 async def get_status_checks():
+    if not db:
+        return []  # Return empty list if MongoDB not configured
     # Exclude MongoDB's _id field from the query results
     status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
     
@@ -68,10 +75,12 @@ async def get_status_checks():
 
 # Import trading routes
 from routes.trading import router as trading_router
+from routes.backtests import router as backtests_router
 
 # Include the routers in the main app
 app.include_router(api_router)
 app.include_router(trading_router, prefix="/api")
+app.include_router(backtests_router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
@@ -90,4 +99,5 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    if client:
+        client.close()

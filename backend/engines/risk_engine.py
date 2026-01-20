@@ -98,6 +98,28 @@ class RiskEngine:
             base_r_unit_dollars=base_r_unit,
         )
         
+        # P0 ÉTAPE 3: Attribut temporaire pour stocker rejets (accessible depuis engine.py)
+        self._last_filter_rejects = {
+            'by_playbook': {},
+            'examples': []
+        }
+        
+        # P0 TÂCHE 1A: Log mode réel + allowlist utilisée (preuve)
+        mode = self.state.trading_mode
+        settings_mode = settings.TRADING_MODE
+        aggressive_len = len(AGGRESSIVE_ALLOWLIST)
+        safe_len = len(SAFE_ALLOWLIST)
+        aggressive_first5 = AGGRESSIVE_ALLOWLIST[:5] if aggressive_len > 0 else []
+        safe_first5 = SAFE_ALLOWLIST[:5] if safe_len > 0 else []
+        
+        logger.warning(
+            f"[P0] RiskEngine __init__ | "
+            f"state.trading_mode={mode} | "
+            f"settings.TRADING_MODE={settings_mode} | "
+            f"AGGRESSIVE_ALLOWLIST len={aggressive_len} (first5={aggressive_first5}) | "
+            f"SAFE_ALLOWLIST len={safe_len} (first5={safe_first5})"
+        )
+        
         logger.info(f"RiskEngine P0 initialized: ${initial_capital:,.2f}, "
                    f"mode={self.state.trading_mode}, 1R=${base_r_unit:.2f}")
     
@@ -141,10 +163,8 @@ class RiskEngine:
         Returns:
             (allowed: bool, reason: str)
         """
-        # Extract playbook name
-        playbook_name = "UNKNOWN"
-        if setup.playbook_matches:
-            playbook_name = setup.playbook_matches[0].playbook_name
+        # P0 FIX: Utiliser setup.playbook_name (source de vérité unique)
+        playbook_name = setup.playbook_name if setup.playbook_name else "UNKNOWN"
         
         key_cooldown = (setup.symbol, playbook_name)
         key_session = (setup.symbol, playbook_name, current_session)
@@ -165,9 +185,8 @@ class RiskEngine:
     
     def record_trade_for_cooldown(self, setup: Setup, current_time: datetime, current_session: str):
         """Enregistre un trade pour le tracking cooldown/session."""
-        playbook_name = "UNKNOWN"
-        if setup.playbook_matches:
-            playbook_name = setup.playbook_matches[0].playbook_name
+        # P0 FIX: Utiliser setup.playbook_name (source de vérité unique)
+        playbook_name = setup.playbook_name if setup.playbook_name else "UNKNOWN"
         
         key_cooldown = (setup.symbol, playbook_name)
         key_session = (setup.symbol, playbook_name, current_session)
@@ -180,27 +199,97 @@ class RiskEngine:
         Filtre les setups selon allowlist/denylist + kill-switch.
         Cette méthode est l'AUTORITÉ FINALE pour les playbooks.
         """
-        filtered = []
+        # P0 TÂCHE 2/3: Toujours réinitialiser l'état de rejet pour ce nouvel appel
+        filtered: List[Setup] = []
+        rejected_by_playbook: Dict[str, int] = {}  # {playbook_name: count}
+        rejected_examples: List[Dict[str, Any]] = []  # Max 5 exemples
+        missing_playbook_name_count: int = 0
+        
+        # P0 TÂCHE 1B: Log mode réel + allowlist juste avant filtrage (1 fois seulement)
+        if not hasattr(self, '_filter_logged_once'):
+            mode = self.state.trading_mode
+            aggressive_len = len(AGGRESSIVE_ALLOWLIST)
+            safe_len = len(SAFE_ALLOWLIST)
+            aggressive_first5 = AGGRESSIVE_ALLOWLIST[:5] if aggressive_len > 0 else []
+            safe_first5 = SAFE_ALLOWLIST[:5] if safe_len > 0 else []
+            logger.warning(
+                f"[P0] filter_setups_by_playbook (first call) | "
+                f"mode={mode} | "
+                f"AGGRESSIVE_ALLOWLIST len={aggressive_len} (first5={aggressive_first5}) | "
+                f"SAFE_ALLOWLIST len={safe_len} (first5={safe_first5}) | "
+                f"setups_count={len(setups)}"
+            )
+            self._filter_logged_once = True
+        
+        # P0 TÂCHE 2: Utiliser setup.playbook_name comme source de vérité unique (avec normalisation)
         for setup in setups:
-            if not setup.playbook_matches:
+            # P0 TÂCHE 2: Normaliser playbook_name (sans changer le sens)
+            raw_playbook_name = setup.playbook_name if setup.playbook_name else ''
+            pb_name = raw_playbook_name.strip() if raw_playbook_name else ''
+            
+            if not pb_name:
+                missing_playbook_name_count += 1
+                logger.warning(f"Setup missing playbook_name (id={setup.id})")
                 continue
             
-            # Check chaque playbook matché
-            allowed_matches = []
-            for pb_match in setup.playbook_matches:
-                allowed, reason = self.is_playbook_allowed(pb_match.playbook_name)
-                if allowed:
-                    allowed_matches.append(pb_match)
-                else:
-                    logger.debug(f"Setup filtered: {reason}")
+            # P0 TÂCHE 2: Détecter whitespace bug
+            if raw_playbook_name != pb_name:
+                logger.warning(f"[P0] Whitespace bug detected: raw='{raw_playbook_name}' -> normalized='{pb_name}'")
             
-            if allowed_matches:
-                # Garder le setup avec seulement les playbooks autorisés
-                setup.playbook_matches = allowed_matches
+            # P0 TÂCHE 2: Vérifier autorisation avec nom normalisé
+            allowed, reason = self.is_playbook_allowed(pb_name)
+            
+            if allowed:
                 filtered.append(setup)
+            else:
+                logger.debug(f"Setup filtered: {reason}")
+                # P0 TÂCHE 2: Compter rejets par playbook (nom normalisé)
+                if pb_name not in rejected_by_playbook:
+                    rejected_by_playbook[pb_name] = 0
+                rejected_by_playbook[pb_name] += 1
+                
+                # P0 TÂCHE 2: Capturer exemples détaillés (max 5)
+                if len(rejected_examples) < 5:
+                    mode = self.state.trading_mode
+                    in_aggressive_allowlist = pb_name in AGGRESSIVE_ALLOWLIST
+                    in_safe_allowlist = pb_name in SAFE_ALLOWLIST
+                    in_denylist = pb_name in AGGRESSIVE_DENYLIST
+                    
+                    rejected_examples.append({
+                        "playbook_name": pb_name,
+                        "raw_playbook_name": raw_playbook_name,
+                        "reason": reason,
+                        "mode": mode,
+                        "in_aggressive_allowlist": in_aggressive_allowlist,
+                        "in_safe_allowlist": in_safe_allowlist,
+                        "in_denylist": in_denylist
+                    })
         
         logger.info(f"RiskEngine playbook filter: {len(setups)} → {len(filtered)} setups")
+        if missing_playbook_name_count > 0:
+            logger.warning(f"  ⚠️  {missing_playbook_name_count} setups with missing playbook_name")
+        
+        # P0 FIX: Stocker dans attribut temporaire (DERNIER appel uniquement)
+        self._last_filter_rejects = {
+            'by_playbook': rejected_by_playbook,
+            'examples': rejected_examples,
+            'missing_playbook_name': missing_playbook_name_count
+        }
+        
         return filtered
+    
+    def get_last_filter_rejects(self) -> Dict[str, Any]:
+        """
+        P0 FIX: Expose les rejets du dernier filtre pour instrumentation.
+        
+        Returns:
+            Dict avec 'by_playbook', 'examples', 'missing_playbook_name'
+        """
+        return getattr(self, '_last_filter_rejects', {
+            'by_playbook': {},
+            'examples': [],
+            'missing_playbook_name': 0
+        })
     
     # ========================================================================
     # P0 COMMIT 2: KILL-SWITCH & CIRCUIT BREAKERS
@@ -345,73 +434,100 @@ class RiskEngine:
         return self.get_current_risk_tier() * self.state.base_r_unit_dollars
     
     def update_risk_after_trade(
-        self, 
-        trade_result: str, 
+        self,
+        trade_result: str,
         trade_pnl_dollars: float,
-        trade_risk_dollars: float,
-        trade_tier: int,
-        playbook_name: str,
-        current_day: date
+        trade_risk_dollars: float | None = None,
+        trade_tier: int | None = None,
+        playbook_name: str | None = None,
+        current_day: date | None = None,
+        trade_pnl_r: float | None = None,
+        risk_used_pct: float | None = None
     ) -> Dict[str, Any]:
         """
         Met à jour le risque et les stats après un trade.
-        
+
+        Cette méthode est rétrocompatible avec l'ancienne signature utilisée dans
+        certains tests (trade_result, trade_pnl_dollars, trade_pnl_r, risk_used_pct).
+        Si ``playbook_name`` ou ``current_day`` ne sont pas fournis, on suppose
+        l'ancienne interface (Phase 1.3) ; dans ce cas, la mise à jour se limite
+        à ajuster ``current_risk_pct`` et le solde du compte selon un schéma
+        simple : après une perte, le risque passe de 2 % à 1 %; après un gain,
+        il repasse à 2 %.  Aucune statistique avancée (2R/1R) n'est calculée.
+
         Args:
-            trade_result: 'win', 'loss', 'breakeven'
-            trade_pnl_dollars: P&L en $
-            trade_risk_dollars: Risque utilisé en $
-            trade_tier: Tier utilisé (1 ou 2)
-            playbook_name: Nom du playbook
-            current_day: Date du trade
-        
+            trade_result: 'win', 'loss' ou 'breakeven'
+            trade_pnl_dollars: P&L en dollars
+            trade_risk_dollars: Risque utilisé en dollars (nouvelle interface)
+            trade_tier: Tier utilisé (1 ou 2) pour Money Management (nouvelle interface)
+            playbook_name: Nom du playbook (nouvelle interface)
+            current_day: Date du trade (nouvelle interface)
+            trade_pnl_r: P&L exprimé en R (ancienne interface)
+            risk_used_pct: Pourcentage de capital utilisé pour le risque (ancienne interface)
+
         Returns:
-            Dict avec metrics calculées
+            Dict avec métriques calculées ou clés minimales en mode rétro.
         """
+        # Détermination de l'interface : si playbook_name et current_day sont fournis,
+        # on exécute la logique Money Management 2R/1R.  Sinon on applique la
+        # mise à jour legacy (Phase 1.3) basée sur risk_pct.
+        if playbook_name is None or current_day is None:
+            # ===== LOGIQUE LEGACY (risk_pct) =====
+            # Mettre à jour le solde du compte
+            self.state.account_balance += trade_pnl_dollars
+            # Mettre à jour current_risk_pct selon le résultat
+            if trade_result == 'loss':
+                self.state.current_risk_pct = self.state.reduced_risk_pct
+            elif trade_result == 'win':
+                self.state.current_risk_pct = self.state.base_risk_pct
+            # Aucune modification pour breakeven
+            # Retourner un dict minimal pour compatibilité
+            return {
+                'current_risk_pct': self.state.current_risk_pct,
+                'account_balance': self.state.account_balance,
+            }
+
+        # ===== LOGIQUE 2R/1R (nouvelle interface) =====
+        # S'assurer que les paramètres requis sont présents
+        assert trade_risk_dollars is not None and trade_tier is not None, \
+            "trade_risk_dollars et trade_tier doivent être fournis dans la nouvelle interface"
+        # Mettre des valeurs par défaut pour le nom du playbook
+        pb_name = playbook_name or 'UNKNOWN'
+        day = current_day or datetime.now().date()
+
         # Calculer les métriques
         base_r = self.state.base_r_unit_dollars
-        
-        # r_multiple = pnl_$ / risk_$ (performance normalisée du setup)
         r_multiple = trade_pnl_dollars / trade_risk_dollars if trade_risk_dollars > 0 else 0.0
-        
-        # pnl_R_account = pnl_$ / base_r_unit_$ (impact "account")
         pnl_r_account = trade_pnl_dollars / base_r if base_r > 0 else 0.0
-        
+
         # Update capital
         self.state.account_balance += trade_pnl_dollars
-        
-        # Update peak
+        # Peak update
         if self.state.account_balance > self.state.peak_balance:
             self.state.peak_balance = self.state.account_balance
-        
         # Update run totals
         self.state.run_total_r += pnl_r_account
         if self.state.run_total_r > self.state.run_peak_r:
             self.state.run_peak_r = self.state.run_total_r
-        
         # Update drawdown
         self.state.current_drawdown_r = self.state.run_peak_r - self.state.run_total_r
         if self.state.current_drawdown_r > self.state.max_drawdown_r:
             self.state.max_drawdown_r = self.state.current_drawdown_r
-        
         # Update daily stats
         self.state.daily_pnl_dollars += trade_pnl_dollars
         self.state.daily_pnl_r += pnl_r_account
-        
-        day_str = str(current_day)
+        day_str = str(day)
         if day_str not in self.state.daily_stats_history:
             self.state.daily_stats_history[day_str] = DailyStats(date=day_str)
         daily = self.state.daily_stats_history[day_str]
         daily.pnl_r += pnl_r_account
         daily.nb_trades += 1
-        daily.playbook_breakdown[playbook_name] = daily.playbook_breakdown.get(playbook_name, 0.0) + pnl_r_account
-        
-        # Update 2R/1R state machine
+        daily.playbook_breakdown[pb_name] = daily.playbook_breakdown.get(pb_name, 0.0) + pnl_r_account
+        # Update tier state machine
         is_win = trade_result == 'win'
         new_tier = self.state.risk_tier_state.on_trade_closed(r_multiple, trade_tier)
-        
-        # Update playbook stats (pour kill-switch)
-        self.update_playbook_stats(playbook_name, pnl_r_account, is_win)
-        
+        # Update playbook stats (kill‑switch)
+        self.update_playbook_stats(pb_name, pnl_r_account, is_win)
         # Update streaks
         if is_win:
             self.state.current_win_streak += 1
@@ -421,17 +537,14 @@ class RiskEngine:
             self.state.current_loss_streak += 1
             self.state.current_win_streak = 0
             self.state.consecutive_losses_today += 1
-        
         self.state.last_trade_result = trade_result
-        
         # Log
         logger.info(
-            f"Trade closed: {playbook_name} | {trade_result.upper()} | "
+            f"Trade closed: {pb_name} | {trade_result.upper()} | "
             f"pnl=${trade_pnl_dollars:+.2f} | r_mult={r_multiple:+.2f} | "
             f"pnl_R={pnl_r_account:+.2f} | tier {trade_tier}→{new_tier} | "
             f"run_total={self.state.run_total_r:+.2f}R | DD={self.state.current_drawdown_r:.2f}R"
         )
-        
         return {
             'r_multiple': r_multiple,
             'pnl_r_account': pnl_r_account,
@@ -602,6 +715,35 @@ class RiskEngine:
                 distance_stop=distance_stop
             )
         
+        # Futures (e.g. ES, NQ) - calculate contracts
+        if setup.symbol in ['ES', 'NQ']:
+            # Map symbol to contract multiplier (point value per contract)
+            multiplier_map = {
+                'ES': 50.0,  # E-mini S&P 500 futures multiplier
+                'NQ': 20.0,  # E-mini Nasdaq 100 futures multiplier
+            }
+            mult = multiplier_map.get(setup.symbol, 50.0)
+            # Determine risk in dollars: if risk_pct is provided, use it; otherwise use current tier risk dollars
+            if risk_pct is not None:
+                risk_dollars_fut = risk_pct * self.state.account_balance
+            else:
+                risk_dollars_fut = risk_dollars
+            # Number of contracts = risk dollars / (distance stop * multiplier)
+            contracts = risk_dollars_fut / (distance_stop * mult)
+            contracts = int(contracts)
+            if contracts < 1:
+                return PositionSizingResult(valid=False, reason='Position size < 1 contract')
+            required_capital = contracts * mult * setup.entry_price
+            return PositionSizingResult(
+                valid=True,
+                position_size=contracts,
+                position_type='contracts',
+                risk_amount=risk_dollars_fut,
+                risk_tier=tier,
+                required_capital=required_capital,
+                distance_stop=distance_stop,
+                multiplier=mult
+            )
         return PositionSizingResult(valid=False, reason='Unknown symbol type')
     
     # ========================================================================

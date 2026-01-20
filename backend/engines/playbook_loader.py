@@ -5,7 +5,7 @@ Phase 2.2 - Intégration complète des playbooks YAML
 import yaml
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, time, timezone
 from models.setup import Setup, ICTPattern, CandlestickPattern
 
@@ -52,11 +52,20 @@ class PlaybookDefinition:
         self.instruments = data['instruments']
         
         # Time filters
-        self.session = data['timefilters'].get('session')
+        # Le champ `session` est la session principale (NY/London/Asia/etc.) mais peut
+        # également être utilisé pour des fenêtres personnalisées comme PREMARKET ou
+        # MKT_OPEN_WINDOW.  Certains playbooks utilisent un champ `session_window`
+        # dans le YAML ; dans ce cas, ce champ est prioritaire.
+        timefilters = data.get('timefilters', {})
+        sess = timefilters.get('session')
+        # Préférence au champ session_window si défini
+        if timefilters.get('session_window'):
+            sess = timefilters.get('session_window')
+        self.session = sess
         # Support both time_range (legacy) and time_windows (new)
-        self.time_range = data['timefilters'].get('time_range', [])
-        self.time_windows = data['timefilters'].get('time_windows', [])
-        self.news_events_only = data['timefilters'].get('news_events_only', False)
+        self.time_range = timefilters.get('time_range', [])
+        self.time_windows = timefilters.get('time_windows', [])
+        self.news_events_only = timefilters.get('news_events_only', False)
         
         # Context requirements
         ctx = data['context_requirements']
@@ -96,6 +105,11 @@ class PlaybookDefinition:
         # Max duration (pour scalps)
         self.max_duration_minutes = data.get('max_duration_minutes')
 
+        # Signaux obligatoires (ex : ["IFVG_BEAR@5m", "OB_BULL@15m"]).
+        # Si présents, le playbook n'est considéré que si TOUS ces signaux
+        # sont détectés par les moteurs de patterns.  Absent ou liste vide = aucun filtre.
+        self.required_signals: List[str] = data.get('required_signals', [])
+
 
 class PlaybookLoader:
     """Charge tous les playbooks depuis le fichier YAML"""
@@ -104,6 +118,8 @@ class PlaybookLoader:
         self.playbooks_path = playbooks_path
         self.aplus_path = aplus_path
         self.playbooks: List[PlaybookDefinition] = []
+        # Stockera les playbooks A+ séparément afin de ne pas les compter dans le total
+        self.aplus_playbooks: List[PlaybookDefinition] = []
         self.load_playbooks()
     
     def load_playbooks(self):
@@ -276,18 +292,25 @@ class PlaybookLoader:
                         pb_def = PlaybookDefinition(data_pb)
                         return pb_def
 
-                    # Construire et ajouter
+                    # Construire et stocker dans aplus_playbooks au lieu de self.playbooks
+                    self.aplus_playbooks = []
                     for cfg in day_setups:
-                        self.playbooks.append(build_aplus_playbook(cfg))
+                        try:
+                            self.aplus_playbooks.append(build_aplus_playbook(cfg))
+                        except Exception:
+                            pass
                     for cfg in scalp_setups:
-                        self.playbooks.append(build_aplus_playbook(cfg))
+                        try:
+                            self.aplus_playbooks.append(build_aplus_playbook(cfg))
+                        except Exception:
+                            pass
 
-                    # Log debug pour vérifier présence des A+ dans la liste
+                    # Log debug pour vérifier présence des A+ dans une liste séparée
                     try:
-                        names = [getattr(p, 'name', None) or p.raw.get('playbook_name') for p in self.playbooks]
-                        logger.info(f"Playbooks chargés (incl. A+): {names}")
+                        names = [p.name for p in self.aplus_playbooks]
+                        logger.info(f"Playbooks A+ chargés (exclus du total): {names}")
                     except Exception:
-                        logger.info("Playbooks chargés (incl. A+) - debug names skipped")
+                        logger.info("Playbooks A+ chargés - debug names skipped")
 
                     logger.info(f"   + Loaded {len(day_setups) + len(scalp_setups)} A+ setups from {self.aplus_path}")
             except Exception as e:
@@ -341,7 +364,8 @@ class PlaybookEvaluator:
         
         for playbook in playbooks:
             # Vérifier si le playbook est applicable
-            if not self._check_basic_filters(playbook, symbol, current_time, market_state):
+            basic_pass, basic_reason = self._check_basic_filters(playbook, symbol, current_time, market_state)
+            if not basic_pass:
                 continue
             
             # Évaluer les conditions
@@ -421,16 +445,25 @@ class PlaybookEvaluator:
         playbook: PlaybookDefinition,
         symbol: str,
         current_time: datetime,
-        market_state: Dict
-    ) -> bool:
-        """Vérifie les filtres de base (instrument, session, time)"""
+        market_state: Dict,
+        debug: Optional[Dict[str, int]] = None
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Vérifie les filtres de base (session / horaire) selon les définitions du playbook.
+        
+        Returns:
+            Tuple[bool, Optional[str]]: (pass, reason_code)
+            - Si pass=True: reason_code=None
+            - Si pass=False: reason_code contient la raison exacte du rejet
+        """
         
         # Instrument
         if symbol not in playbook.instruments:
-            return False
+            return False, "instrument_not_supported"
         
         # Récupérer éventuel debug pour ce playbook (SCALP A+ uniquement)
-        debug = TIMEFILTER_DEBUG.get(playbook.name)
+        if debug is None:
+            debug = TIMEFILTER_DEBUG.get(playbook.name)
         if debug is not None:
             debug['total_checked'] += 1
         
@@ -459,32 +492,96 @@ class PlaybookEvaluator:
         elif current_session in ['OFF_HOURS']:
             current_session = 'OFF_HOURS'
         
-        required_session = (playbook.session or 'ANY').upper()
-        if required_session in ['NY', 'NEW_YORK']:
-            required_session = 'NY'
-        elif required_session == 'LONDON':
-            required_session = 'LONDON'
-        elif required_session == 'ASIA':
-            required_session = 'ASIA'
+        required_session_raw = (playbook.session or 'ANY').upper()
         
+        # Gestion des sessions personnalisées (ex : Market Open, Pre‑Market)
+        # Mappe certaines sessions à une session de base et des fenêtres horaires spécifiques.
+        # Définir les fenêtres personnalisées (ex : Market Open, Pre‑Market).
+        # On charge d'abord la configuration depuis patterns_config.yml.  S'il
+        # existe une section "sessions" dans ce fichier, elle doit
+        # contenir des clés de type PREMARKET / MKT_OPEN_WINDOW avec des
+        # valeurs "HH:MM-HH:MM".  On convertit ensuite vers la structure
+        # attendue (session de base + liste de fenêtres).  À défaut, on
+        # utilise des valeurs par défaut.
+        custom_session_windows: Dict[str, Any] = {}
+        try:
+            from pathlib import Path
+            import yaml  # type: ignore
+            cfg_path = Path(__file__).resolve().parent.parent / 'knowledge' / 'patterns_config.yml'
+            if cfg_path.exists():
+                with open(cfg_path, 'r') as f:
+                    cfg = yaml.safe_load(f) or {}
+                sess_cfg = (cfg.get('sessions') or {}) if isinstance(cfg, dict) else {}
+                # Build mapping: key -> ('NY', [(start,end)])
+                for key, window_str in sess_cfg.items():
+                    key_up = key.upper()
+                    if key_up == 'TIMEZONE':
+                        continue
+                    if isinstance(window_str, str) and '-' in window_str:
+                        try:
+                            start_str, end_str = window_str.split('-', 1)
+                            custom_session_windows[key_up] = ('NY', [(start_str, end_str)])
+                        except Exception:
+                            pass
+        except Exception:
+            custom_session_windows = {}
+        # Fallback par défaut si config non trouvée
+        if not custom_session_windows:
+            # Default windows if no configuration is provided.  Support both
+            # PRE_MARKET and PREMARKET as aliases to avoid naming confusion.
+            custom_session_windows = {
+                'MKT_OPEN_WINDOW': ('NY', [('09:30', '10:00')]),
+                'MARKET_OPEN_WINDOW': ('NY', [('09:30', '10:00')]),
+                'PREMARKET': ('NY', [('07:00', '09:30')]),
+                'PRE_MARKET': ('NY', [('07:00', '09:30')]),
+            }
+        # Normaliser les sessions classiques
+        if required_session_raw in ['NY', 'NEW_YORK']:
+            required_session = 'NY'
+        elif required_session_raw == 'LONDON':
+            required_session = 'LONDON'
+        elif required_session_raw == 'ASIA':
+            required_session = 'ASIA'
+        elif required_session_raw == 'OFF_HOURS':
+            required_session = 'OFF_HOURS'
+        elif required_session_raw in custom_session_windows:
+            # Session personnalisée : on applique la session de base et on activera la fenêtre horaire custom
+            required_session = custom_session_windows[required_session_raw][0]
+        else:
+            required_session = required_session_raw
+
         pass_session = True
-        if required_session != 'ANY' and required_session != current_session:
-            pass_session = False
+        # Ne vérifier la session que si ce n'est pas une custom window
+        # Les custom windows (PRE_MARKET, MKT_OPEN_WINDOW, etc.) définissent leurs propres fenêtres horaires
+        # indépendamment de la session globale
+        is_custom_window = required_session_raw in custom_session_windows
+        if not is_custom_window:
+            if required_session != 'ANY' and required_session != current_session:
+                pass_session = False
         if debug is not None and pass_session:
             debug['pass_session'] += 1
         
         # Time range (already in ET from Step 1)
         pass_time_range = True
 
-        # Support time_windows (list of [start, end] pairs) or legacy time_range
-        if playbook.time_windows:
-            # New format: [["09:30", "11:00"], ["14:00", "15:30"]]
+        # Support time_windows (list of [start, end] pairs) or legacy time_range.  Si la session
+        # demandée est une session personnalisée (Market Open / Pre‑Market), on utilise
+        # custom_session_windows pour calculer la fenêtre horaire.
+        custom_windows = []
+        if required_session_raw in custom_session_windows:
+            custom_windows = custom_session_windows[required_session_raw][1]
+        
+        
+        if playbook.time_windows or custom_windows:
+            # Liste de fenêtres : soit provenant du playbook, soit d'une session personnalisée
+            # PRIORITÉ: si le playbook définit ses propres time_windows, on les utilise
+            # custom_windows n'est utilisé que pour les sessions sans time_windows explicites
+            windows = playbook.time_windows if playbook.time_windows else custom_windows
             current_hour = current_time_et.hour
             current_minute = current_time_et.minute
             current_t = time(current_hour, current_minute)
-            
             in_any_window = False
-            for window in playbook.time_windows:
+            for window in windows:
                 if len(window) != 2:
                     continue
                 start_str, end_str = window[0], window[1]
@@ -492,7 +589,6 @@ class PlaybookEvaluator:
                 end_h, end_m = map(int, end_str.split(':'))
                 start_time = time(start_h, start_m)
                 end_time = time(end_h, end_m)
-                
                 if start_time <= current_t <= end_time:
                     in_any_window = True
                     if debug is not None and len(debug.get('samples', [])) < 10:
@@ -509,29 +605,22 @@ class PlaybookEvaluator:
                             'window': f"{start_str}-{end_str}"
                         })
                     break
-            
             pass_time_range = in_any_window
-        
         elif playbook.time_range:
             # Legacy format: ["09:30", "09:45", "15:00", "15:15"]
             current_hour = current_time_et.hour
             current_minute = current_time_et.minute
-            
             in_range = False
             for i in range(0, len(playbook.time_range), 2):
                 if i + 1 >= len(playbook.time_range):
                     break
-                
                 start_str = playbook.time_range[i]
                 end_str = playbook.time_range[i + 1]
-                
                 start_h, start_m = map(int, start_str.split(':'))
                 end_h, end_m = map(int, end_str.split(':'))
-                
                 start_time = time(start_h, start_m)
                 end_time = time(end_h, end_m)
                 current_t = time(current_hour, current_minute)
-                
                 if start_time <= current_t <= end_time:
                     in_range = True
                     if debug is not None and len(debug.get('samples', [])) < 10:
@@ -549,33 +638,36 @@ class PlaybookEvaluator:
                             'end': end_str
                         })
                     break
-            
             pass_time_range = in_range
         if debug is not None and pass_time_range:
             debug['pass_time_range'] += 1
+        
         
         ok = pass_session and pass_time_range
         if debug is not None and ok:
             debug['pass_both'] += 1
         
         if not ok:
-            return False
+            if not pass_session:
+                return False, "session_outside_window"
+            else:
+                return False, "timefilter_outside_window"
         
         # PATCH C FINAL: Vérifier news_events_only (FAIL-CLOSE strict)
         if playbook.news_events_only:
             day_type = market_state.get('day_type', '')
             # FAIL-CLOSE: Si day_type n'est pas défini ou n'est pas dans les autorisés, rejeter
             if not day_type or day_type not in playbook.day_type_allowed:
-                return False
+                return False, "news_events_day_type_mismatch"
         
         # PATCH C FINAL: Vérifier volatility_min (FAIL-CLOSE strict)
         if playbook.volatility_min is not None:
             volatility = market_state.get('volatility')
             # FAIL-CLOSE: Si volatilité non définie ou insuffisante, rejeter
             if volatility is None or volatility < playbook.volatility_min:
-                return False
+                return False, "volatility_insufficient"
         
-        return True
+        return True, None
     
     def _evaluate_playbook_conditions(
         self,
@@ -592,6 +684,71 @@ class PlaybookEvaluator:
         """
         details = {}
         
+        # AGGRESSIVE BACKTEST MODE: Relaxation des exigences strictes
+        # Tant que sweep/day_type/candlestick engines ne sont pas câblés,
+        # on ne bloque pas les playbooks sur ces confluences manquantes.
+        # CONDITION STRICTE: TRADING_MODE=='AGGRESSIVE' uniquement
+        # Interdit en LIVE/PAPER (SAFE mode garde les checks stricts)
+        from config.settings import settings
+        is_backtest_aggressive = (settings.TRADING_MODE == 'AGGRESSIVE')
+        
+        bypasses_applied = []
+        if is_backtest_aggressive:
+            details['aggressive_relaxation_active'] = True
+
+        # 0. Vérifier les signaux obligatoires (required_signals).
+        # Si le playbook définit des signaux obligatoires, on exige que chaque
+        # signal déclaré soit présent parmi les patterns ICT détectés.  Un signal
+        # est de la forme "TYPE_DIR@tf" (par exemple "IFVG_BEAR@5m").  Le type
+        # est mappé à un pattern_type interne (ifvg, order_block, equilibrium,
+        # breaker_block), et le suffixe de direction est facultatif.  Si la
+        # direction est 'BULL' ou 'BULLISH', on attend une direction 'bullish';
+        # si 'BEAR' ou 'BEARISH', direction 'bearish'.  Pour les signaux comme
+        # EQ_REJECT, la direction est ignorée.
+        if getattr(playbook, 'required_signals', None):
+            # Construire un ensemble de patterns disponibles pour recherche rapide
+            available = []  # tuples (type, direction, timeframe)
+            for p in ict_patterns:
+                # Assurer cohérence lower-case
+                available.append((p.pattern_type.lower(), p.direction.lower(), p.timeframe.lower()))
+            # Vérifier chaque signal
+            for req in playbook.required_signals:
+                try:
+                    sig, tf = req.split('@')
+                    tf = tf.lower()
+                except ValueError:
+                    sig = req
+                    tf = None
+                sig_parts = sig.split('_')
+                base = sig_parts[0].upper()
+                dir_seg = sig_parts[1].upper() if len(sig_parts) > 1 else None
+                # Mapping abréviations → pattern_type
+                type_map = {
+                    'IFVG': 'ifvg',
+                    'OB': 'order_block',
+                    'EQ': 'equilibrium',
+                    'BRKR': 'breaker_block',
+                    'BRKRBLK': 'breaker_block',
+                    'BRKRBLOCK': 'breaker_block',
+                }
+                p_type = type_map.get(base, base.lower())
+                dir_required = None
+                if dir_seg:
+                    if dir_seg in ['BEAR', 'BEARISH']:
+                        dir_required = 'bearish'
+                    elif dir_seg in ['BULL', 'BULLISH']:
+                        dir_required = 'bullish'
+                    # 'REJECT' ne spécifie pas de direction pour EQ
+                # Chercher correspondance
+                found = False
+                for (t0, d0, tf0) in available:
+                    if t0 == p_type and (dir_required is None or d0 == dir_required) and (tf is None or tf0 == tf):
+                        found = True
+                        break
+                if not found:
+                    # Signal requis manquant → playbook inapplicable
+                    return None, None
+        
         # 1. Vérifier HTF Bias
         htf_bias = market_state.get('bias', 'neutral')
         # On ne rejette que si le biais est explicite ET incompatible.
@@ -604,8 +761,16 @@ class PlaybookEvaluator:
         structure = market_state.get('daily_structure', 'unknown')
         # Même logique: si la structure est inconnue, on ne bloque pas, mais
         # le critère trend_strength reflètera la clarté de la tendance.
-        if playbook.structure_htf and structure not in playbook.structure_htf and structure != 'unknown':
-            return None, None
+        
+        # AGGRESSIVE: Relaxer structure_htf (MarketStateEngine produit 'bullish'/'bearish'
+        # mais playbooks attendent 'uptrend'/'downtrend' - P1: normaliser le vocabulaire)
+        if not is_backtest_aggressive:
+            if playbook.structure_htf and structure not in playbook.structure_htf and structure != 'unknown':
+                return None, None
+        else:
+            # BYPASS actif : on trace la raison
+            if playbook.structure_htf and structure not in playbook.structure_htf and structure != 'unknown':
+                bypasses_applied.append(f'structure_htf_mismatch:{structure}_not_in_{playbook.structure_htf}')
         
         # 3. Vérifier ICT confluences (assoupli en mode labo AGGRESSIVE)
         has_sweep = any(p.pattern_type == 'sweep' for p in ict_patterns)
@@ -628,20 +793,29 @@ class PlaybookEvaluator:
         # Pour l'instant en backtest AGGRESSIVE, on ne bloque plus sur
         # require_sweep / require_bos pour éviter d'étouffer tous les playbooks
         # tant que les moteurs de sweep/day_type ne sont pas pleinement câblés.
-        # On exige simplement au moins un pattern ICT présent.
-        if not ict_patterns:
+        # On exige simplement au moins un pattern ICT présent (relaxé en AGGRESSIVE).
+        if not is_backtest_aggressive and not ict_patterns:
             return None, None
+        elif is_backtest_aggressive and not ict_patterns:
+            bypasses_applied.append('ict_patterns_empty')
         
-        # 4. Vérifier patterns candlestick OBLIGATOIRES
+        # 4. Vérifier patterns candlestick OBLIGATOIRES (relaxé en AGGRESSIVE)
         matching_patterns = [
             p for p in candle_patterns
             if p.family in playbook.required_pattern_families
         ]
         
-        if not matching_patterns:
+        # En mode AGGRESSIVE backtest, on ne rejette pas si aucun pattern chandelle
+        if not is_backtest_aggressive and not matching_patterns:
             return None, None
+        elif is_backtest_aggressive and not matching_patterns:
+            bypasses_applied.append('candlestick_patterns_missing')
         
-        debug_components['has_pattern'] = True
+        debug_components['has_pattern'] = bool(matching_patterns)
+        
+        # Tracer les bypasses appliqués
+        if bypasses_applied:
+            details['bypasses_applied'] = bypasses_applied
         
         # 5. Calculer le score basé sur les weights
         score = 0.0

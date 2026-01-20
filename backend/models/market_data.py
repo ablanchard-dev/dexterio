@@ -64,6 +64,9 @@ class MarketState(BaseModel):
     h4_structure: str = 'unknown'
     h1_structure: str = 'unknown'
     
+    # Day type (P1: trend/manipulation_reversal/range)
+    day_type: str = 'unknown'  # New field for playbook filtering
+    
     # Niveaux HTF importants
     pdh: Optional[float] = None  # Previous Day High
     pdl: Optional[float] = None  # Previous Day Low
