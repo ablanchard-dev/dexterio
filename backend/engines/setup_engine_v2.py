@@ -352,16 +352,34 @@ def filter_setups_by_mode(setups: List[Setup], risk_engine=None) -> List[Setup]:
         risk_engine: Instance de RiskEngine (optionnel, pour filtrage playbook)
     """
     from config.settings import settings
-    mode = settings.TRADING_MODE
+
+    # P0 PLUMBING: la source de vérité du mode est le RiskEngine si présent
+    if risk_engine is not None and getattr(getattr(risk_engine, "state", None), "trading_mode", None):
+        mode = str(risk_engine.state.trading_mode).upper()
+    else:
+        mode = str(settings.TRADING_MODE).upper()
     
     # Pré-filtrage des grades
+    # Normaliser la qualité et mapper "APLUS" -> "A+" pour compatibilité A+
+    normalized_setups: List[Setup] = []
+    for s in setups:
+        q_raw = (s.quality or "").strip().upper()
+        if q_raw in ("APLUS", "A_PLUS"):
+            q_norm = "A+"
+        else:
+            q_norm = q_raw
+        s.quality = q_norm
+        normalized_setups.append(s)
+
     # En mode SAFE, on exclut les setups de grade C.  En mode AGGRESSIVE,
     # on garde également les setups de grade C pour explorer toutes les
     # opportunités (les filtrages ultérieurs géreront les allowlist/denylist).
-    if mode == 'SAFE':
-        filtered = [s for s in setups if s.quality in ['A+', 'A', 'B']]
+    if mode == "SAFE":
+        allowed_grades = {"A+", "A", "B"}
     else:
-        filtered = [s for s in setups if s.quality in ['A+', 'A', 'B', 'C']]
+        allowed_grades = {"A+", "A", "B", "C"}
+
+    filtered = [s for s in normalized_setups if s.quality in allowed_grades]
 
     logger.info(f"{mode} pre-filter (grades): {len(setups)} → {len(filtered)} setups")
 

@@ -327,8 +327,16 @@ class PlaybookLoader:
             logger.error(f"Error loading playbooks: {e}", exc_info=True)
     
     def get_playbooks_for_mode(self, mode: str) -> List[PlaybookDefinition]:
-        """Retourne les playbooks activés pour un mode donné (SAFE/AGGRESSIVE)"""
-        return [p for p in self.playbooks if mode in p.enabled_modes]
+        """Retourne les playbooks activés pour un mode donné (SAFE/AGGRESSIVE)
+        
+        P0 PLUMBING:
+        - Inclure les playbooks CORE + les A+ (self.aplus_playbooks)
+        - Ne change PAS la logique de scoring/conditions, uniquement le pool évalué.
+        """
+        mode_up = str(mode).upper()
+        core = [p for p in self.playbooks if mode_up in (m.upper() for m in p.enabled_modes)]
+        aplus = list(self.aplus_playbooks or [])
+        return core + aplus
     
     def get_playbook_by_name(self, name: str) -> Optional[PlaybookDefinition]:
         """Récupère un playbook par son nom"""
