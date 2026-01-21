@@ -131,6 +131,17 @@ export default function Backtests() {
     }
   };
 
+  const handleToggleSymbol = (symbol) => {
+    if (symbols.includes(symbol)) {
+      // Ne pas permettre de désélectionner si c'est le dernier symbole
+      if (symbols.length > 1) {
+        setSymbols(symbols.filter(s => s !== symbol));
+      }
+    } else {
+      setSymbols([...symbols, symbol]);
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-6 text-white">Backtests</h1>
@@ -143,14 +154,26 @@ export default function Backtests() {
           {/* Symbols */}
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">Symbols</label>
-            <select 
-              value={symbols[0]} 
-              onChange={(e) => setSymbols([e.target.value])}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="SPY">SPY</option>
-              <option value="QQQ">QQQ</option>
-            </select>
+            <div className="flex gap-4">
+              <label className="flex items-center text-gray-700">
+                <input 
+                  type="checkbox" 
+                  checked={symbols.includes('SPY')}
+                  onChange={() => handleToggleSymbol('SPY')}
+                  className="mr-2"
+                />
+                SPY
+              </label>
+              <label className="flex items-center text-gray-700">
+                <input 
+                  type="checkbox" 
+                  checked={symbols.includes('QQQ')}
+                  onChange={() => handleToggleSymbol('QQQ')}
+                  className="mr-2"
+                />
+                QQQ
+              </label>
+            </div>
           </div>
           
           {/* Start Date */}
@@ -256,7 +279,7 @@ export default function Backtests() {
         
         <button
           onClick={handleRun}
-          disabled={loading || !tradeTypes.length}
+          disabled={loading || !tradeTypes.length || !symbols.length}
           className="mt-6 bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
         >
           {loading ? 'Running...' : 'Run Backtest'}

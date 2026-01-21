@@ -63,14 +63,24 @@ KILLSWITCH_MAX_LOSS_R = -10.0       # Total_R max avant disable
 KILLSWITCH_MIN_PF = 0.85            # PF minimum
 KILLSWITCH_HARD_STOP_R = -25.0      # Hard stop immédiat
 
-# Circuit breakers
-CIRCUIT_STOP_DAY_R = -4.0           # Stop day si PnL_day ≤ -4R
-CIRCUIT_STOP_RUN_DD_R = 20.0        # Stop run si MaxDD ≥ 20R
-CIRCUIT_MAX_TRADES_DAY_SYMBOL = 12  # Max trades/day/symbol
+# Circuit breakers (globaux)
+CIRCUIT_STOP_DAY_R = -4.0                # Stop day si PnL_day ≤ -4R
+CIRCUIT_STOP_RUN_DD_R = 20.0             # Stop run si MaxDD ≥ 20R
+CIRCUIT_MAX_TRADES_DAY_SYMBOL = 12       # Max trades/day/symbol
 
-# Anti-spam settings
-COOLDOWN_MINUTES = 15               # Cooldown entre 2 trades du même playbook/symbol
-MAX_TRADES_PER_SESSION_PLAYBOOK = 1 # Max trades par playbook par session
+# Anti-spam settings (cooldown + caps Option B)
+COOLDOWN_MINUTES_SAFE = 15               # SAFE: cooldown 15 minutes
+COOLDOWN_MINUTES_AGGRESSIVE = 5          # AGGRESSIVE: cooldown 5 minutes
+
+# OPTION B - Caps SAFE (prod)
+SAFE_DAILY_TRADES_CAP = 20               # Cap global journalier fixe (SAFE)
+SAFE_MAX_TRADES_PER_SESSION_PLAYBOOK = 3 # Cap par playbook / session (SAFE)
+
+# OPTION B - Caps AGGRESSIVE (labo)
+AGGRESSIVE_MIN_DAILY_CAP = 30            # Cap global journalier min (AGGRESSIVE)
+AGGRESSIVE_MAX_DAILY_CAP = 80            # Cap global journalier max (AGGRESSIVE)
+AGGRESSIVE_HARD_DAILY_CAP = 80           # Hard cap journalier (AGGRESSIVE)
+AGGRESSIVE_MAX_TRADES_PER_SESSION_PLAYBOOK = 10  # Cap par playbook / session (AGGRESSIVE)
 
 
 class RiskEngine:
@@ -120,8 +130,58 @@ class RiskEngine:
             f"SAFE_ALLOWLIST len={safe_len} (first5={safe_first5})"
         )
         
-        logger.info(f"RiskEngine P0 initialized: ${initial_capital:,.2f}, "
-                   f"mode={self.state.trading_mode}, 1R=${base_r_unit:.2f}")
+        # Option B: nombre de playbooks actifs (CORE + A+) – renseigné par BacktestEngine
+        self._active_playbooks_count: int = 0
+        
+        logger.info(
+            f"RiskEngine P0 initialized: ${initial_capital:,.2f}, "
+            f"mode={self.state.trading_mode}, 1R=${base_r_unit:.2f}"
+        )
+
+    # ========================================================================
+    # OPTION B: Configuration dynamique des caps
+    # ========================================================================
+
+    def set_active_playbooks_count(self, count: int) -> None:
+        """Renseigne le nombre de playbooks réellement actifs (CORE + A+)."""
+        try:
+            self._active_playbooks_count = max(0, int(count))
+        except Exception:
+            self._active_playbooks_count = 0
+
+    def _get_aggressive_daily_cap(self) -> int:
+        """
+        Calcule le cap global journalier dynamique en mode AGGRESSIVE.
+
+        DailyCapAggressive = min(80, max(30, 3 * N_playbooks_actifs))
+        """
+        n_playbooks = self._active_playbooks_count or len(AGGRESSIVE_ALLOWLIST)
+        dynamic_cap = 3 * n_playbooks
+        return int(
+            min(
+                AGGRESSIVE_MAX_DAILY_CAP,
+                max(AGGRESSIVE_MIN_DAILY_CAP, dynamic_cap),
+            )
+        )
+
+    def get_caps_snapshot(self) -> Dict[str, Any]:
+        """
+        Retourne un snapshot lisible des caps SAFE / AGGRESSIVE (instrumentation).
+        """
+        aggressive_daily_cap = self._get_aggressive_daily_cap()
+        return {
+            "aggressive": {
+                "daily_cap": aggressive_daily_cap,
+                "per_playbook_session_cap": AGGRESSIVE_MAX_TRADES_PER_SESSION_PLAYBOOK,
+                "hard_daily_cap": AGGRESSIVE_HARD_DAILY_CAP,
+                "n_active_playbooks": self._active_playbooks_count
+                    or len(AGGRESSIVE_ALLOWLIST),
+            },
+            "safe": {
+                "daily_cap": SAFE_DAILY_TRADES_CAP,
+                "per_playbook_session_cap": SAFE_MAX_TRADES_PER_SESSION_PLAYBOOK,
+            },
+        }
     
     # ========================================================================
     # P0 COMMIT 1: PLAYBOOK AUTHORIZATION
@@ -160,6 +220,14 @@ class RiskEngine:
         """
         Vérifie le cooldown et les limites par session pour anti-spam.
         
+        P0 Option B – définition "session_key hybride" :
+        - current_session est une clé de bucket hybride incluant :
+          * le label de session de marché (NY / LONDON / ASIA / OFF_HOURS, etc.)
+          * un bucket horaire 4h en timezone America/New_York, de la forme
+            "YYYY-MM-DD|SESSION_LABEL|HH00-HH00NY"
+            ex: "2025-08-04|LONDON|08:00-12:00NY"
+        - la clé de suivi reste (symbol, playbook_name, current_session)
+        
         Returns:
             (allowed: bool, reason: str)
         """
@@ -169,17 +237,24 @@ class RiskEngine:
         key_cooldown = (setup.symbol, playbook_name)
         key_session = (setup.symbol, playbook_name, current_session)
         
-        # Check cooldown
+        # Check cooldown (par mode)
+        mode = self.state.trading_mode
+        cooldown_minutes = COOLDOWN_MINUTES_SAFE if mode == 'SAFE' else COOLDOWN_MINUTES_AGGRESSIVE
         if key_cooldown in self.state.last_trade_time:
             last_time = self.state.last_trade_time[key_cooldown]
             elapsed = (current_time - last_time).total_seconds() / 60.0
-            if elapsed < COOLDOWN_MINUTES:
-                return False, f"Cooldown active ({elapsed:.1f}/{COOLDOWN_MINUTES}min)"
+            if elapsed < cooldown_minutes:
+                return False, f"Cooldown active ({elapsed:.1f}/{cooldown_minutes}min)"
         
-        # Check session limit
+        # Check session limit (Option B - caps dépendants du mode)
         session_count = self.state.trades_per_session.get(key_session, 0)
-        if session_count >= MAX_TRADES_PER_SESSION_PLAYBOOK:
-            return False, f"Max trades per session reached ({session_count}/{MAX_TRADES_PER_SESSION_PLAYBOOK})"
+        if self.state.trading_mode == 'SAFE':
+            cap = SAFE_MAX_TRADES_PER_SESSION_PLAYBOOK
+        else:
+            cap = AGGRESSIVE_MAX_TRADES_PER_SESSION_PLAYBOOK
+
+        if session_count >= cap:
+            return False, f"Max trades per session reached ({session_count}/{cap})"
         
         return True, "OK"
     
@@ -577,20 +652,26 @@ class RiskEngine:
         limits_status = {}
         reasons = []
         
+        mode = self.state.trading_mode
+
         # Pertes consécutives (mode SAFE uniquement)
-        if self.state.trading_mode == 'SAFE' and self.state.consecutive_losses_today >= 3:
+        if mode == 'SAFE' and self.state.consecutive_losses_today >= 3:
             self.state.trading_allowed = False
             self.state.day_frozen = True
             self.state.freeze_reason = "3 consecutive losses today"
             reasons.append(self.state.freeze_reason)
             limits_status['consecutive_losses'] = True
         
-        # Nombre de trades/jour global
-        max_total = 4 if self.state.trading_mode == 'SAFE' else 50
+        # Nombre de trades/jour global (Option B)
+        if mode == 'SAFE':
+            max_total = SAFE_DAILY_TRADES_CAP
+        else:
+            max_total = self._get_aggressive_daily_cap()
+        
         if self.state.daily_trade_count >= max_total:
-            if self.state.trading_mode == 'SAFE':
+            if mode == 'SAFE':
                 self.state.trading_allowed = False
-                self.state.freeze_reason = f"Max total trades/day ({max_total})"
+                self.state.freeze_reason = f"Max total trades/day SAFE ({max_total})"
                 reasons.append(self.state.freeze_reason)
             limits_status['total_trades_max'] = True
         

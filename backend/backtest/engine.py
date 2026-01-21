@@ -120,6 +120,13 @@ class BacktestEngine:
         # P2-2.B: Market state stream (instrumentation)
         self.market_state_records = [] if config.export_market_state else None
 
+        # P1: Inter-session state tracking (logging only)
+        # Structure: {symbol: {session_label: {open, high, low, close, range, date}}}
+        self._session_states: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        # Historique des ranges de session pour calculer vol_regime (dernières N sessions) - PAR SYMBOL
+        self._session_ranges_history: Dict[str, List[float]] = {}  # {symbol: [ranges]}
+        self._last_session_label: Dict[str, Optional[str]] = {}  # {symbol: last_session_label}
+
         # DIAGNOSTIC: Compteurs d'instrumentation
         self.debug_counts = {
             "candles_loaded_1m": 0,
@@ -164,17 +171,43 @@ class BacktestEngine:
             "risk_output_setups_len": 0,
             "risk_first3_input_playbooks": [],
             "risk_first3_output_playbooks": [],
+            # OPTION B: Caps & répartition trades
+            "caps_snapshot": {},
+            "trades_opened_by_playbook": {},           # {playbook_name: count}
+            "trades_attempted_by_playbook": {},        # {playbook_name: count}
+            "session_limit_reached_by_playbook": {},   # {playbook_name: count}
+            "session_key_used": "",                    # Clé hybride session+bucket4h
+            "grade_counts_by_playbook": {},            # {playbook_name: {A+,A,B,C,UNKNOWN}}
+            # P1: Inter-session state tracking (logging only)
+            "trade_context_snapshots": [],              # Liste de snapshots (max 200)
+            # P0.2: Multi-symbol instrumentation
+            "symbols_processed": [],                    # Liste des symboles réellement traités
+            "metrics_by_symbol": {},                    # Copie de stats_by_symbol
         }
         
         logger.info(f"BacktestEngine initialized - Mode: {config.trading_mode}, Types: {config.trade_types}")
         
-        # P0 ÉTAPE 2: Vérifier que les playbooks sont bien enregistrés
-        if hasattr(self.setup_engine, 'playbook_loader') and hasattr(self.setup_engine.playbook_loader, 'playbooks'):
-            playbook_names = [pb.name for pb in self.setup_engine.playbook_loader.playbooks]
-            self.debug_counts["playbooks_registered_count"] = len(playbook_names)
+        # P0 ÉTAPE 2: Vérifier que les playbooks sont bien enregistrés (CORE + A+)
+        if hasattr(self.setup_engine, 'playbook_loader'):
+            loader = self.setup_engine.playbook_loader
+            core = getattr(loader, "playbooks", []) or []
+            aplus = getattr(loader, "aplus_playbooks", []) or []
+            all_playbooks = list(core) + list(aplus)
+            playbook_names = [pb.name for pb in all_playbooks]
+            self.debug_counts["playbooks_registered_count"] = len(all_playbooks)
             self.debug_counts["playbooks_registered_names"] = playbook_names[:30]  # Max 30
-            logger.warning(f"[DEBUG] Registered playbooks: {playbook_names}")
-            logger.warning(f"[DEBUG] Total playbooks count: {len(playbook_names)}")
+            logger.warning(f"[DEBUG] Registered playbooks (CORE+A+): {playbook_names}")
+            logger.warning(f"[DEBUG] Total playbooks count (CORE+A+): {len(all_playbooks)}")
+
+            # Option B: informer le RiskEngine du nombre de playbooks actifs
+            try:
+                if hasattr(self.risk_engine, "set_active_playbooks_count"):
+                    self.risk_engine.set_active_playbooks_count(len(all_playbooks))
+                    # Snapshot des caps (SAFE / AGGRESSIVE) pour debug_counts.json
+                    caps_snapshot = self.risk_engine.get_caps_snapshot()
+                    self.debug_counts["caps_snapshot"] = caps_snapshot
+            except Exception:
+                logger.exception("Failed to set active_playbooks_count on RiskEngine (ignored).")
         else:
             logger.error("[DEBUG] ⚠️  Cannot access playbooks! setup_engine structure:")
             logger.error(f"  hasattr setup_engine: {hasattr(self, 'setup_engine')}")
@@ -620,6 +653,23 @@ class BacktestEngine:
         if self.combined_data is None:
             self.load_data()
 
+        # P0.2: Logs clairs par symbol
+        logger.info("\n📊 Data loaded per symbol:")
+        for symbol in self.config.symbols:
+            symbol_data = self.combined_data[self.combined_data['symbol'] == symbol]
+            if len(symbol_data) > 0:
+                symbol_start = symbol_data['datetime'].min()
+                symbol_end = symbol_data['datetime'].max()
+                logger.info(
+                    "  Running symbol=%s, bars=%d, range=%s -> %s",
+                    symbol,
+                    len(symbol_data),
+                    symbol_start,
+                    symbol_end
+                )
+            else:
+                logger.warning(f"  ⚠️  No data for symbol={symbol}")
+
         start_date = self.combined_data["datetime"].min()
         end_date = self.combined_data["datetime"].max()
 
@@ -731,6 +781,12 @@ class BacktestEngine:
                     self.debug_counts["setups_detected_total"] += 1
                     logger.error("🔥 DEBUG: FAKE SETUP TRIGGERED AT BAR 100")
                 
+                # P1: Mettre à jour le tracking inter-session (logging only)
+                try:
+                    self._update_inter_session_state(symbol, current_time, candle_1m.close)
+                except Exception:
+                    pass  # Ne pas faire crasher le backtest sur l'instrumentation
+                
                 # Ajouter à l'agrégateur et récupérer les flags de clôture HTF
                 events = self.tf_aggregator.add_1m_candle(candle_1m)
                 htf_events[symbol] = events
@@ -744,7 +800,8 @@ class BacktestEngine:
                 if setup is not None:
                     candidate_setups.append(setup)
 
-            # 3) Sélection multi-actifs globale SPY/QQQ (mode simple 2.a)
+            # 3) P0.2: Exécuter TOUS les setups candidats (multi-symbol réel)
+            # Trier par priorité et exécuter dans l'ordre (DAILY en premier, puis SCALP)
             if candidate_setups:
                 def setup_priority(s: Setup) -> tuple:
                     quality_rank = {"A+": 3, "A": 2, "B": 1, "C": 0}
@@ -755,17 +812,27 @@ class BacktestEngine:
                         s.risk_reward,
                     )
 
-                best_setup = max(candidate_setups, key=setup_priority)
-
-                # Priorité DAILY > SCALP si on doit choisir un seul trade
+                # Séparer DAILY et SCALP, trier chaque groupe par priorité
                 daily_setups = [s for s in candidate_setups if s.trade_type == "DAILY"]
-                if daily_setups and best_setup.trade_type == "SCALP":
-                    best_setup = max(daily_setups, key=setup_priority)
-
-                # Vérifier limites de risque avant exécution
-                limits_check = self.risk_engine.check_daily_limits()
-                if limits_check["trading_allowed"]:
-                    self._execute_setup(best_setup, current_time)
+                scalp_setups = [s for s in candidate_setups if s.trade_type == "SCALP"]
+                
+                # Trier chaque groupe par priorité (meilleur en premier)
+                daily_setups_sorted = sorted(daily_setups, key=setup_priority, reverse=True)
+                scalp_setups_sorted = sorted(scalp_setups, key=setup_priority, reverse=True)
+                
+                # Exécuter dans l'ordre : DAILY d'abord, puis SCALP
+                # Chaque _execute_setup vérifie ses propres limites (can_take_setup, cooldown, etc.)
+                all_setups_to_try = daily_setups_sorted + scalp_setups_sorted
+                
+                for setup in all_setups_to_try:
+                    # Vérifier limites globales (circuit breakers) avant chaque exécution
+                    limits_check = self.risk_engine.check_daily_limits()
+                    if limits_check["trading_allowed"]:
+                        # _execute_setup vérifie les limites individuelles (cooldown, session, etc.)
+                        self._execute_setup(setup, current_time)
+                    else:
+                        # Si trading bloqué globalement, arrêter pour cette minute
+                        break
 
             # 3) Mettre à jour les positions ouvertes
             self._update_positions(current_time)
@@ -1383,6 +1450,32 @@ class BacktestEngine:
         
         # P0 FIX: Compter tentative d'ouverture
         self.debug_counts["trades_open_attempted_total"] += 1
+
+        # OPTION B: Compter tentatives par playbook
+        playbook_name = setup.playbook_name if setup.playbook_name else "UNKNOWN"
+        attempts_dict = self.debug_counts.get("trades_attempted_by_playbook")
+        if not isinstance(attempts_dict, dict):
+            attempts_dict = {}
+            self.debug_counts["trades_attempted_by_playbook"] = attempts_dict
+        attempts_dict[playbook_name] = attempts_dict.get(playbook_name, 0) + 1
+
+        # OPTION B: grade_counts_by_playbook (A+/A/B/C/UNKNOWN) – pure instrumentation
+        quality_raw = getattr(setup, "quality", "") or ""
+        quality_norm = quality_raw.strip().upper()
+        if quality_norm in ("APLUS", "A_PLUS"):
+            grade = "A+"
+        elif quality_norm in ("A+", "A", "B", "C"):
+            grade = quality_norm
+        else:
+            grade = "UNKNOWN"
+
+        grade_counts = self.debug_counts.get("grade_counts_by_playbook")
+        if not isinstance(grade_counts, dict):
+            grade_counts = {}
+            self.debug_counts["grade_counts_by_playbook"] = grade_counts
+        if playbook_name not in grade_counts:
+            grade_counts[playbook_name] = {"A+": 0, "A": 0, "B": 0, "C": 0, "UNKNOWN": 0}
+        grade_counts[playbook_name][grade] += 1
         
         # P0.6.1: Vérifier si stop_run a été déclenché
         if self._stop_run_triggered:
@@ -1400,14 +1493,34 @@ class BacktestEngine:
             return
         
         # PATCH A: Vérifier cooldown et limite par session (ANTI-SPAM)
-        # Obtenir session actuelle
+        # Obtenir session actuelle et construire la clé hybride session+bucket4h (en NY time)
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=timezone.utc)
-        session_info = get_session_info(current_time, debug_log=False)
-        current_session = session_info.get('session', 'Unknown')
+
+        # Bucket 4h basé sur l'heure America/New_York (market-aligned)
+        try:
+            from zoneinfo import ZoneInfo  # Python 3.9+
+            ny_time = current_time.astimezone(ZoneInfo("America/New_York"))
+        except Exception:
+            # Fallback: si ZoneInfo indisponible, on reste en UTC
+            ny_time = current_time
+
+        # P0.1 FIX: Appeler get_session_info avec ny_time pour obtenir le bon session_label
+        session_info = get_session_info(ny_time, debug_log=False)
+        session_label = session_info.get('session', 'Unknown')
+
+        h = ny_time.hour
+        bucket_start = (h // 4) * 4
+        bucket_end = min(bucket_start + 4, 24)
+        bucket_str = f"{bucket_start:02d}00-{bucket_end:02d}00NY"
+        session_key = f"{ny_time.date()}|{session_label}|{bucket_str}"
+
+        # Instrumentation: mémoriser la première clé de session utilisée
+        if not self.debug_counts.get("session_key_used"):
+            self.debug_counts["session_key_used"] = session_key
         
         cooldown_ok, cooldown_reason = self.risk_engine.check_cooldown_and_session_limit(
-            setup, current_time, current_session
+            setup, current_time, session_key
         )
         if not cooldown_ok:
             logger.debug(f"⚠️ Setup bloqué (anti-spam): {cooldown_reason}")
@@ -1420,6 +1533,15 @@ class BacktestEngine:
             elif "session" in cooldown_reason.lower():
                 self.blocked_by_session_limit += 1
                 self.blocked_by_session_limit_details[playbook_name] = self.blocked_by_session_limit_details.get(playbook_name, 0) + 1
+                # OPTION B: exposer les limites de session par playbook dans debug_counts
+                try:
+                    sess_dict = self.debug_counts.get("session_limit_reached_by_playbook")
+                    if not isinstance(sess_dict, dict):
+                        sess_dict = {}
+                        self.debug_counts["session_limit_reached_by_playbook"] = sess_dict
+                    sess_dict[playbook_name] = sess_dict.get(playbook_name, 0) + 1
+                except Exception:
+                    pass
                 self._increment_reject_reason("session_limit_reached")
             return
         
@@ -1452,17 +1574,187 @@ class BacktestEngine:
         if order_result['success']:
             # DIAGNOSTIC: Compter trade ouvert
             self.debug_counts["trades_opened_total"] += 1
+            # OPTION B: Compter trades ouverts par playbook
+            try:
+                pb_name = setup.playbook_name if setup.playbook_name else "UNKNOWN"
+                opened_dict = self.debug_counts.get("trades_opened_by_playbook")
+                if not isinstance(opened_dict, dict):
+                    opened_dict = {}
+                    self.debug_counts["trades_opened_by_playbook"] = opened_dict
+                opened_dict[pb_name] = opened_dict.get(pb_name, 0) + 1
+            except Exception:
+                pass
+            
+            # P1: Capturer snapshot de contexte inter-session lors de l'ouverture du trade
+            try:
+                context_snapshot = self._get_inter_session_context_snapshot(
+                    setup.symbol, current_time, session_label, session_key
+                )
+                snapshots = self.debug_counts.get("trade_context_snapshots", [])
+                if not isinstance(snapshots, list):
+                    snapshots = []
+                    self.debug_counts["trade_context_snapshots"] = snapshots
+                if len(snapshots) < 200:  # Limiter à 200 entrées
+                    snapshots.append(context_snapshot)
+            except Exception:
+                pass  # Ne pas faire crasher le backtest sur l'instrumentation
             
             # Incrémenter le compteur de trades pour ce symbole
             self.risk_engine.increment_trades_count(setup.symbol, current_time.date())
-            # PATCH A: Record pour anti-spam (cooldown + session limit)
-            self.risk_engine.record_trade_for_cooldown(setup, current_time, current_session)
+            # PATCH A: Record pour anti-spam (cooldown + session limit) avec clé hybride
+            self.risk_engine.record_trade_for_cooldown(setup, current_time, session_key)
             logger.debug(f"  ✅ Trade opened: {setup.symbol} {setup.direction} @ {setup.entry_price:.2f} (tier={position_calc.risk_tier}R)")
         else:
             # P0 FIX: Compter rejet par ExecutionEngine
             reason = order_result.get('reason', 'execution_engine_failed')
             self._increment_reject_reason(reason)
 
+    # ========================================================================
+    # P1: Inter-session state tracking (logging only)
+    # ========================================================================
+    
+    def _update_inter_session_state(self, symbol: str, current_time: datetime, price: float):
+        """
+        Met à jour l'état inter-session pour un symbole (open/high/low/close/range).
+        Détecte les changements de session et calcule les sweeps inter-sessions.
+        """
+        try:
+            from zoneinfo import ZoneInfo
+            ny_time = current_time.astimezone(ZoneInfo("America/New_York"))
+        except Exception:
+            ny_time = current_time
+
+        session_info = get_session_info(ny_time, debug_log=False)
+        session_label = session_info.get('session', 'Unknown')
+        date_str = str(ny_time.date())
+
+        # Initialiser la structure pour ce symbole si nécessaire
+        if symbol not in self._session_states:
+            self._session_states[symbol] = {}
+
+        # Détecter changement de session
+        session_key = f"{date_str}_{session_label}"
+        if session_key not in self._session_states[symbol]:
+            # Nouvelle session : initialiser open/high/low/close
+            self._session_states[symbol][session_key] = {
+                'open': price,
+                'high': price,
+                'low': price,
+                'close': price,
+                'range': 0.0,
+                'date': date_str,
+                'session_label': session_label,
+            }
+            # Si on changeait de session, finaliser la précédente et calculer le range
+            last_label = self._last_session_label.get(symbol)
+            if last_label and last_label != session_label:
+                # Finaliser la session précédente
+                prev_key = None
+                for k, v in self._session_states[symbol].items():
+                    if v.get('session_label') == last_label and v.get('date') == date_str:
+                        prev_key = k
+                        break
+                if prev_key:
+                    prev_state = self._session_states[symbol][prev_key]
+                    prev_state['close'] = price  # Dernier prix avant changement
+                    prev_state['range'] = prev_state['high'] - prev_state['low']
+                    # Ajouter à l'historique pour vol_regime (PAR SYMBOL)
+                    if prev_state['range'] > 0:
+                        if symbol not in self._session_ranges_history:
+                            self._session_ranges_history[symbol] = []
+                        self._session_ranges_history[symbol].append(prev_state['range'])
+                        # Garder seulement les 20 dernières sessions
+                        if len(self._session_ranges_history[symbol]) > 20:
+                            self._session_ranges_history[symbol].pop(0)
+        else:
+            # Mise à jour de la session actuelle
+            state = self._session_states[symbol][session_key]
+            state['high'] = max(state['high'], price)
+            state['low'] = min(state['low'], price)
+            state['close'] = price
+            state['range'] = state['high'] - state['low']
+
+        self._last_session_label[symbol] = session_label
+
+    def _get_inter_session_context_snapshot(
+        self, symbol: str, current_time: datetime, session_label: str, session_key: str
+    ) -> Dict[str, Any]:
+        """
+        Retourne un snapshot de contexte inter-session pour un trade ouvert.
+        Inclut : session_label, bucket4h, sweep_flags, vol_regime.
+        """
+        try:
+            from zoneinfo import ZoneInfo
+            ny_time = current_time.astimezone(ZoneInfo("America/New_York"))
+        except Exception:
+            ny_time = current_time
+
+        date_str = str(ny_time.date())
+        snapshot = {
+            'timestamp': current_time.isoformat(),
+            'symbol': symbol,
+            'session_label': session_label,
+            'session_key': session_key,
+            'sweep_flags': {},
+            'vol_regime': 'unknown',
+            'session_states': {},
+        }
+
+        # Récupérer les états des sessions (ASIA/LONDON/NY)
+        symbol_states = self._session_states.get(symbol, {})
+        for sess_key, state in symbol_states.items():
+            if state.get('date') == date_str:
+                sess_label = state.get('session_label', '')
+                snapshot['session_states'][sess_label] = {
+                    'open': state.get('open', 0.0),
+                    'high': state.get('high', 0.0),
+                    'low': state.get('low', 0.0),
+                    'close': state.get('close', 0.0),
+                    'range': state.get('range', 0.0),
+                }
+
+        # Calculer les sweep flags inter-sessions
+        asia_state = snapshot['session_states'].get('ASIA', {})
+        london_state = snapshot['session_states'].get('LONDON', {})
+        ny_state = snapshot['session_states'].get('NY', {})
+
+        if asia_state and london_state:
+            asia_high = asia_state.get('high', 0.0)
+            asia_low = asia_state.get('low', 0.0)
+            london_high = london_state.get('high', 0.0)
+            london_low = london_state.get('low', 0.0)
+            snapshot['sweep_flags']['london_sweeps_asia_high'] = london_high > asia_high if asia_high > 0 else False
+            snapshot['sweep_flags']['london_sweeps_asia_low'] = london_low < asia_low if asia_low > 0 else False
+
+        if london_state and ny_state:
+            london_high = london_state.get('high', 0.0)
+            london_low = london_state.get('low', 0.0)
+            ny_high = ny_state.get('high', 0.0)
+            ny_low = ny_state.get('low', 0.0)
+            snapshot['sweep_flags']['ny_sweeps_london_high'] = ny_high > london_high if london_high > 0 else False
+            snapshot['sweep_flags']['ny_sweeps_london_low'] = ny_low < london_low if london_low > 0 else False
+
+        # Calculer vol_regime (range session / median range des dernières N sessions) - PAR SYMBOL
+        current_session_state = snapshot['session_states'].get(session_label, {})
+        current_range = current_session_state.get('range', 0.0)
+
+        symbol_ranges = self._session_ranges_history.get(symbol, [])
+        if symbol_ranges:
+            median_range = sorted(symbol_ranges)[len(symbol_ranges) // 2]
+            if median_range > 0:
+                ratio = current_range / median_range
+                if ratio > 1.5:
+                    snapshot['vol_regime'] = 'high'
+                elif ratio < 0.5:
+                    snapshot['vol_regime'] = 'low'
+                else:
+                    snapshot['vol_regime'] = 'normal'
+            else:
+                snapshot['vol_regime'] = 'unknown'
+        else:
+            snapshot['vol_regime'] = 'unknown'
+
+        return snapshot
     
     def _update_positions(self, current_time: datetime):
         """Met à jour les positions ouvertes avec les prix actuels et ingère les trades fermés."""
@@ -1596,6 +1888,13 @@ class BacktestEngine:
         stats_by_symbol = self._calculate_stats_by_symbol()
         stats_by_playbook = self._calculate_stats_by_playbook()
         stats_by_quality = self._calculate_stats_by_quality()
+        
+        # P0.2: Instrumentation multi-symbol dans debug_counts
+        try:
+            self.debug_counts["symbols_processed"] = list(stats_by_symbol.keys())
+            self.debug_counts["metrics_by_symbol"] = stats_by_symbol
+        except Exception:
+            pass  # Ne pas faire crasher sur l'instrumentation
         
         # Best/Worst
         best_trade_r = max(t.pnl_r for t in self.trades) if self.trades else 0.0
@@ -2317,16 +2616,32 @@ class BacktestEngine:
         logger.info("\n💾 Results saved to: %s", output_dir)
     
     def _increment_reject_reason(self, reason: str):
-        """P0 FIX: Incrémente compteur de rejet (max 10 raisons)"""
-        if reason not in self.debug_counts["trades_open_rejected_by_reason"]:
-            if len(self.debug_counts["trades_open_rejected_by_reason"]) >= 10:
-                # Limiter à 10 raisons max
-                return
-            self.debug_counts["trades_open_rejected_by_reason"][reason] = 0
-        self.debug_counts["trades_open_rejected_by_reason"][reason] += 1
-        logger.info("  - Summary: %s", summary_path)
-        logger.info("  - Trades : %s", trades_path)
-        logger.info("  - Equity : %s", equity_path)
+        """
+        P0 FIX: Incrémente de façon robuste le compteur de rejet de trade.
+        
+        - Ne dépend d'aucune variable externe (summary_path/trades_path/equity_path).
+        - Ne doit jamais lever d'exception (fail-safe pour le backtest).
+        - Limite à 10 raisons distinctes pour éviter d'exploser le JSON.
+        """
+        try:
+            # S'assurer que la structure de destination existe
+            reasons_dict = self.debug_counts.get("trades_open_rejected_by_reason")
+            if not isinstance(reasons_dict, dict):
+                reasons_dict = {}
+                self.debug_counts["trades_open_rejected_by_reason"] = reasons_dict
+
+            key = str(reason or "").strip() or "UNKNOWN"
+
+            if key not in reasons_dict:
+                if len(reasons_dict) >= 10:
+                    # Limiter à 10 raisons max, ne rien faire au-delà
+                    return
+                reasons_dict[key] = 0
+
+            reasons_dict[key] += 1
+        except Exception:
+            # Fail-safe absolu : ne jamais faire crasher le backtest sur l'instrumentation
+            logger.exception("Failed to increment reject reason (ignored).")
     
     def _export_debug_counts(self):
         """Export debug_counts.json pour diagnostic"""
