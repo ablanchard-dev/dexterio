@@ -183,6 +183,10 @@ class BacktestEngine:
             # P0.2: Multi-symbol instrumentation
             "symbols_processed": [],                    # Liste des symboles réellement traités
             "metrics_by_symbol": {},                    # Copie de stats_by_symbol
+            # P0.3: Anti-mitraillage par minute
+            "trades_opened_by_minute": {},              # {minute_key: count}
+            "trades_opened_by_minute_by_symbol": {},    # {minute_key: {symbol: count}}
+            "blocked_by_per_minute_cap": 0,              # Nombre de setups bloqués par cap par minute
         }
         
         logger.info(f"BacktestEngine initialized - Mode: {config.trading_mode}, Types: {config.trade_types}")
@@ -748,6 +752,19 @@ class BacktestEngine:
 
         logger.info("\n📊 Processing %d bars (1m driver)...", len(minutes))
 
+        # P0.3: Déterminer les caps selon le mode
+        if self.config.trading_mode == "SAFE":
+            max_global_per_minute = 1
+            max_per_symbol_per_minute = 1
+        else:  # AGGRESSIVE
+            max_global_per_minute = 2
+            max_per_symbol_per_minute = 1
+        
+        # P0.3: Variables de tracking anti-mitraillage par minute
+        current_minute_key = None
+        opened_symbols_this_minute = set()
+        opened_count_this_minute = 0
+
         # Loop chronologique (désactiver logs fréquents pour perf)
         log_interval = max(1000, len(minutes) // 10)  # Log tous les 10% ou min 1000
         for idx, current_time in enumerate(minutes):
@@ -800,6 +817,13 @@ class BacktestEngine:
                 if setup is not None:
                     candidate_setups.append(setup)
 
+            # P0.3: Réinitialiser les compteurs par minute si nouvelle minute
+            minute_key = pd.Timestamp(current_time).floor("1min")
+            if minute_key != current_minute_key:
+                current_minute_key = minute_key
+                opened_symbols_this_minute = set()
+                opened_count_this_minute = 0
+            
             # 3) P0.2: Exécuter TOUS les setups candidats (multi-symbol réel)
             # Trier par priorité et exécuter dans l'ordre (DAILY en premier, puis SCALP)
             if candidate_setups:
@@ -825,11 +849,39 @@ class BacktestEngine:
                 all_setups_to_try = daily_setups_sorted + scalp_setups_sorted
                 
                 for setup in all_setups_to_try:
+                    # P0.3: Vérifier cap par symbole (1 trade max par symbole par minute)
+                    if setup.symbol in opened_symbols_this_minute:
+                        self.debug_counts["blocked_by_per_minute_cap"] += 1
+                        continue  # Skip ce setup, symbole déjà traité cette minute
+                    
+                    # P0.3: Vérifier cap global (N trades max par minute)
+                    if opened_count_this_minute >= max_global_per_minute:
+                        self.debug_counts["blocked_by_per_minute_cap"] += 1
+                        break  # Arrêter pour cette minute, cap global atteint
+                    
                     # Vérifier limites globales (circuit breakers) avant chaque exécution
                     limits_check = self.risk_engine.check_daily_limits()
                     if limits_check["trading_allowed"]:
                         # _execute_setup vérifie les limites individuelles (cooldown, session, etc.)
-                        self._execute_setup(setup, current_time)
+                        # Retourne True si un trade a été ouvert
+                        trade_opened = self._execute_setup(setup, current_time)
+                        
+                        # P0.3: Mettre à jour les compteurs par minute si trade ouvert
+                        if trade_opened:
+                            opened_symbols_this_minute.add(setup.symbol)
+                            opened_count_this_minute += 1
+                            
+                            # Instrumentation: compter trades par minute
+                            minute_key_str = minute_key.isoformat()
+                            if minute_key_str not in self.debug_counts["trades_opened_by_minute"]:
+                                self.debug_counts["trades_opened_by_minute"][minute_key_str] = 0
+                            self.debug_counts["trades_opened_by_minute"][minute_key_str] += 1
+                            
+                            # Instrumentation: compter trades par minute par symbole
+                            if minute_key_str not in self.debug_counts["trades_opened_by_minute_by_symbol"]:
+                                self.debug_counts["trades_opened_by_minute_by_symbol"][minute_key_str] = {}
+                            symbol_dict = self.debug_counts["trades_opened_by_minute_by_symbol"][minute_key_str]
+                            symbol_dict[setup.symbol] = symbol_dict.get(setup.symbol, 0) + 1
                     else:
                         # Si trading bloqué globalement, arrêter pour cette minute
                         break
@@ -1445,8 +1497,13 @@ class BacktestEngine:
         
         return patterns
     
-    def _execute_setup(self, setup: Setup, current_time: datetime):
-        """Exécute un setup (via RiskEngine + ExecutionEngine) avec 2R/1R money management."""
+    def _execute_setup(self, setup: Setup, current_time: datetime) -> bool:
+        """
+        Exécute un setup (via RiskEngine + ExecutionEngine) avec 2R/1R money management.
+        
+        Returns:
+            bool: True si un trade a été ouvert avec succès, False sinon.
+        """
         
         # P0 FIX: Compter tentative d'ouverture
         self.debug_counts["trades_open_attempted_total"] += 1
@@ -1482,7 +1539,7 @@ class BacktestEngine:
             reason = f"STOP_RUN actif depuis {self._stop_run_time}"
             logger.debug(f"⚠️ Setup refusé: {reason}")
             self._increment_reject_reason("stop_run_triggered")
-            return
+            return False
         
         # Vérifier si le setup peut être pris (circuit breakers, quotas, etc.)
         can_take = self.risk_engine.can_take_setup(setup)
@@ -1490,7 +1547,7 @@ class BacktestEngine:
             reason = can_take.get('reason', 'unknown')
             logger.debug(f"⚠️ Setup refusé par RiskEngine: {reason}")
             self._increment_reject_reason(reason)
-            return
+            return False
         
         # PATCH A: Vérifier cooldown et limite par session (ANTI-SPAM)
         # Obtenir session actuelle et construire la clé hybride session+bucket4h (en NY time)
@@ -1543,7 +1600,7 @@ class BacktestEngine:
                 except Exception:
                     pass
                 self._increment_reject_reason("session_limit_reached")
-            return
+            return False
         
         # Vérifier cap trades par symbole
         allowed, reason = self.risk_engine.check_trades_cap(setup.symbol, current_time.date())
@@ -1604,10 +1661,12 @@ class BacktestEngine:
             # PATCH A: Record pour anti-spam (cooldown + session limit) avec clé hybride
             self.risk_engine.record_trade_for_cooldown(setup, current_time, session_key)
             logger.debug(f"  ✅ Trade opened: {setup.symbol} {setup.direction} @ {setup.entry_price:.2f} (tier={position_calc.risk_tier}R)")
+            return True
         else:
             # P0 FIX: Compter rejet par ExecutionEngine
             reason = order_result.get('reason', 'execution_engine_failed')
             self._increment_reject_reason(reason)
+            return False
 
     # ========================================================================
     # P1: Inter-session state tracking (logging only)
