@@ -49,6 +49,9 @@ class BacktestConfig(BaseModel):
     spread_model: str = "fixed_bps"       # fixed_bps, none
     spread_bps: float = 2.0               # 2 bps = 0.02%
     
+    # PATCH 3: Time-stop pour SCALP (empêcher overnight)
+    max_scalp_minutes: float = 120.0      # Durée max en minutes pour trade_type=SCALP
+    
     # Output (default will be resolved at runtime via path_resolver)
     output_dir: str = 'data/backtest_results'  # Relative path, resolved by engine
     save_trades: bool = True

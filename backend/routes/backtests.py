@@ -4,11 +4,14 @@ Endpoints for UI-triggered backtests
 """
 
 import os
+import logging
 from fastapi import APIRouter, HTTPException, Response, Header, Depends
 from fastapi.responses import FileResponse
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from jobs.backtest_jobs import (
     BacktestJobRequest,
@@ -89,8 +92,13 @@ async def run_backtest(request: BacktestJobRequest):
     # Submit job
     try:
         job_id = submit_job(request)
+        logger.info(f"✅ Job submitted successfully: job_id={job_id}")
     except ValueError as e:
+        logger.error(f"❌ Job submission failed: {e}")
         raise HTTPException(409, str(e))  # 409 Conflict
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in run_backtest: {e}", exc_info=True)
+        raise HTTPException(500, f"Internal server error: {str(e)}")
     
     return {"job_id": job_id}
 
