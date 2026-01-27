@@ -118,4 +118,10 @@ class Setup(BaseModel):
     day_type: str = 'unknown'
     daily_structure: str = 'unknown'
     
+    # P0: Grading debug info (match_score, match_grade, grade_thresholds)
+    match_score: Optional[float] = None  # Score utilisé pour grader
+    match_grade: Optional[str] = None  # Grade renvoyé par playbook_loader
+    grade_thresholds: Optional[Dict[str, float]] = None  # Seuils A_plus/A/B pour ce playbook
+    score_scale_hint: Optional[str] = None  # P0: Hint pour l'échelle du score ("0-1", "0-100", "unknown")
+    
     notes: str = ''

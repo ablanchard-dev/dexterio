@@ -239,6 +239,7 @@ class PlaybookLoader:
                                 },
                             }
                         else:
+                            # TASK 2: Seuils abaissés pour permettre A+/A/B réels (pas 100% C)
                             scoring_cfg = {
                                 'weights': {
                                     'liquidity_sweep': 0.3 if setup_cfg.get('liquidity', {}).get('require_sweep', False) else 0.1,
@@ -247,9 +248,9 @@ class PlaybookLoader:
                                     'fvg_quality': 0.2 if ict_confluences['allow_fvg'] else 0.1,
                                 },
                                 'grade_thresholds': {
-                                    'A_plus': 0.85,
-                                    'A': 0.75,
-                                    'B': 0.65,
+                                    'A_plus': 0.75,  # TASK 2: Abaissé de 0.85
+                                    'A': 0.60,       # TASK 2: Abaissé de 0.75
+                                    'B': 0.45,       # TASK 2: Abaissé de 0.65
                                 },
                             }
 
@@ -390,6 +391,14 @@ class PlaybookEvaluator:
             # Calculer le grade
             grade = self._calculate_grade(score, playbook.grade_thresholds)
             
+            # P0: Détecter score_scale_hint
+            score_scale_hint = "unknown"
+            if score is not None:
+                if 0 <= score <= 1:
+                    score_scale_hint = "0-1"
+                elif 0 <= score <= 100:
+                    score_scale_hint = "0-100"
+            
             # Debug DAY A+ : capturer jusqu'à 20 entrées avec composantes de score
             if playbook.name == 'DAY_Aplus_1_Liquidity_Sweep_OB_Retest' and len(DEBUG_DAY_APLUS) < 20:
                 dbg = details.get('debug_components', {}) if isinstance(details, dict) else {}
@@ -436,14 +445,16 @@ class PlaybookEvaluator:
             matches.append({
                 'playbook_name': playbook.name,
                 'playbook_category': playbook.category,
-                'score': score,
-                'grade': grade,
+                'score': score,  # P0: Clé originale "score" (pas "match_score")
+                'grade': grade,  # P0: Clé originale "grade" (pas "match_grade")
                 'details': details,
                 'min_rr': playbook.min_rr,
                 'tp1_rr': playbook.tp1_rr,
                 'tp2_rr': playbook.tp2_rr,
                 'entry_type': playbook.entry_type,
-                'max_duration_minutes': playbook.max_duration_minutes
+                'max_duration_minutes': playbook.max_duration_minutes,
+                'grade_thresholds': playbook.grade_thresholds,  # P0: Ajouter thresholds pour debug grading
+                'score_scale_hint': score_scale_hint  # P0: Ajouter hint pour debug
             })
         
         return matches

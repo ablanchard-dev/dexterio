@@ -228,8 +228,6 @@ def list_jobs(limit: int = 20) -> List[BacktestJobStatus]:
             continue
     
     return jobs
-    
-    return jobs
 
 
 def run_backtest_worker(job_id: str, request_dict: dict):

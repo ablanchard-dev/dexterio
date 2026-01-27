@@ -63,6 +63,19 @@ class ExecutionEngine:
         
         trade_quality = setup.quality
         
+        # P0: Propagation grading debug info (depuis Setup) - AVANT création du Trade
+        match_score_setup = getattr(setup, 'match_score', None)
+        match_grade_setup = getattr(setup, 'match_grade', None)
+        grade_thresholds_setup = getattr(setup, 'grade_thresholds', None)
+        score_scale_hint_setup = getattr(setup, 'score_scale_hint', None)
+        
+        # P0: Trace de propagation - log si valeurs None (pour les 3 premiers trades)
+        if not hasattr(self, '_grading_trace_count'):
+            self._grading_trace_count = 0
+        if self._grading_trace_count < 3:
+            logger.warning(f"[GRADING TRACE] Trade {setup.id}: setup.match_score={match_score_setup}, setup.match_grade={match_grade_setup}, setup.grade_thresholds={'present' if grade_thresholds_setup else 'None'}")
+            self._grading_trace_count += 1
+        
         trade = Trade(
             date=now_ts.date(),
             time_entry=now_ts,
@@ -82,18 +95,6 @@ class ExecutionEngine:
             trade_type=setup.trade_type,
             
             # P0: Propagation grading debug info (depuis Setup)
-            match_score_setup = getattr(setup, 'match_score', None)
-            match_grade_setup = getattr(setup, 'match_grade', None)
-            grade_thresholds_setup = getattr(setup, 'grade_thresholds', None)
-            score_scale_hint_setup = getattr(setup, 'score_scale_hint', None)
-            
-            # P0: Trace de propagation - log si valeurs None (pour les 3 premiers trades)
-            if not hasattr(self, '_grading_trace_count'):
-                self._grading_trace_count = 0
-            if self._grading_trace_count < 3:
-                logger.warning(f"[GRADING TRACE] Trade {setup.id}: setup.match_score={match_score_setup}, setup.match_grade={match_grade_setup}, setup.grade_thresholds={'present' if grade_thresholds_setup else 'None'}")
-                self._grading_trace_count += 1
-            
             match_score=match_score_setup,
             match_grade=match_grade_setup,
             grade_thresholds=grade_thresholds_setup,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://127.0.0.1:8001';
 
 export default function Backtests() {
   const [jobId, setJobId] = useState(null);
@@ -46,7 +46,12 @@ export default function Backtests() {
   const fetchRecentJobs = async () => {
     try {
       const res = await fetch(`${API_URL}/api/backtests?limit=10`);
+      // P0 FIX: Lire le body UNE SEULE FOIS
       const data = await res.json();
+      if (!res.ok) {
+        console.error('Failed to fetch recent jobs:', data?.detail || data?.message);
+        return;
+      }
       setRecentJobs(data.jobs || []);
     } catch (err) {
       console.error('Failed to fetch recent jobs:', err);
@@ -56,7 +61,12 @@ export default function Backtests() {
   const fetchJobStatus = async () => {
     try {
       const res = await fetch(`${API_URL}/api/backtests/${jobId}`);
+      // P0 FIX: Lire le body UNE SEULE FOIS
       const data = await res.json();
+      if (!res.ok) {
+        console.error('Failed to fetch job status:', data?.detail || data?.message);
+        return;
+      }
       setJobStatus(data);
       
       if (data.status === 'done' || data.status === 'failed') {
@@ -72,7 +82,12 @@ export default function Backtests() {
   const fetchJobLog = async () => {
     try {
       const res = await fetch(`${API_URL}/api/backtests/${jobId}/log`);
+      // P0 FIX: Lire le body UNE SEULE FOIS
       const data = await res.json();
+      if (!res.ok) {
+        console.error('Failed to fetch job log:', data?.detail || data?.message);
+        return;
+      }
       setJobLog(data.log || '');
     } catch (err) {
       console.error('Failed to fetch job log:', err);
@@ -102,23 +117,47 @@ export default function Backtests() {
     };
     
     try {
-      const res = await fetch(`${API_URL}/api/backtests/run`, {
+      // P0 FIX: Logging pour diagnostic
+      const url = `${API_URL}/api/backtests/run`;
+      console.log(`🚀 Starting backtest: POST ${url}`, request);
+      
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request)
       });
       
+      console.log(`📡 Response status: ${res.status} ${res.statusText}`);
+      
+      // P0 FIX: Lire le body UNE SEULE FOIS pour éviter "body stream already read"
+      let payload = null;
+      try {
+        payload = await res.json();
+      } catch (parseErr) {
+        // Si le body n'est pas du JSON, essayer de lire comme texte
+        const text = await res.text();
+        console.error(`❌ Failed to parse JSON response: ${text}`);
+        throw new Error(`Invalid response (${res.status}): ${text.substring(0, 200)}`);
+      }
+      
       if (!res.ok) {
-        const error = await res.json();
-        alert(`Error: ${error.detail}`);
+        const errorMsg = payload?.detail || payload?.message || `HTTP ${res.status}: Backtest failed`;
+        console.error(`❌ Backtest failed: ${errorMsg}`);
+        alert(`Error: ${errorMsg}`);
         setLoading(false);
         return;
       }
       
-      const data = await res.json();
-      setJobId(data.job_id);
+      console.log(`✅ Backtest started: job_id=${payload.job_id}`);
+      setJobId(payload.job_id);
     } catch (err) {
-      alert(`Failed to start backtest: ${err.message}`);
+      // P0 FIX: Distinguer erreurs réseau vs API
+      let errorMsg = err.message;
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        errorMsg = `Network error: Cannot reach backend at ${API_URL}. Is the server running?`;
+      }
+      console.error(`❌ Failed to start backtest:`, err);
+      alert(`Failed to start backtest: ${errorMsg}`);
       setLoading(false);
     }
   };

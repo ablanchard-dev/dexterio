@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)
 AGGRESSIVE_ALLOWLIST = [
     'News_Fade',                               # +90.64R, 32.5% WR ✅
     'Session_Open_Scalp',                      # -2.4R, 38.4% WR ✅
-    'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # +10.5R, 41% WR ✅ (SNIPER)
+    # PATCH 2: SCALP_Aplus_1_Mini_FVG_Retest_NY_Open retiré (quarantiné)
+    # Ancien: +10.5R, 41% WR ✅ (SNIPER)
+    # Réalité job_ae6e4740: 6 trades, 0 win, -1.399R ❌ TOXIQUE
     # Playbooks du YAML (activation progressive selon calibration)
     'NY_Open_Reversal',
     'Trend_Continuation_FVG_Retest',
@@ -45,11 +47,13 @@ AGGRESSIVE_DENYLIST = [
     'Power_Hour_Expansion',                    # -31R ❌
     'DAY_Aplus_1_Liquidity_Sweep_OB_Retest',   # Sweep/BOS non détectés ❌
     'Lunch_Range_Scalp',                       # Toxique ❌
+    'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # PATCH 2: Quarantiné (job_ae6e4740: 6 trades, 0 win, -1.399R)
 ]
 
 # Playbooks AUTORISÉS en mode SAFE (sniper A+ uniquement)
 SAFE_ALLOWLIST = [
-    'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # SNIPER mode
+    # PATCH 2: SCALP_Aplus_1_Mini_FVG_Retest_NY_Open retiré (quarantiné)
+    # Aucun playbook A+ actif pour l'instant en mode SAFE
 ]
 
 
@@ -731,7 +735,13 @@ class RiskEngine:
         grade = meta.get('grade') or getattr(setup, 'quality', None)
         category = meta.get('category')
         
-        if grade == 'APLUS' or category == 'A_PLUS_ONLY':
+        # P0 FIX: Harmoniser A+ vs APLUS (normaliser vers 'A+')
+        if grade:
+            grade_upper = str(grade).strip().upper()
+            if grade_upper in ('APLUS', 'A_PLUS', 'A+'):
+                grade = 'A+'
+        
+        if grade == 'A+' or category == 'A_PLUS_ONLY':
             if setup.trade_type == 'DAILY' and self.state.daily_aplus_daily_count >= 1:
                 return {'allowed': False, 'reason': 'A+ DAILY quota reached for today'}
             if setup.trade_type == 'SCALP' and self.state.daily_aplus_scalp_count >= 1:
