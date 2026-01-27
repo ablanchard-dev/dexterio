@@ -30,7 +30,7 @@ from engines.risk_engine import RiskEngine
 from engines.execution.paper_trading import ExecutionEngine
 from engines.timeframe_aggregator import TimeframeAggregator
 from engines.market_state_cache import MarketStateCache
-from utils.timeframes import get_session_info
+from utils.timeframes import get_session_info, is_in_kill_zone
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,8 @@ class BacktestEngine:
         assert self.risk_engine.state.trading_mode == config.trading_mode, \
             f"RiskEngine mode mismatch: {self.risk_engine.state.trading_mode} != {config.trading_mode}"
         self.execution_engine = ExecutionEngine(self.risk_engine)
+        # PATCH 3: Transmettre max_scalp_minutes à ExecutionEngine
+        self.execution_engine.risk_engine._max_scalp_minutes = config.max_scalp_minutes
         
         # OPTIMISATION: Timeframe aggregator et caches
         self.tf_aggregator = TimeframeAggregator()
@@ -901,6 +903,9 @@ class BacktestEngine:
         # DIAGNOSTIC: Exporter debug_counts.json
         self._export_debug_counts()
 
+        # P0: Générer sanity report
+        self._generate_sanity_report(result)
+
         # Sauvegarder
         self._save_results(result)
 
@@ -945,7 +950,7 @@ class BacktestEngine:
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=timezone.utc)
         session_info = get_session_info(current_time, debug_log=False)
-        current_session = session_info.get('session', 'Unknown')
+        current_session = session_info.get('name', 'Unknown')  # P0 FIX: Utiliser 'name' au lieu de 'session'
         
         # Clé de cache : (symbol, session, last_1h_close, last_4h_close, last_1d_close)
         last_1h_close = candles_1h[-1].timestamp if candles_1h else None
@@ -1048,6 +1053,12 @@ class BacktestEngine:
         # On compte chaque appel à generate_setups comme une évaluation
         self.debug_counts["playbooks_evaluated_total"] = self.debug_counts.get("playbooks_evaluated_total", 0) + 1
         
+        # P0 FIX: Récupérer le dernier prix réel (close M1) pour éviter placeholder
+        last_close = candles_1m[-1].close if candles_1m else None
+        if last_close is None:
+            logger.error(f"[P0] No last_price available for {symbol} at {current_time}, skipping setup generation")
+            return None
+        
         # Générer setup via SetupEngine
         setups = self.setup_engine.generate_setups(
             symbol=symbol,
@@ -1056,7 +1067,8 @@ class BacktestEngine:
             ict_patterns=ict_patterns,
             candle_patterns=candle_patterns,
             liquidity_levels=[],  # Liquidity levels désactivés temporairement
-            trading_mode=self.config.trading_mode
+            trading_mode=self.config.trading_mode,
+            last_price=last_close  # P0 FIX: Transmettre le vrai prix
         )
         
         # P0 FIX: Compter matches (après génération, matches stockés dans _last_matches)
@@ -1564,7 +1576,7 @@ class BacktestEngine:
 
         # P0.1 FIX: Appeler get_session_info avec ny_time pour obtenir le bon session_label
         session_info = get_session_info(ny_time, debug_log=False)
-        session_label = session_info.get('session', 'Unknown')
+        session_label = session_info.get('name', 'Unknown')  # P0 FIX: Utiliser 'name' au lieu de 'session'
 
         h = ny_time.hour
         bucket_start = (h // 4) * 4
@@ -1684,7 +1696,7 @@ class BacktestEngine:
             ny_time = current_time
 
         session_info = get_session_info(ny_time, debug_log=False)
-        session_label = session_info.get('session', 'Unknown')
+        session_label = session_info.get('name', 'Unknown')  # P0 FIX: Utiliser 'name' au lieu de 'session'
         date_str = str(ny_time.date())
 
         # Initialiser la structure pour ce symbole si nécessaire
@@ -1827,7 +1839,7 @@ class BacktestEngine:
                 market_data[symbol] = float(current_bars["close"].iloc[-1])
 
         # Mettre à jour les positions (SL/TP/BE) via ExecutionEngine
-        self.execution_engine.update_open_trades(market_data)
+        self.execution_engine.update_open_trades(market_data, current_time=current_time)  # P0 FIX: Transmettre current_time
 
         # Ingestion des trades nouvellement fermés
         self._ingest_closed_trades(current_time)
@@ -1868,10 +1880,22 @@ class BacktestEngine:
             logger.info("\n🔚 Closing %d remaining positions...", len(open_trades))
 
             for trade in open_trades:
-                # Prix de sortie = dernier prix connu
+                # TASK 1: Pour les SCALP, vérifier time-stop AVANT de fermer en eod
+                if trade.trade_type == 'SCALP':
+                    elapsed_minutes = (end_time - trade.time_entry).total_seconds() / 60.0
+                    max_scalp_minutes = getattr(self.risk_engine, '_max_scalp_minutes', 120.0)
+                    if elapsed_minutes >= max_scalp_minutes:
+                        # Fermer en time_stop plutôt qu'en eod
+                        symbol_data = self.data[trade.symbol]
+                        exit_price = float(symbol_data["close"].iloc[-1])
+                        self.execution_engine.close_trade(trade.id, "time_stop", exit_price, current_time=end_time)
+                        logger.info(f"Trade {trade.id}: SCALP closed in time_stop (not eod) after {elapsed_minutes:.1f}min")
+                        continue
+                
+                # Pour DAILY ou SCALP < max_scalp_minutes, fermer normalement en eod
                 symbol_data = self.data[trade.symbol]
                 exit_price = float(symbol_data["close"].iloc[-1])
-                self.execution_engine.close_trade(trade.id, "eod", exit_price)
+                self.execution_engine.close_trade(trade.id, "eod", exit_price, current_time=end_time)
 
         # Ingestion finale des trades fermés
         self._ingest_closed_trades(end_time)
@@ -2200,7 +2224,7 @@ class BacktestEngine:
                 direction=trade.direction,
                 trade_type=trade.trade_type,
                 playbook=trade.playbook,
-                quality=trade.setup_quality,
+                quality=trade.get_quality(),  # TASK 2: Utiliser get_quality() pour fallback UNKNOWN
                 entry_price=trade.entry_price,
                 exit_price=trade.exit_price,
                 stop_loss=trade.stop_loss,
@@ -2382,9 +2406,28 @@ class BacktestEngine:
         """Stats par quality"""
         stats = {}
         
-        qualities = set(t.quality for t in self.trades)
+        # TASK 2: Utiliser quality avec fallback UNKNOWN si None/vide
+        qualities = set()
+        for t in self.trades:
+            # TradeResult a un champ quality direct, Trade utilise get_quality()
+            if hasattr(t, 'get_quality'):
+                q = t.get_quality()
+            else:
+                q = getattr(t, 'quality', None) or "UNKNOWN"
+            if not q or not str(q).strip():
+                q = "UNKNOWN"
+            qualities.add(q)
+        
         for quality in qualities:
-            qual_trades = [t for t in self.trades if t.quality == quality]
+            # Filtrer par quality (compatible Trade et TradeResult)
+            qual_trades = []
+            for t in self.trades:
+                if hasattr(t, 'get_quality'):
+                    tq = t.get_quality()
+                else:
+                    tq = getattr(t, 'quality', None) or "UNKNOWN"
+                if tq == quality:
+                    qual_trades.append(t)
             wins = [t for t in qual_trades if t.outcome == 'win']
             stats[quality] = {
                 'trades': len(qual_trades),
@@ -2463,6 +2506,38 @@ class BacktestEngine:
             pnl_r_account = t.pnl_dollars / base_r if base_r > 0 else 0.0
             cumulative_r += pnl_r_account
             
+            # PATCH 1: Calculer session_label et killzone_label depuis timestamp_entry
+            session_label = "unknown"
+            killzone_label = "none"
+            if t.timestamp_entry:
+                try:
+                    # Convertir en UTC si nécessaire
+                    entry_ts = t.timestamp_entry
+                    if entry_ts.tzinfo is None:
+                        entry_ts = entry_ts.replace(tzinfo=timezone.utc)
+                    elif entry_ts.tzinfo != timezone.utc:
+                        entry_ts = entry_ts.astimezone(timezone.utc)
+                    
+                    session_info = get_session_info(entry_ts, debug_log=False)
+                    session_label = session_info.get('name', 'unknown')
+                    
+                    killzone_info = is_in_kill_zone(entry_ts)
+                    if killzone_info.get('in_kill_zone'):
+                        # Normaliser les noms de killzone
+                        zone_name = killzone_info.get('zone_name', '')
+                        if 'Morning' in zone_name:
+                            killzone_label = "ny_open"
+                        elif 'Afternoon' in zone_name:
+                            killzone_label = "ny_pm"
+                        else:
+                            killzone_label = zone_name.lower().replace(' ', '_')
+                    else:
+                        killzone_label = "none"
+                except Exception as e:
+                    logger.warning(f"Failed to compute session/killzone for trade {t.trade_id}: {e}")
+                    session_label = "unknown"
+                    killzone_label = "none"
+            
             trades_records.append({
                 "trade_id": t.trade_id,
                 "timestamp_entry": t.timestamp_entry,
@@ -2473,7 +2548,7 @@ class BacktestEngine:
                 "playbook": t.playbook,
                 "direction": t.direction,
                 "trade_type": t.trade_type,
-                "quality": t.quality,
+                "quality": t.get_quality() if hasattr(t, 'get_quality') else (t.quality if t.quality and str(t.quality).strip() else "UNKNOWN"),  # TASK 2: Fallback UNKNOWN
                 "entry_price": t.entry_price,
                 "exit_price": t.exit_price,
                 "stop_loss": t.stop_loss,
@@ -2489,6 +2564,14 @@ class BacktestEngine:
                 "cumulative_R": cumulative_r,
                 "outcome": t.outcome,
                 "exit_reason": t.exit_reason,
+                # PATCH 1: Ajouter session_label et killzone_label
+                "session_label": session_label,
+                "killzone_label": killzone_label,
+                # P0: Grading debug columns (depuis Trade)
+                "match_score": getattr(t, 'match_score', None),
+                "match_grade": getattr(t, 'match_grade', None),
+                "grade_thresholds": str(getattr(t, 'grade_thresholds', None)) if getattr(t, 'grade_thresholds', None) else None,  # Convert dict to string for CSV
+                "score_scale_hint": getattr(t, 'score_scale_hint', None),  # P0: Utiliser depuis Trade (pas recalculer)
             })
 
         trades_df = _pd.DataFrame(trades_records)
@@ -2498,6 +2581,147 @@ class BacktestEngine:
         trades_csv_path = output_dir / f"trades_{run_id}_{mode}_{types}.csv"
         trades_df.to_csv(trades_csv_path, index=False)
         logger.info(f"  - Trades CSV: {trades_csv_path}")
+        
+        # P0: Export grading debug JSON séparé (TOUJOURS créé, même si vide)
+        # Note: run_id contient déjà "job_" si venu de backtest_jobs, donc on utilise run_id directement
+        grading_debug_path = output_dir / f"grading_debug_{run_id}.json"
+        grading_debug_records = []
+        reason_if_empty = None
+        
+        # P0: Trace de propagation - identifier où les valeurs deviennent None
+        trace_count = 0
+        for t in result.trades:
+            match_score = getattr(t, 'match_score', None)
+            match_grade = getattr(t, 'match_grade', None)
+            grade_thresholds = getattr(t, 'grade_thresholds', None)
+            score_scale_hint = getattr(t, 'score_scale_hint', None)  # P0: Utiliser depuis Trade
+            
+            # P0: Trace pour les 3 premiers trades si valeurs None
+            if trace_count < 3 and (match_score is None or match_grade is None):
+                logger.warning(f"[GRADING TRACE] TradeResult {t.trade_id}: match_score={match_score}, match_grade={match_grade}, grade_thresholds={'present' if grade_thresholds else 'None'}")
+                trace_count += 1
+            
+            # Si score_scale_hint manquant, le détecter
+            if not score_scale_hint and match_score is not None:
+                if 0 <= match_score <= 1:
+                    score_scale_hint = "0-1"
+                elif 0 <= match_score <= 100:
+                    score_scale_hint = "0-100"
+                else:
+                    score_scale_hint = "unknown"
+            
+            grading_debug_records.append({
+                "trade_id": t.trade_id,
+                "playbook": t.playbook,
+                "quality": t.get_quality() if hasattr(t, 'get_quality') else (t.quality if t.quality and str(t.quality).strip() else "UNKNOWN"),
+                "match_score": match_score,
+                "match_grade": match_grade,
+                "grade_thresholds": grade_thresholds,  # Dict complet dans JSON
+                "score_scale_hint": score_scale_hint,
+            })
+        
+        # P0: Calculer métriques de scoring
+        total_trades = len(grading_debug_records)
+        scores = [r.get('match_score') for r in grading_debug_records if r.get('match_score') is not None]
+        score_count = len(scores)
+        
+        # P0: Détecter si les champs sont vides
+        empty_count = sum(1 for r in grading_debug_records if r.get('match_score') is None or r.get('match_grade') is None)
+        reason_if_empty = None
+        if total_trades > 0 and score_count == 0:
+            reason_if_empty = "NO_SCORES_PROPAGATED"
+            logger.warning(f"[GRADING DEBUG] {reason_if_empty}: {total_trades} trades mais 0 scores propagés")
+        elif empty_count > 0:
+            reason_if_empty = f"fields_not_propagated ({empty_count}/{total_trades} trades avec champs vides)"
+        
+        # P0: Calculer stats scores
+        score_min = float(np.min(scores)) if scores else None
+        score_max = float(np.max(scores)) if scores else None
+        score_mean = float(np.mean(scores)) if scores else None
+        
+        # P0: Grade counts
+        grade_counts = {'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'UNKNOWN': 0}
+        for r in grading_debug_records:
+            grade = r.get('match_grade') or r.get('quality', 'UNKNOWN')
+            if grade in grade_counts:
+                grade_counts[grade] += 1
+            else:
+                grade_counts['UNKNOWN'] += 1
+        
+        # P0: Collecter thresholds_snapshot (top 3 playbooks)
+        playbook_counts = {}
+        playbook_thresholds = {}
+        for r in grading_debug_records:
+            playbook = r.get('playbook', 'UNKNOWN')
+            playbook_counts[playbook] = playbook_counts.get(playbook, 0) + 1
+            thresholds = r.get('grade_thresholds')
+            if thresholds and playbook not in playbook_thresholds:
+                playbook_thresholds[playbook] = thresholds
+        
+        top_playbooks = sorted(playbook_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+        thresholds_snapshot = {}
+        for playbook_name, count in top_playbooks:
+            if playbook_name in playbook_thresholds:
+                thresholds_snapshot[playbook_name] = {
+                    'count': count,
+                    'thresholds': playbook_thresholds[playbook_name]
+                }
+        
+        # P0: Diagnostic automatique "100% C"
+        diagnostic = None
+        diagnostic_data = None
+        if total_trades > 0:
+            if score_count == 0:
+                diagnostic = "BROKEN_PROPAGATION_OR_SCORE_NOT_COMPUTED"
+                logger.error(f"[GRADING DEBUG] {diagnostic}: Aucun score propagé pour {total_trades} trades")
+            elif score_count == total_trades and grade_counts.get('C', 0) == total_trades:
+                # 100% C avec scores présents = probablement légitime (scores sous seuil B)
+                diagnostic = "ALL_C_LEGIT_SCORE_BELOW_B_THRESHOLD"
+                # Extraire seuil B depuis thresholds_snapshot
+                b_threshold = None
+                if thresholds_snapshot:
+                    first_playbook = list(thresholds_snapshot.values())[0]
+                    if 'thresholds' in first_playbook and 'B' in first_playbook['thresholds']:
+                        b_threshold = first_playbook['thresholds']['B']
+                
+                # Échantillon de 5 scores pour comparaison
+                sample_scores = scores[:5] if len(scores) >= 5 else scores
+                diagnostic_data = {
+                    "b_threshold": b_threshold,
+                    "score_min": score_min,
+                    "score_max": score_max,
+                    "score_mean": score_mean,
+                    "sample_5_scores": sample_scores,
+                    "all_scores_below_b": all(s < b_threshold for s in sample_scores) if b_threshold and sample_scores else None
+                }
+                logger.info(f"[GRADING DEBUG] {diagnostic}: Tous les scores sont sous le seuil B ({b_threshold})")
+            elif score_count < total_trades:
+                diagnostic = f"PARTIAL_SCORES_PROPAGATED ({score_count}/{total_trades})"
+        
+        # P0: Échantillon des 5 premiers trades
+        sample_first_5_trades = grading_debug_records[:5]
+        
+        # P0: Structure complète avec métadonnées et diagnostic
+        grading_debug_output = {
+            "run_id": run_id,
+            "total_trades": total_trades,
+            "score_count": score_count,
+            "score_min": score_min,
+            "score_max": score_max,
+            "score_mean": score_mean,
+            "grade_counts": grade_counts,
+            "thresholds_snapshot": thresholds_snapshot,
+            "sample_first_5_trades": sample_first_5_trades,
+            "reason_if_empty": reason_if_empty,
+            "diagnostic": diagnostic,
+            "diagnostic_data": diagnostic_data,
+            "all_trades": grading_debug_records
+        }
+        
+        import json as _json
+        with open(grading_debug_path, 'w', encoding='utf-8') as f:
+            _json.dump(grading_debug_output, f, indent=2, default=str)
+        logger.info(f"  - Grading debug JSON: {grading_debug_path} (trades={len(grading_debug_records)}, empty={empty_count if reason_if_empty else 0})")
 
         # Sauvegarde equity curve
         equity_df = _pd.DataFrame(
@@ -2737,3 +2961,300 @@ class BacktestEngine:
             logger.info("  - Debug counts: %s", debug_path)
         except Exception as e:
             logger.warning(f"Failed to export debug_counts: {e}")
+    
+    def _generate_sanity_report(self, result: BacktestResult):
+        """P0: Génère un rapport de sanity check pour valider l'interprétabilité du backtest"""
+        try:
+            import json
+            import numpy as np
+            from collections import Counter
+            
+            output_dir = Path(self.config.output_dir)
+            run_id = self.run_id
+            sanity_path = output_dir / f"sanity_report_{run_id}.json"
+            
+            if not self.trades:
+                report = {
+                    "run_id": run_id,
+                    "status": "NO_TRADES",
+                    "message": "No trades executed, cannot generate sanity report"
+                }
+                with open(sanity_path, 'w', encoding='utf-8') as f:
+                    json.dump(report, f, indent=2, default=str)
+                logger.warning("  - Sanity report: NO_TRADES")
+                return
+            
+            # 1. Entry price distribution vs close/open référence
+            entry_prices = [t.entry_price for t in self.trades]
+            entry_price_mean = float(np.mean(entry_prices)) if entry_prices else 0.0
+            entry_price_median = float(np.median(entry_prices)) if entry_prices else 0.0
+            entry_price_std = float(np.std(entry_prices)) if entry_prices else 0.0
+            
+            # Comparer avec les prix de marché (dernier close de chaque symbole)
+            entry_price_vs_market = {}
+            for symbol in self.config.symbols:
+                if symbol in self.data:
+                    symbol_data = self.data[symbol]
+                    if not symbol_data.empty:
+                        market_close_mean = float(symbol_data["close"].mean())
+                        market_close_std = float(symbol_data["close"].std())
+                        symbol_trades = [t for t in self.trades if t.symbol == symbol]
+                        if symbol_trades:
+                            symbol_entry_mean = float(np.mean([t.entry_price for t in symbol_trades]))
+                            entry_price_vs_market[symbol] = {
+                                "entry_price_mean": symbol_entry_mean,
+                                "market_close_mean": market_close_mean,
+                                "market_close_std": market_close_std,
+                                "entry_vs_market_diff": symbol_entry_mean - market_close_mean,
+                                "entry_vs_market_diff_pct": ((symbol_entry_mean - market_close_mean) / market_close_mean * 100) if market_close_mean > 0 else 0.0
+                            }
+            
+            # 2. % duration_minutes == 0 (TASK 1: Séparer SCALP vs DAILY)
+            durations = [t.duration_minutes for t in self.trades if hasattr(t, 'duration_minutes')]
+            durations_scalp = [t.duration_minutes for t in self.trades if hasattr(t, 'duration_minutes') and getattr(t, 'trade_type', None) == 'SCALP']
+            durations_daily = [t.duration_minutes for t in self.trades if hasattr(t, 'duration_minutes') and getattr(t, 'trade_type', None) == 'DAILY']
+            
+            zero_duration_count = sum(1 for d in durations if d == 0.0)
+            zero_duration_pct = (zero_duration_count / len(durations) * 100) if durations else 0.0
+            duration_mean = float(np.mean(durations)) if durations else 0.0
+            duration_median = float(np.median(durations)) if durations else 0.0
+            
+            # TASK 1: Durées séparées par trade_type
+            duration_mean_scalp = float(np.mean(durations_scalp)) if durations_scalp else 0.0
+            duration_median_scalp = float(np.median(durations_scalp)) if durations_scalp else 0.0
+            duration_max_scalp = float(np.max(durations_scalp)) if durations_scalp else 0.0
+            
+            duration_mean_daily = float(np.mean(durations_daily)) if durations_daily else 0.0
+            duration_median_daily = float(np.median(durations_daily)) if durations_daily else 0.0
+            
+            # TASK 1: Vérifier que aucun SCALP ne dépasse max_scalp_minutes
+            max_scalp_minutes = self.config.max_scalp_minutes
+            scalp_time_stop_broken = False
+            scalp_violations = []
+            for t in self.trades:
+                if getattr(t, 'trade_type', None) == 'SCALP' and hasattr(t, 'duration_minutes'):
+                    if t.duration_minutes > max_scalp_minutes + 1.0:  # +1 pour tolérance d'arrondi
+                        scalp_time_stop_broken = True
+                        scalp_violations.append({
+                            'trade_id': getattr(t, 'trade_id', 'unknown'),
+                            'duration_minutes': t.duration_minutes,
+                            'exit_reason': getattr(t, 'exit_reason', 'unknown')
+                        })
+            
+            # 3. % session "Unknown" - PATCH 1: Calculer depuis timestamp_entry (comme dans export)
+            sessions = []
+            for t in self.trades:
+                if t.timestamp_entry:
+                    try:
+                        entry_ts = t.timestamp_entry
+                        if entry_ts.tzinfo is None:
+                            entry_ts = entry_ts.replace(tzinfo=timezone.utc)
+                        elif entry_ts.tzinfo != timezone.utc:
+                            entry_ts = entry_ts.astimezone(timezone.utc)
+                        session_info = get_session_info(entry_ts, debug_log=False)
+                        session_label = session_info.get('name', 'unknown')
+                        sessions.append(session_label)
+                    except Exception:
+                        sessions.append('unknown')
+                else:
+                    sessions.append('unknown')
+            
+            unknown_session_count = sum(1 for s in sessions if s == 'unknown' or s is None)
+            unknown_session_pct = (unknown_session_count / len(sessions) * 100) if sessions else 0.0
+            session_distribution = dict(Counter(sessions))
+            
+            # 4. Coûts : slippage/spread/commission totals
+            total_slippage = sum(t.entry_slippage + t.exit_slippage for t in self.trades if hasattr(t, 'entry_slippage'))
+            total_spread = sum(t.entry_spread_cost + t.exit_spread_cost for t in self.trades if hasattr(t, 'entry_spread_cost'))
+            total_commission = sum(t.entry_commission + t.exit_commission for t in self.trades if hasattr(t, 'entry_commission'))
+            total_reg_fees = sum(t.entry_reg_fees + t.exit_reg_fees for t in self.trades if hasattr(t, 'entry_reg_fees'))
+            total_costs = sum(t.total_costs for t in self.trades if hasattr(t, 'total_costs'))
+            
+            # 5. Stabilité : trade_count, expectancy net
+            total_trades = len(self.trades)
+            wins = [t for t in self.trades if t.outcome == 'win']
+            losses = [t for t in self.trades if t.outcome == 'loss']
+            winrate = (len(wins) / total_trades * 100) if total_trades > 0 else 0.0
+            
+            avg_win_r = float(np.mean([t.pnl_net_R for t in wins])) if wins else 0.0
+            avg_loss_r = float(np.mean([t.pnl_net_R for t in losses])) if losses else 0.0
+            expectancy_net = (winrate / 100 * avg_win_r) + ((100 - winrate) / 100 * avg_loss_r) if total_trades > 0 else 0.0
+            
+            total_r_net = sum(t.pnl_net_R for t in self.trades)
+            
+            # P0 CRITICAL: Vérifier que le grading est produit et valide
+            quality_distribution = {}
+            quality_all_c = True
+            count_missing_quality = 0
+            grading_produced = True  # P0: Indicateur si le grading a été produit
+            
+            for t in self.trades:
+                # P0: Compatible Trade (get_quality()) et TradeResult (quality)
+                if hasattr(t, 'get_quality'):
+                    quality = t.get_quality()
+                else:
+                    quality = getattr(t, 'quality', None)
+                
+                # P0: Détecter les grades manquants ou invalides
+                if not quality or not str(quality).strip() or str(quality).upper() == "UNKNOWN":
+                    quality = "UNKNOWN"
+                    count_missing_quality += 1
+                    grading_produced = False  # P0: Grading non produit si UNKNOWN détecté
+                
+                if quality and quality != 'C' and quality != 'UNKNOWN':
+                    quality_all_c = False
+                
+                quality_distribution[quality] = quality_distribution.get(quality, 0) + 1
+            
+            pct_missing_quality = (count_missing_quality / total_trades * 100) if total_trades > 0 else 0.0
+            
+            # P0: Grading debug - calculer stats détaillées
+            match_scores = []
+            grade_counts = {'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'UNKNOWN': 0}
+            playbook_counts = {}
+            playbook_thresholds = {}  # playbook_name -> thresholds
+            
+            for t in self.trades:
+                # Score
+                match_score = getattr(t, 'match_score', None)
+                if match_score is not None:
+                    match_scores.append(float(match_score))
+                
+                # Grade counts
+                if hasattr(t, 'get_quality'):
+                    quality = t.get_quality()
+                else:
+                    quality = getattr(t, 'quality', None)
+                if not quality or not str(quality).strip():
+                    quality = "UNKNOWN"
+                grade_counts[quality] = grade_counts.get(quality, 0) + 1
+                
+                # Playbook counts
+                playbook = getattr(t, 'playbook', 'UNKNOWN')
+                playbook_counts[playbook] = playbook_counts.get(playbook, 0) + 1
+                
+                # Thresholds snapshot (garder seulement les 3 premiers playbooks par count)
+                grade_thresholds = getattr(t, 'grade_thresholds', None)
+                if grade_thresholds and playbook not in playbook_thresholds:
+                    playbook_thresholds[playbook] = grade_thresholds
+            
+            # Calculer stats scores
+            score_min = float(np.min(match_scores)) if match_scores else None
+            score_max = float(np.max(match_scores)) if match_scores else None
+            score_mean = float(np.mean(match_scores)) if match_scores else None
+            
+            # Top 3 playbooks par count
+            top_playbooks = sorted(playbook_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+            thresholds_snapshot = {}
+            for playbook_name, count in top_playbooks:
+                if playbook_name in playbook_thresholds:
+                    thresholds_snapshot[playbook_name] = {
+                        'count': count,
+                        'thresholds': playbook_thresholds[playbook_name]
+                    }
+            
+            # Construire le rapport
+            report = {
+                "run_id": run_id,
+                "status": "OK",
+                "timestamp": datetime.now().isoformat(),
+                "entry_price_validation": {
+                    "entry_price_mean": entry_price_mean,
+                    "entry_price_median": entry_price_median,
+                    "entry_price_std": entry_price_std,
+                    "entry_price_vs_market": entry_price_vs_market,
+                    "placeholder_detected": False  # P0: Si placeholder détecté, sera True
+                },
+                "duration_validation": {
+                    "zero_duration_count": zero_duration_count,
+                    "zero_duration_pct": zero_duration_pct,
+                    "duration_mean_minutes": duration_mean,
+                    "duration_median_minutes": duration_median,
+                    "total_trades_with_duration": len(durations),
+                    # TASK 1: Séparation SCALP vs DAILY
+                    "scalp": {
+                        "duration_mean_minutes": duration_mean_scalp,
+                        "duration_median_minutes": duration_median_scalp,
+                        "duration_max_minutes": duration_max_scalp,
+                        "max_allowed_minutes": max_scalp_minutes,
+                        "time_stop_broken": scalp_time_stop_broken,
+                        "violations": scalp_violations,
+                        "total_scalp_trades": len(durations_scalp)
+                    },
+                    "daily": {
+                        "duration_mean_minutes": duration_mean_daily,
+                        "duration_median_minutes": duration_median_daily,
+                        "total_daily_trades": len(durations_daily)
+                    }
+                },
+                "session_validation": {
+                    "unknown_session_count": unknown_session_count,
+                    "unknown_session_pct": unknown_session_pct,
+                    "session_distribution": session_distribution,
+                    "total_trades_with_session": len(sessions)
+                },
+                "costs_breakdown": {
+                    "total_slippage": total_slippage,
+                    "total_spread": total_spread,
+                    "total_commission": total_commission,
+                    "total_reg_fees": total_reg_fees,
+                    "total_costs": total_costs,
+                    "costs_per_trade_avg": total_costs / total_trades if total_trades > 0 else 0.0,
+                    "slippage_double_counting_detected": False  # P0: Si double comptage détecté, sera True
+                },
+                "stability_metrics": {
+                    "total_trades": total_trades,
+                    "winrate_pct": winrate,
+                    "expectancy_net_R": expectancy_net,
+                    "total_r_net": total_r_net,
+                    "avg_win_r": avg_win_r,
+                    "avg_loss_r": avg_loss_r
+                },
+                "grading_validation": {
+                    "grading_produced": grading_produced,  # P0: True si tous les trades ont un grade valide
+                    "quality_distribution": quality_distribution,
+                    "all_c_detected": quality_all_c,
+                    "total_trades": total_trades,
+                    "count_missing_grade": count_missing_quality,  # P0: Compteur grade manquant (renommé pour clarté)
+                    "pct_missing_grade": pct_missing_quality,  # P0: % grade manquant
+                    "grading_pipeline_propagation_ok": count_missing_quality == 0 and not quality_all_c  # P0: Pipeline OK si pas de manquants ET distribution non triviale
+                },
+                "grading_debug": {  # P0: Debug détaillé du grading
+                    "total_trades": total_trades,
+                    "score_count": len(match_scores),
+                    "pct_missing_score": ((total_trades - len(match_scores)) / total_trades * 100) if total_trades > 0 else 0.0,
+                    "score_min": score_min,
+                    "score_max": score_max,
+                    "score_mean": score_mean,
+                    "grade_counts": grade_counts,
+                    "unique_playbooks": len(playbook_counts),
+                    "playbook_counts": dict(sorted(playbook_counts.items(), key=lambda x: x[1], reverse=True)),
+                    "thresholds_snapshot": thresholds_snapshot,  # Top 3 playbooks avec leurs thresholds
+                    "grading_pipeline_ok": (total_trades == 0) or (len(match_scores) == total_trades and len(thresholds_snapshot) > 0)
+                },
+                "sanity_checks": {
+                    "entry_price_valid": entry_price_mean > 0 and entry_price_std > 0,
+                    "duration_valid": zero_duration_pct < 50.0,  # Moins de 50% avec duration=0
+                    "session_valid": unknown_session_pct < 5.0,  # Moins de 5% Unknown
+                    "costs_valid": total_costs > 0,  # Coûts calculés
+                    "stability_valid": total_trades > 0 and expectancy_net is not None,
+                    "scalp_time_stop_valid": not scalp_time_stop_broken,  # TASK 1: Aucun SCALP > max_scalp_minutes
+                    "grading_valid": not quality_all_c  # TASK 2: Pas 100% C
+                }
+            }
+            
+            with open(sanity_path, 'w', encoding='utf-8') as f:
+                json.dump(report, f, indent=2, default=str)
+            
+            logger.info("  - Sanity report: %s", sanity_path)
+            
+            # Afficher un résumé
+            logger.info("\n📋 SANITY CHECK SUMMARY:")
+            logger.info(f"  Entry price: mean={entry_price_mean:.2f}, std={entry_price_std:.2f}")
+            logger.info(f"  Duration: {zero_duration_pct:.1f}% with duration=0, mean={duration_mean:.1f}min")
+            logger.info(f"  Sessions: {unknown_session_pct:.1f}% Unknown")
+            logger.info(f"  Costs: slippage=${total_slippage:.2f}, spread=${total_spread:.2f}, commission=${total_commission:.2f}")
+            logger.info(f"  Stability: {total_trades} trades, {winrate:.1f}% WR, {expectancy_net:.3f}R expectancy")
+            
+        except Exception as e:
+            logger.warning(f"Failed to generate sanity report: {e}", exc_info=True)

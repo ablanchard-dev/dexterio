@@ -41,11 +41,28 @@ class ExecutionEngine:
         if not position_calc or not position_calc.valid:
             return {'success': False, 'reason': position_calc.reason if position_calc else 'No position calc'}
         
-        # 3. Appliquer slippage
-        entry_price_actual = self._apply_slippage(setup.entry_price, setup.direction)
+        # P0 FIX: Ne PAS appliquer slippage ici (éviter double comptage)
+        # Le slippage sera appliqué uniquement dans calculate_total_execution_costs
+        # entry_price contient le prix idéal (sans slippage)
         
         # 4. Créer Trade (utiliser current_time du backtest si fourni)
         now_ts = current_time or datetime.now()
+        
+        # P0 CRITICAL: Vérifier que setup.quality est défini et valide AVANT création du trade
+        if not setup.quality or not setup.quality.strip() or setup.quality.upper() == "UNKNOWN":
+            error_msg = f"GRADE_NOT_COMPUTED: Setup {setup.id} has no valid quality (got: {setup.quality}). Cannot create trade."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Valider que le grade est dans la liste autorisée
+        valid_grades = {'A+', 'A', 'B', 'C'}
+        if setup.quality.upper() not in valid_grades and setup.quality not in valid_grades:
+            error_msg = f"GRADE_NOT_COMPUTED: Invalid quality '{setup.quality}' for setup {setup.id}. Must be one of {valid_grades}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        trade_quality = setup.quality
+        
         trade = Trade(
             date=now_ts.date(),
             time_entry=now_ts,
@@ -60,9 +77,27 @@ class ExecutionEngine:
             
             # Setup
             playbook=setup.playbook_matches[0].playbook_name if setup.playbook_matches else 'None',
-            setup_quality=setup.quality,
+            setup_quality=trade_quality,  # TASK 2: Utiliser trade_quality (pas setup.quality directement)
             setup_score=setup.final_score,
             trade_type=setup.trade_type,
+            
+            # P0: Propagation grading debug info (depuis Setup)
+            match_score_setup = getattr(setup, 'match_score', None)
+            match_grade_setup = getattr(setup, 'match_grade', None)
+            grade_thresholds_setup = getattr(setup, 'grade_thresholds', None)
+            score_scale_hint_setup = getattr(setup, 'score_scale_hint', None)
+            
+            # P0: Trace de propagation - log si valeurs None (pour les 3 premiers trades)
+            if not hasattr(self, '_grading_trace_count'):
+                self._grading_trace_count = 0
+            if self._grading_trace_count < 3:
+                logger.warning(f"[GRADING TRACE] Trade {setup.id}: setup.match_score={match_score_setup}, setup.match_grade={match_grade_setup}, setup.grade_thresholds={'present' if grade_thresholds_setup else 'None'}")
+                self._grading_trace_count += 1
+            
+            match_score=match_score_setup,
+            match_grade=match_grade_setup,
+            grade_thresholds=grade_thresholds_setup,
+            score_scale_hint=score_scale_hint_setup,
             
             # Confluences
             confluences={
@@ -74,8 +109,8 @@ class ExecutionEngine:
                 'htf_alignment': setup.direction == ('LONG' if setup.market_bias == 'bullish' else 'SHORT')
             },
             
-            # Exécution
-            entry_price=entry_price_actual,
+            # Exécution (prix idéal, slippage appliqué dans calculate_total_execution_costs)
+            entry_price=setup.entry_price,
             stop_loss=setup.stop_loss,
             take_profit_1=setup.take_profit_1,
             take_profit_2=setup.take_profit_2,
@@ -98,7 +133,7 @@ class ExecutionEngine:
         # 6. Notifier Risk Engine
         self.risk_engine.on_trade_opened(trade)
         
-        logger.info(f"Trade opened: {trade.symbol} {trade.direction} @ {entry_price_actual:.2f}, "
+        logger.info(f"Trade opened: {trade.symbol} {trade.direction} @ {setup.entry_price:.2f}, "
                    f"size={position_calc.position_size}, risk={risk_allocation['risk_pct']*100:.1f}%")
         
         return {
@@ -114,12 +149,13 @@ class ExecutionEngine:
         else:
             return ideal_price - self.slippage_ticks
     
-    def update_open_trades(self, market_data: Dict[str, float]) -> List[Dict]:
+    def update_open_trades(self, market_data: Dict[str, float], current_time: Optional[datetime] = None) -> List[Dict]:
         """
         Met à jour toutes les positions avec nouveaux prix
         
         Args:
             market_data: {symbol: current_price}
+            current_time: Timestamp actuel (pour calculer duration_minutes)
         
         Returns:
             Liste d'events: {'trade_id', 'event_type', 'details'}
@@ -217,6 +253,26 @@ class ExecutionEngine:
                     'r_multiple': r_multiple
                 })
             
+            # 3. PATCH 3: Time-stop pour SCALP (empêcher overnight)
+            if current_time and trade.trade_type == 'SCALP':
+                elapsed_minutes = (current_time - trade.time_entry).total_seconds() / 60.0
+                # Récupérer max_scalp_minutes depuis la config (via risk_engine si disponible)
+                max_scalp_minutes = getattr(self.risk_engine, '_max_scalp_minutes', 120.0)
+                if elapsed_minutes >= max_scalp_minutes:
+                    trades_to_close.append({
+                        'trade_id': trade_id,
+                        'reason': 'time_stop',
+                        'close_price': current_price  # Close au prix actuel
+                    })
+                    events.append({
+                        'trade_id': trade_id,
+                        'event_type': 'TIME_STOP',
+                        'elapsed_minutes': elapsed_minutes,
+                        'max_minutes': max_scalp_minutes
+                    })
+                    logger.info(f"Trade {trade_id}: Time-stop SCALP after {elapsed_minutes:.1f}min (max={max_scalp_minutes})")
+                    continue
+            
             # 4. Break-even (TJR: +0.5R)
             if hasattr(trade, 'breakeven_moved'):
                 if not trade.breakeven_moved and r_multiple >= 0.5:
@@ -240,19 +296,22 @@ class ExecutionEngine:
             self.close_trade(
                 trade_id,
                 close_req['reason'],
-                close_req['close_price']
+                close_req['close_price'],
+                current_time=current_time  # P0 FIX: Transmettre current_time
             )
             closed_trades.add(trade_id)
         
         return events
     
     def close_trade(self, trade_id: str, reason: str, 
-                   close_price: Optional[float] = None) -> Trade:
+                   close_price: Optional[float] = None, current_time: Optional[datetime] = None) -> Trade:
         """
         Ferme un trade et calcule résultat final
         
         Args:
             reason: 'TP1', 'TP2', 'SL', 'manual', 'eod'
+            close_price: Prix de clôture (optionnel, utilise entry_price si None)
+            current_time: Timestamp actuel (pour time_exit et duration_minutes)
         """
         trade = self.open_trades.get(trade_id)
         if not trade:
@@ -261,6 +320,21 @@ class ExecutionEngine:
         # Prix fermeture
         if close_price is None:
             close_price = trade.entry_price
+        
+        # P0 FIX: Calculer time_exit et duration_minutes correctement
+        if current_time is not None:
+            trade.time_exit = current_time
+            # Calculer duration_minutes
+            if trade.time_entry and trade.time_exit:
+                delta = trade.time_exit - trade.time_entry
+                trade.duration_minutes = delta.total_seconds() / 60.0
+            else:
+                trade.duration_minutes = 0.0
+        else:
+            # Fallback: utiliser time_entry si current_time non fourni (legacy)
+            trade.time_exit = trade.time_entry
+            trade.duration_minutes = 0.0
+            logger.warning(f"[P0] close_trade called without current_time for trade {trade_id}, using time_entry as time_exit")
         
         # Calculer résultat
         if trade.direction == 'LONG':
@@ -279,9 +353,6 @@ class ExecutionEngine:
         # Mettre à jour trade
         trade.exit_price = close_price
         trade.exit_reason = reason
-        # Utiliser le même type de timestamp que time_entry pour éviter les conflits tz
-        trade.time_exit = trade.time_entry
-        trade.duration_minutes = 0.0
         trade.pnl_dollars = pnl_dollars
         trade.pnl_pct = pnl_pct
         trade.r_multiple = r_multiple

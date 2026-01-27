@@ -167,13 +167,51 @@ class SetupEngineV2:
             # P0 FIX: Extraire playbook_name comme source de vérité unique
             playbook_name = match['playbook_name']
             
+            # P0 CRITICAL: Vérifier que match['grade'] et match['score'] sont définis
+            if 'score' not in match or 'grade' not in match:
+                error_msg = f"GRADE_DEBUG_MISSING_KEYS: Match {match.get('playbook_name', 'unknown')} missing 'score' or 'grade' keys"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # P0: Lire depuis les clés originales "score" et "grade" (pas "match_score"/"match_grade")
+            match_score = match.get('score', None)
+            match_grade = match.get('grade', None)
+            
+            if not match_grade or not str(match_grade).strip() or str(match_grade).upper() == "UNKNOWN":
+                error_msg = f"GRADE_NOT_COMPUTED: Match {match.get('playbook_name', 'unknown')} has no valid grade (got: {match_grade})"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # Valider que le grade est dans la liste autorisée
+            valid_grades = {'A+', 'A', 'B', 'C'}
+            if str(match_grade).upper() not in valid_grades and match_grade not in valid_grades:
+                error_msg = f"GRADE_NOT_COMPUTED: Invalid grade '{match_grade}' for match {match.get('playbook_name', 'unknown')}. Must be one of {valid_grades}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # P0: Capturer infos de grading pour debug (avec fallback vers playbook si nécessaire)
+            grade_thresholds = match.get('grade_thresholds', None)
+            if not grade_thresholds:
+                # Fallback: récupérer depuis le playbook loader si disponible
+                try:
+                    playbook_obj = self.playbook_loader.get_playbook_by_name(playbook_name)
+                    if playbook_obj:
+                        grade_thresholds = playbook_obj.grade_thresholds
+                except:
+                    pass
+            
+            score_scale_hint = match.get('score_scale_hint', 'unknown')
+            
+            # Utiliser match_grade comme grade final
+            grade = match_grade
+            
             # Créer le Setup
             setup = Setup(
                 id=str(uuid4()),
                 timestamp=current_time,
                 symbol=symbol,
                 direction=direction,
-                quality=match['grade'],
+                quality=grade,  # TASK 2: Utiliser grade validé
                 final_score=match['score'],
                 trade_type='DAILY' if match['playbook_category'] == 'DAYTRADE' else 'SCALP',
                 entry_price=entry_price,
@@ -186,6 +224,14 @@ class SetupEngineV2:
                 day_type=market_state.day_type,  # P2-2.B
                 daily_structure=market_state.daily_structure,  # P2-2.B
                 playbook_name=playbook_name,  # P0 FIX: Source de vérité unique
+                match_score=match_score,  # P0: Score utilisé pour grader (depuis match["score"])
+                match_grade=match_grade,  # P0: Grade renvoyé par playbook_loader (depuis match["grade"])
+                grade_thresholds=grade_thresholds,  # P0: Seuils pour ce playbook
+                score_scale_hint=score_scale_hint,  # P0: Hint pour l'échelle du score
+            
+            # P0: Trace de propagation - log les 3 premiers setups pour debug
+            if len(setups) <= 3:
+                logger.debug(f"[GRADING TRACE] Setup {setup.id}: match_score={match_score}, match_grade={match_grade}, grade_thresholds={'present' if grade_thresholds else 'None'}")
                 ict_patterns=ict_patterns,
                 candlestick_patterns=[
                     PatternDetection(
@@ -281,17 +327,13 @@ class SetupEngineV2:
         if not candle_patterns:
             return None, None, None, None
 
-        # Prix d'entrée: dernier close réel si fourni, sinon close du dernier pattern
-        pattern = candle_patterns[-1]
-        entry = last_price if last_price is not None else pattern.strength * 0 + 0  # placeholder
-        # On préfère utiliser le close du pattern si last_price n'est pas donné
+        # P0 FIX: Rejeter si last_price est None (pas de placeholder en backtest)
         if last_price is None:
-            # CandlestickPattern ne porte pas directement le prix, mais on peut approximer
-            # en prenant force du pattern comme neutre et laisser le RiskEngine gérer.
-            # Pour rester cohérent, on met un prix fictif raisonnable selon le symbole.
-            entry = 450.0 if symbol == 'SPY' else 380.0
+            logger.error(f"[P0] _calculate_price_levels: last_price is None for {symbol}, rejecting setup")
+            return None, None, None, None
 
-        entry_price = float(entry)
+        # Prix d'entrée: utiliser le dernier close réel (obligatoire)
+        entry_price = float(last_price)
 
         # Stop basé sur la structure locale du pattern
         if direction == 'LONG':
