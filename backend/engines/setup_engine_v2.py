@@ -228,10 +228,6 @@ class SetupEngineV2:
                 match_grade=match_grade,  # P0: Grade renvoyé par playbook_loader (depuis match["grade"])
                 grade_thresholds=grade_thresholds,  # P0: Seuils pour ce playbook
                 score_scale_hint=score_scale_hint,  # P0: Hint pour l'échelle du score
-            
-            # P0: Trace de propagation - log les 3 premiers setups pour debug
-            if len(setups) <= 3:
-                logger.debug(f"[GRADING TRACE] Setup {setup.id}: match_score={match_score}, match_grade={match_grade}, grade_thresholds={'present' if grade_thresholds else 'None'}")
                 ict_patterns=ict_patterns,
                 candlestick_patterns=[
                     PatternDetection(
@@ -258,6 +254,13 @@ class SetupEngineV2:
                 confluences_count=self._count_confluences(ict_patterns, candle_patterns),
                 notes=f"Playbook: {playbook_name} | Score: {match['score']:.2f}"
             )
+            
+            # P0: Trace de propagation - log les 3 premiers setups pour debug (APRÈS création du Setup)
+            if not hasattr(self, '_grading_trace_count'):
+                self._grading_trace_count = 0
+            if self._grading_trace_count < 3:
+                logger.debug(f"[GRADING TRACE] Setup {setup.id}: match_score={match_score}, match_grade={match_grade}, grade_thresholds={'present' if grade_thresholds else 'None'}")
+                self._grading_trace_count += 1
             
             logger.info(f"  • {match['playbook_name']}: {match['grade']} ({match['score']:.2f}) | {direction} @ {entry_price:.2f}")
             

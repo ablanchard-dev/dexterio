@@ -100,6 +100,14 @@ class ExecutionEngine:
             grade_thresholds=grade_thresholds_setup,
             score_scale_hint=score_scale_hint_setup,
             
+            # P1: Propagation Master Candle info (Sprint 2)
+            mc_high=getattr(setup, 'mc_high', None),
+            mc_low=getattr(setup, 'mc_low', None),
+            mc_range=getattr(setup, 'mc_range', None),
+            mc_breakout_dir=getattr(setup, 'mc_breakout_dir', None),
+            mc_window_minutes=getattr(setup, 'mc_window_minutes', None),
+            mc_session_date=getattr(setup, 'mc_session_date', None),
+            
             # Confluences
             confluences={
                 'sweep': any(p.pattern_type == 'sweep' for p in setup.ict_patterns) if setup.ict_patterns else False,
