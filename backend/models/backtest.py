@@ -120,6 +120,20 @@ class TradeResult(BaseModel):
     
     outcome: str  # win, loss, breakeven
     exit_reason: str
+    
+    # P0: Grading debug info (propagated from Trade)
+    match_score: Optional[float] = None  # Score utilisé pour grader
+    match_grade: Optional[str] = None  # Grade renvoyé par playbook_loader
+    grade_thresholds: Optional[Dict[str, float]] = None  # Seuils A_plus/A/B pour ce playbook
+    score_scale_hint: Optional[str] = None  # Hint pour l'échelle du score
+    
+    # P1: Master Candle info (Sprint 2 - propagated from Trade)
+    mc_high: Optional[float] = None
+    mc_low: Optional[float] = None
+    mc_range: Optional[float] = None
+    mc_breakout_dir: Optional[str] = None  # LONG, SHORT, NONE
+    mc_window_minutes: Optional[int] = None
+    mc_session_date: Optional[str] = None  # YYYY-MM-DD
 
 
 class BacktestResult(BaseModel):

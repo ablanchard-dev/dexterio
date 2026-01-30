@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from models.backtest import BacktestConfig, BacktestResult, TradeResult
 from models.market_data import MarketState, Candle
@@ -30,6 +31,7 @@ from engines.risk_engine import RiskEngine
 from engines.execution.paper_trading import ExecutionEngine
 from engines.timeframe_aggregator import TimeframeAggregator
 from engines.market_state_cache import MarketStateCache
+from engines.master_candle import calculate_master_candle, get_ny_rth_session_date, get_session_labels
 from utils.timeframes import get_session_info, is_in_kill_zone
 
 logger = logging.getLogger(__name__)
@@ -1059,6 +1061,49 @@ class BacktestEngine:
             logger.error(f"[P0] No last_price available for {symbol} at {current_time}, skipping setup generation")
             return None
         
+        # P1: Calculer Master Candle pour cette session (Sprint 2)
+        mc = None
+        mc_window_minutes = 15  # Configurable, défaut 15 minutes
+        try:
+            # Récupérer les candles 1m pour la session actuelle
+            session_date = get_ny_rth_session_date(current_time)
+            
+            # Construire liste de candles pour calcul MC (fenêtre 09:30 + window_minutes)
+            # P0 Fix #3: Limiter strictement à candles <= current_time (no lookahead)
+            mc_candles = []
+            for candle in candles_1m:
+                if candle.timestamp.tzinfo is None:
+                    candle_ts = candle.timestamp.replace(tzinfo=timezone.utc)
+                else:
+                    candle_ts = candle.timestamp
+                
+                # P0 Fix #3: Pas de lookahead - ignorer candles futures
+                if candle_ts > current_time:
+                    continue
+                
+                # Convertir en NY pour vérifier session
+                ny_ts = candle_ts.astimezone(ZoneInfo("America/New_York"))
+                candle_session_date = get_ny_rth_session_date(ny_ts)
+                
+                # Si même session, inclure dans le calcul MC
+                if candle_session_date == session_date:
+                    mc_candles.append({
+                        'timestamp': candle_ts,
+                        'high': candle.high,
+                        'low': candle.low,
+                        'close': candle.close,
+                    })
+            
+            # Calculer MC si on a assez de candles
+            if len(mc_candles) >= mc_window_minutes:
+                mc = calculate_master_candle(
+                    mc_candles,
+                    window_minutes=mc_window_minutes,
+                    session_date=session_date
+                )
+        except Exception as e:
+            logger.warning(f"Failed to calculate Master Candle for {symbol} at {current_time}: {e}")
+        
         # Générer setup via SetupEngine
         setups = self.setup_engine.generate_setups(
             symbol=symbol,
@@ -1105,6 +1150,16 @@ class BacktestEngine:
                 if playbook_name not in self.debug_counts["setups_detected_by_playbook"]:
                     self.debug_counts["setups_detected_by_playbook"][playbook_name] = 0
                 self.debug_counts["setups_detected_by_playbook"][playbook_name] += 1
+        
+        # P1: Ajouter champs Master Candle aux setups (Sprint 2)
+        if setups and mc:
+            for setup in setups:
+                setup.mc_high = mc.mc_high
+                setup.mc_low = mc.mc_low
+                setup.mc_range = mc.mc_range
+                setup.mc_breakout_dir = mc.mc_breakout_dir
+                setup.mc_window_minutes = mc.mc_window_minutes
+                setup.mc_session_date = mc.session_date
         
         # Collecter tous les setups générés (pour funnel)
         if setups:
@@ -2215,6 +2270,20 @@ class BacktestEngine:
             stats["total_r"] += float(trade.r_multiple or 0.0)
 
             # Construire TradeResult pour le BacktestResult
+            # P0: Propager les champs grading depuis Trade
+            match_score = getattr(trade, 'match_score', None)
+            match_grade = getattr(trade, 'match_grade', None)
+            grade_thresholds = getattr(trade, 'grade_thresholds', None)
+            score_scale_hint = getattr(trade, 'score_scale_hint', None)
+            
+            # P1: Propager les champs Master Candle depuis Trade (Sprint 2)
+            mc_high = getattr(trade, 'mc_high', None)
+            mc_low = getattr(trade, 'mc_low', None)
+            mc_range = getattr(trade, 'mc_range', None)
+            mc_breakout_dir = getattr(trade, 'mc_breakout_dir', None)
+            mc_window_minutes = getattr(trade, 'mc_window_minutes', None)
+            mc_session_date = getattr(trade, 'mc_session_date', None)
+            
             trade_result = TradeResult(
                 trade_id=trade.id,
                 timestamp_entry=trade.time_entry,
@@ -2232,6 +2301,18 @@ class BacktestEngine:
                 position_size=trade.position_size,
                 risk_pct=trade.risk_pct,
                 risk_amount=risk_dollars,
+                # P0: Propagation grading debug info
+                match_score=match_score,
+                match_grade=match_grade,
+                grade_thresholds=grade_thresholds,
+                score_scale_hint=score_scale_hint,
+                # P1: Propagation Master Candle info (Sprint 2)
+                mc_high=mc_high,
+                mc_low=mc_low,
+                mc_range=mc_range,
+                mc_breakout_dir=mc_breakout_dir,
+                mc_window_minutes=mc_window_minutes,
+                mc_session_date=mc_session_date,
                 # PHASE B: Cost breakdown
                 entry_commission=entry_costs.commission,
                 entry_reg_fees=entry_costs.regulatory_fees,
@@ -2567,11 +2648,18 @@ class BacktestEngine:
                 # PATCH 1: Ajouter session_label et killzone_label
                 "session_label": session_label,
                 "killzone_label": killzone_label,
-                # P0: Grading debug columns (depuis Trade)
+                # P0: Grading debug columns (depuis TradeResult - propagé depuis Trade dans _ingest_closed_trades)
                 "match_score": getattr(t, 'match_score', None),
                 "match_grade": getattr(t, 'match_grade', None),
                 "grade_thresholds": str(getattr(t, 'grade_thresholds', None)) if getattr(t, 'grade_thresholds', None) else None,  # Convert dict to string for CSV
-                "score_scale_hint": getattr(t, 'score_scale_hint', None),  # P0: Utiliser depuis Trade (pas recalculer)
+                "score_scale_hint": getattr(t, 'score_scale_hint', None),  # P0: Utiliser depuis TradeResult
+                # P1: Master Candle columns (Sprint 2)
+                "mc_high": getattr(t, 'mc_high', None),
+                "mc_low": getattr(t, 'mc_low', None),
+                "mc_range": getattr(t, 'mc_range', None),
+                "mc_breakout_dir": getattr(t, 'mc_breakout_dir', None),
+                "mc_window_minutes": getattr(t, 'mc_window_minutes', None),
+                "mc_session_date": getattr(t, 'mc_session_date', None),
             })
 
         trades_df = _pd.DataFrame(trades_records)
@@ -2583,7 +2671,7 @@ class BacktestEngine:
         logger.info(f"  - Trades CSV: {trades_csv_path}")
         
         # P0: Export grading debug JSON séparé (TOUJOURS créé, même si vide)
-        # Note: run_id contient déjà "job_" si venu de backtest_jobs, donc on utilise run_id directement
+        # Note: run_id contient déjà "job_" si venu de backtest_jobs, donc on utilise run_id directement (pas de double "job_")
         grading_debug_path = output_dir / f"grading_debug_{run_id}.json"
         grading_debug_records = []
         reason_if_empty = None
@@ -2722,6 +2810,58 @@ class BacktestEngine:
         with open(grading_debug_path, 'w', encoding='utf-8') as f:
             _json.dump(grading_debug_output, f, indent=2, default=str)
         logger.info(f"  - Grading debug JSON: {grading_debug_path} (trades={len(grading_debug_records)}, empty={empty_count if reason_if_empty else 0})")
+        
+        # P1: Export Master Candle debug JSON (Sprint 2)
+        mc_debug_path = output_dir / f"master_candle_debug_{run_id}.json"
+        mc_debug_records = []
+        mc_by_session = {}  # session_date -> MC data
+        
+        for t in result.trades:
+            mc_high = getattr(t, 'mc_high', None)
+            mc_low = getattr(t, 'mc_low', None)
+            mc_range = getattr(t, 'mc_range', None)
+            mc_breakout_dir = getattr(t, 'mc_breakout_dir', None)
+            mc_window_minutes = getattr(t, 'mc_window_minutes', None)
+            mc_session_date = getattr(t, 'mc_session_date', None)
+            
+            if mc_session_date and mc_session_date not in mc_by_session:
+                mc_by_session[mc_session_date] = {
+                    'session_date': mc_session_date,
+                    'mc_high': mc_high,
+                    'mc_low': mc_low,
+                    'mc_range': mc_range,
+                    'mc_window_minutes': mc_window_minutes,
+                    'trades_count': 0
+                }
+            
+            if mc_session_date:
+                mc_by_session[mc_session_date]['trades_count'] += 1
+            
+            mc_debug_records.append({
+                "trade_id": t.trade_id,
+                "playbook": t.playbook,
+                "mc_high": mc_high,
+                "mc_low": mc_low,
+                "mc_range": mc_range,
+                "mc_breakout_dir": mc_breakout_dir,
+                "mc_window_minutes": mc_window_minutes,
+                "mc_session_date": mc_session_date,
+            })
+        
+        # P1: Structure master_candle_debug
+        mc_debug_output = {
+            "run_id": run_id,
+            "total_trades": len(mc_debug_records),
+            "mc_window_minutes": mc_window_minutes if mc_debug_records else 15,  # Défaut
+            "timezone": "America/New_York",
+            "mc_by_session": mc_by_session,
+            "sample_first_5_trades": mc_debug_records[:5],
+            "all_trades": mc_debug_records
+        }
+        
+        with open(mc_debug_path, 'w', encoding='utf-8') as f:
+            _json.dump(mc_debug_output, f, indent=2, default=str)
+        logger.info(f"  - Master Candle debug JSON: {mc_debug_path}")
 
         # Sauvegarde equity curve
         equity_df = _pd.DataFrame(
@@ -2977,12 +3117,25 @@ class BacktestEngine:
                 report = {
                     "run_id": run_id,
                     "status": "NO_TRADES",
-                    "message": "No trades executed, cannot generate sanity report"
+                    "message": "No trades executed, cannot generate sanity report",
+                    "grading_debug": {},
+                    "sanity_checks": {}
                 }
                 with open(sanity_path, 'w', encoding='utf-8') as f:
                     json.dump(report, f, indent=2, default=str)
                 logger.warning("  - Sanity report: NO_TRADES")
+                # P0 Fix #2: Toujours générer post_run_verification (même si 0 trades)
+                mode = result.config.trading_mode
+                types = '_'.join(result.config.trade_types)
+                try:
+                    self._generate_post_run_verification(result, output_dir, run_id, mode, types, report)
+                except Exception as e:
+                    logger.error(f"Failed to generate post-run verification: {e}", exc_info=True)
                 return
+            
+            # P0 Fix #2: mode/types pour post_run_verification
+            mode = result.config.trading_mode
+            types = '_'.join(result.config.trade_types)
             
             # 1. Entry price distribution vs close/open référence
             entry_prices = [t.entry_price for t in self.trades]
@@ -3230,7 +3383,7 @@ class BacktestEngine:
                     "unique_playbooks": len(playbook_counts),
                     "playbook_counts": dict(sorted(playbook_counts.items(), key=lambda x: x[1], reverse=True)),
                     "thresholds_snapshot": thresholds_snapshot,  # Top 3 playbooks avec leurs thresholds
-                    "grading_pipeline_ok": (total_trades == 0) or (len(match_scores) == total_trades and len(thresholds_snapshot) > 0)
+                    "grading_pipeline_ok": (total_trades == 0) or (len(match_scores) == total_trades and len(thresholds_snapshot) > 0)  # P0: Pipeline OK si scores présents ET thresholds disponibles
                 },
                 "sanity_checks": {
                     "entry_price_valid": entry_price_mean > 0 and entry_price_std > 0,
@@ -3248,6 +3401,12 @@ class BacktestEngine:
             
             logger.info("  - Sanity report: %s", sanity_path)
             
+            # P0 Fix #2: Post-run verification + P0 Fix #3: Lookahead detector
+            try:
+                self._generate_post_run_verification(result, output_dir, run_id, mode, types, report)
+            except Exception as e:
+                logger.error(f"Failed to generate post-run verification: {e}", exc_info=True)
+            
             # Afficher un résumé
             logger.info("\n📋 SANITY CHECK SUMMARY:")
             logger.info(f"  Entry price: mean={entry_price_mean:.2f}, std={entry_price_std:.2f}")
@@ -3258,3 +3417,264 @@ class BacktestEngine:
             
         except Exception as e:
             logger.warning(f"Failed to generate sanity report: {e}", exc_info=True)
+    
+    def _generate_post_run_verification(self, result: BacktestResult, output_dir: Path, run_id: str, mode: str, types: str, sanity_report: dict):
+        """
+        P0 Fix #2: Post-run verification automatique
+        P0 Fix #3: Lookahead detector
+        
+        Génère post_run_verification_{run_id}.json avec validation E2E
+        """
+        import json
+        from zoneinfo import ZoneInfo
+        
+        verification = {
+            "run_id": run_id,
+            "timestamp": datetime.now().isoformat(),
+            "pass": True,
+            "failures": [],
+            "artifacts": {},
+            "grading_validation": {},
+            "master_candle_validation": {},
+            "lookahead_detector": {}
+        }
+        
+        # 1) Vérifier artifacts présents
+        summary_path = output_dir / f"summary_{run_id}_{mode}_{types}.json"
+        trades_csv_path = output_dir / f"trades_{run_id}_{mode}_{types}.csv"
+        trades_parquet_path = output_dir / f"trades_{run_id}_{mode}_{types}.parquet"
+        grading_debug_path = output_dir / f"grading_debug_{run_id}.json"
+        mc_debug_path = output_dir / f"master_candle_debug_{run_id}.json"
+        sanity_path = output_dir / f"sanity_report_{run_id}.json"
+        
+        verification["artifacts"] = {
+            "summary_json": str(summary_path) if summary_path.exists() else None,
+            "trades_csv": str(trades_csv_path) if trades_csv_path.exists() else None,
+            "trades_parquet": str(trades_parquet_path) if trades_parquet_path.exists() else None,
+            "grading_debug_json": str(grading_debug_path) if grading_debug_path.exists() else None,
+            "master_candle_debug_json": str(mc_debug_path) if mc_debug_path.exists() else None,
+            "sanity_report_json": str(sanity_path) if sanity_path.exists() else None,
+        }
+        
+        # Vérifier tous présents
+        missing = [k for k, v in verification["artifacts"].items() if v is None]
+        if missing:
+            verification["pass"] = False
+            verification["failures"].append(f"Missing artifacts: {', '.join(missing)}")
+        
+        # 2) Validation Grading E2E
+        total_trades = result.total_trades
+        grading_ok = True
+        grading_issues = []
+        
+        if total_trades > 0:
+            # Vérifier CSV contient colonnes grading non-null
+            try:
+                import pandas as pd
+                if trades_csv_path.exists():
+                    df = pd.read_csv(trades_csv_path)
+                    non_null_match_score = df['match_score'].notna().sum()
+                    non_null_match_grade = df['match_grade'].notna().sum()
+                    
+                    if non_null_match_score == 0:
+                        grading_ok = False
+                        grading_issues.append("CSV: match_score is NULL on all trades")
+                    if non_null_match_grade == 0:
+                        grading_ok = False
+                        grading_issues.append("CSV: match_grade is NULL on all trades")
+                    
+                    verification["grading_validation"] = {
+                        "total_trades": total_trades,
+                        "csv_match_score_non_null": int(non_null_match_score),
+                        "csv_match_grade_non_null": int(non_null_match_grade),
+                        "csv_grade_thresholds_non_null": int(df['grade_thresholds'].notna().sum()),
+                        "csv_score_scale_hint_non_null": int(df['score_scale_hint'].notna().sum()),
+                    }
+            except Exception as e:
+                grading_ok = False
+                grading_issues.append(f"Error reading CSV: {e}")
+            
+            # Vérifier grading_debug JSON
+            try:
+                if grading_debug_path.exists():
+                    with open(grading_debug_path, 'r', encoding='utf-8') as f:
+                        gd = json.load(f)
+                    
+                    score_count = gd.get('score_count', 0)
+                    thresholds_snapshot = gd.get('thresholds_snapshot', {})
+                    
+                    if score_count == 0:
+                        grading_ok = False
+                        grading_issues.append("grading_debug: score_count == 0")
+                    if not thresholds_snapshot:
+                        grading_ok = False
+                        grading_issues.append("grading_debug: thresholds_snapshot is empty")
+                    
+                    if "grading_validation" not in verification:
+                        verification["grading_validation"] = {}
+                    verification["grading_validation"]["grading_debug"] = {
+                        "score_count": score_count,
+                        "thresholds_snapshot_present": len(thresholds_snapshot) > 0,
+                        "diagnostic": gd.get('diagnostic', None),
+                    }
+            except Exception as e:
+                grading_ok = False
+                grading_issues.append(f"Error reading grading_debug: {e}")
+            
+            # Vérifier sanity_report.grading_pipeline_ok
+            grading_pipeline_ok = sanity_report.get('grading_debug', {}).get('grading_pipeline_ok', False)
+            if not grading_pipeline_ok:
+                grading_ok = False
+                grading_issues.append("sanity_report: grading_pipeline_ok == false")
+            
+            if "grading_validation" not in verification:
+                verification["grading_validation"] = {}
+            verification["grading_validation"]["pipeline_ok"] = grading_pipeline_ok
+            verification["grading_validation"]["pass"] = grading_ok
+            verification["grading_validation"]["issues"] = grading_issues
+            
+            if not grading_ok:
+                verification["pass"] = False
+                verification["failures"].extend([f"Grading: {issue}" for issue in grading_issues])
+        
+        # 3) Validation Master Candle E2E
+        mc_ok = True
+        mc_issues = []
+        
+        if total_trades > 0:
+            try:
+                import pandas as pd
+                if trades_csv_path.exists():
+                    df = pd.read_csv(trades_csv_path)
+                    non_null_mc_high = df['mc_high'].notna().sum()
+                    non_null_mc_low = df['mc_low'].notna().sum()
+                    non_null_mc_breakout_dir = df['mc_breakout_dir'].notna().sum()
+                    
+                    if non_null_mc_high == 0:
+                        mc_ok = False
+                        mc_issues.append("CSV: mc_high is NULL on all trades")
+                    if non_null_mc_low == 0:
+                        mc_ok = False
+                        mc_issues.append("CSV: mc_low is NULL on all trades")
+                    
+                    verification["master_candle_validation"] = {
+                        "total_trades": total_trades,
+                        "csv_mc_high_non_null": int(non_null_mc_high),
+                        "csv_mc_low_non_null": int(non_null_mc_low),
+                        "csv_mc_range_non_null": int(df['mc_range'].notna().sum()),
+                        "csv_mc_breakout_dir_non_null": int(non_null_mc_breakout_dir),
+                        "csv_mc_session_date_non_null": int(df['mc_session_date'].notna().sum()),
+                    }
+            except Exception as e:
+                mc_ok = False
+                mc_issues.append(f"Error reading CSV for MC: {e}")
+            
+            # Vérifier master_candle_debug JSON
+            try:
+                if mc_debug_path.exists():
+                    with open(mc_debug_path, 'r', encoding='utf-8') as f:
+                        mcd = json.load(f)
+                    
+                    mc_by_session = mcd.get('mc_by_session', {})
+                    if not mc_by_session:
+                        mc_ok = False
+                        mc_issues.append("master_candle_debug: mc_by_session is empty")
+                    
+                    if "master_candle_validation" not in verification:
+                        verification["master_candle_validation"] = {}
+                    verification["master_candle_validation"]["master_candle_debug"] = {
+                        "mc_by_session_present": len(mc_by_session) > 0,
+                        "timezone": mcd.get('timezone', None),
+                        "mc_window_minutes": mcd.get('mc_window_minutes', None),
+                    }
+            except Exception as e:
+                mc_ok = False
+                mc_issues.append(f"Error reading master_candle_debug: {e}")
+            
+            if "master_candle_validation" not in verification:
+                verification["master_candle_validation"] = {}
+            verification["master_candle_validation"]["pass"] = mc_ok
+            verification["master_candle_validation"]["issues"] = mc_issues
+            
+            if not mc_ok:
+                verification["pass"] = False
+                verification["failures"].extend([f"Master Candle: {issue}" for issue in mc_issues])
+        
+        # 4) P0 Fix #3: Lookahead Detector
+        lookahead_ok = True
+        lookahead_issues = []
+        lookahead_samples = []
+        
+        if total_trades > 0:
+            # Échantillonner 20 trades (ou tous si < 20)
+            sample_size = min(20, total_trades)
+            sample_trades = result.trades[:sample_size]
+            
+            for trade in sample_trades:
+                entry_ts = trade.timestamp_entry
+                if entry_ts is None:
+                    continue
+                
+                # Convertir en timezone-aware si nécessaire
+                if entry_ts.tzinfo is None:
+                    entry_ts = entry_ts.replace(tzinfo=timezone.utc)
+                
+                # Vérifier MC: mc_high/mc_low ne doivent pas utiliser de candles après entry_ts
+                mc_high = getattr(trade, 'mc_high', None)
+                mc_low = getattr(trade, 'mc_low', None)
+                mc_session_date = getattr(trade, 'mc_session_date', None)
+                
+                # Si MC présente, vérifier que session_date correspond à entry_ts
+                if mc_session_date:
+                    entry_session_date = get_ny_rth_session_date(entry_ts.astimezone(ZoneInfo("America/New_York")))
+                    if mc_session_date != entry_session_date:
+                        lookahead_ok = False
+                        lookahead_issues.append(f"Trade {trade.trade_id}: MC session_date mismatch (entry={entry_session_date}, mc={mc_session_date})")
+                
+                # Vérifier breakout_dir: ne doit pas utiliser de candles après entry_ts
+                mc_breakout_dir = getattr(trade, 'mc_breakout_dir', None)
+                if mc_breakout_dir and mc_breakout_dir != 'NONE':
+                    # Breakout doit être calculé APRÈS la fin de la fenêtre MC
+                    # Si entry_ts est dans la fenêtre MC (09:30-09:45), breakout ne peut pas être calculé
+                    ny_entry = entry_ts.astimezone(ZoneInfo("America/New_York"))
+                    ny_time = ny_entry.time()
+                    from engines.master_candle import NY_OPEN_TIME
+                    mc_end_time = (datetime.combine(ny_entry.date(), NY_OPEN_TIME) + timedelta(minutes=15)).time()
+                    
+                    if ny_time < mc_end_time:
+                        # Entry avant fin MC, breakout ne peut pas être calculé
+                        lookahead_ok = False
+                        lookahead_issues.append(f"Trade {trade.trade_id}: mc_breakout_dir={mc_breakout_dir} but entry_ts is before MC window end")
+                
+                lookahead_samples.append({
+                    "trade_id": trade.trade_id,
+                    "entry_timestamp": entry_ts.isoformat(),
+                    "mc_high": mc_high,
+                    "mc_low": mc_low,
+                    "mc_breakout_dir": mc_breakout_dir,
+                    "mc_session_date": mc_session_date,
+                })
+            
+            verification["lookahead_detector"] = {
+                "pass": lookahead_ok,
+                "sample_size": sample_size,
+                "issues": lookahead_issues,
+                "samples": lookahead_samples,
+            }
+            
+            if not lookahead_ok:
+                verification["pass"] = False
+                verification["failures"].extend([f"Lookahead: {issue}" for issue in lookahead_issues])
+        
+        # Sauvegarder verification
+        verification_path = output_dir / f"post_run_verification_{run_id}.json"
+        with open(verification_path, 'w', encoding='utf-8') as f:
+            json.dump(verification, f, indent=2, default=str)
+        
+        logger.info(f"  - Post-run verification: {verification_path} (pass={verification['pass']})")
+        
+        # Mettre à jour sanity_report avec pipeline_ok global
+        if 'sanity_checks' in sanity_report:
+            sanity_report['sanity_checks']['pipeline_ok'] = verification['pass']
+        
+        return verification

@@ -124,4 +124,12 @@ class Setup(BaseModel):
     grade_thresholds: Optional[Dict[str, float]] = None  # Seuils A_plus/A/B pour ce playbook
     score_scale_hint: Optional[str] = None  # P0: Hint pour l'échelle du score ("0-1", "0-100", "unknown")
     
+    # P1: Master Candle info (Sprint 2)
+    mc_high: Optional[float] = None
+    mc_low: Optional[float] = None
+    mc_range: Optional[float] = None
+    mc_breakout_dir: Optional[str] = None  # LONG, SHORT, NONE
+    mc_window_minutes: Optional[int] = None
+    mc_session_date: Optional[str] = None  # YYYY-MM-DD
+    
     notes: str = ''

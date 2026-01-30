@@ -85,7 +85,7 @@ app.include_router(backtests_router, prefix="/api")
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(','),
+    allow_origins=os.environ.get('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -99,5 +99,13 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    """Shutdown handler: close DB client and ProcessPoolExecutor"""
     if client:
         client.close()
+    
+    # P0 Fix #1: Shutdown ProcessPoolExecutor proprement
+    try:
+        from jobs.backtest_jobs import shutdown_executor
+        shutdown_executor()
+    except Exception as e:
+        logger.error(f"Error shutting down executor: {e}")

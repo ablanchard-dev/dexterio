@@ -18,13 +18,33 @@ logger = logging.getLogger(__name__)
 
 # Job executor (singleton)
 _executor = None
+_executor_shutdown = False
 
 def get_executor():
     """Get or create the global executor"""
-    global _executor
-    if _executor is None:
+    global _executor, _executor_shutdown
+    if _executor is None or _executor_shutdown:
+        # Si shutdown, créer un nouvel executor
+        if _executor is not None and _executor_shutdown:
+            logger.warning("Creating new executor after shutdown")
         _executor = ProcessPoolExecutor(max_workers=2)
+        _executor_shutdown = False
     return _executor
+
+
+def shutdown_executor():
+    """Shutdown the executor properly (P0 Fix #1)"""
+    global _executor, _executor_shutdown
+    if _executor is not None and not _executor_shutdown:
+        try:
+            logger.info("Shutting down ProcessPoolExecutor...")
+            _executor.shutdown(wait=True, cancel_futures=True)
+            logger.info("ProcessPoolExecutor shutdown OK")
+        except Exception as e:
+            logger.error(f"Error shutting down executor: {e}")
+        finally:
+            _executor = None
+            _executor_shutdown = True
 
 
 class BacktestJobRequest(BaseModel):
@@ -470,10 +490,24 @@ def submit_job(request: BacktestJobRequest) -> str:
     
     job_id = create_job(request)
     
-    # Submit to executor
+    # Submit to executor (P0 Fix #1: vérifier executor actif)
     executor = get_executor()
-    executor.submit(run_backtest_worker, job_id, request.dict())
+    if executor is None:
+        raise RuntimeError("Executor not available")
     
-    logger.info(f"Submitted job {job_id} to executor")
+    try:
+        executor.submit(run_backtest_worker, job_id, request.dict())
+        logger.info(f"Submitted job {job_id} to executor")
+    except RuntimeError as e:
+        # Si executor shutdown, recréer et réessayer
+        if "cannot schedule new futures after shutdown" in str(e).lower():
+            logger.warning("Executor was shutdown, recreating...")
+            global _executor
+            _executor = None
+            executor = get_executor()
+            executor.submit(run_backtest_worker, job_id, request.dict())
+            logger.info(f"Submitted job {job_id} to new executor")
+        else:
+            raise
     
     return job_id
