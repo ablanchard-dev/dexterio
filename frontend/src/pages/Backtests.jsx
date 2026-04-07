@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { backendBaseUrl, buildFetchHeaders } from '@/apiClient';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://127.0.0.1:8001';
+const API_URL = backendBaseUrl;
 
 export default function Backtests() {
   const [jobId, setJobId] = useState(null);
@@ -43,9 +44,44 @@ export default function Backtests() {
     return () => clearInterval(interval);
   }, [jobId]);
 
+  const downloadArtifact = useCallback(
+    async (filename) => {
+      if (!jobId) return;
+      try {
+        const res = await fetch(
+          `${API_URL}/api/backtests/${jobId}/download?file=${encodeURIComponent(filename)}`,
+          { headers: buildFetchHeaders(false) }
+        );
+        if (!res.ok) {
+          let msg = `Download failed (${res.status})`;
+          try {
+            const err = await res.json();
+            if (err.detail) msg = Array.isArray(err.detail) ? JSON.stringify(err.detail) : err.detail;
+          } catch (_) {}
+          alert(msg);
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert(`Download error: ${e.message}`);
+      }
+    },
+    [jobId]
+  );
+
   const fetchRecentJobs = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/backtests?limit=10`);
+      const res = await fetch(`${API_URL}/api/backtests?limit=10`, {
+        headers: buildFetchHeaders(false),
+      });
       // P0 FIX: Lire le body UNE SEULE FOIS
       const data = await res.json();
       if (!res.ok) {
@@ -60,7 +96,9 @@ export default function Backtests() {
 
   const fetchJobStatus = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/backtests/${jobId}`);
+      const res = await fetch(`${API_URL}/api/backtests/${jobId}`, {
+        headers: buildFetchHeaders(false),
+      });
       // P0 FIX: Lire le body UNE SEULE FOIS
       const data = await res.json();
       if (!res.ok) {
@@ -81,7 +119,9 @@ export default function Backtests() {
 
   const fetchJobLog = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/backtests/${jobId}/log`);
+      const res = await fetch(`${API_URL}/api/backtests/${jobId}/log`, {
+        headers: buildFetchHeaders(false),
+      });
       // P0 FIX: Lire le body UNE SEULE FOIS
       const data = await res.json();
       if (!res.ok) {
@@ -123,7 +163,7 @@ export default function Backtests() {
       
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildFetchHeaders(true),
         body: JSON.stringify(request)
       });
       
@@ -393,14 +433,14 @@ export default function Backtests() {
                       <h4 className="font-medium mb-2">Downloads</h4>
                       <div className="flex gap-2">
                         {Object.entries(jobStatus.artifact_paths).map(([name, filename]) => (
-                          <a
+                          <button
                             key={name}
-                            href={`${API_URL}/api/backtests/${jobId}/download?file=${filename}`}
-                            download
-                            className="text-blue-500 hover:underline text-sm"
+                            type="button"
+                            onClick={() => downloadArtifact(filename)}
+                            className="text-blue-500 hover:underline text-sm bg-transparent border-0 cursor-pointer p-0"
                           >
                             {name}
-                          </a>
+                          </button>
                         ))}
                       </div>
                     </div>

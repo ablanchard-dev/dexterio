@@ -2,10 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Activity, DollarSign, AlertTriangle } from 'lucide-react';
-import axios from 'axios';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import api from '@/apiClient';
 
 const Dashboard = () => {
   const [marketState, setMarketState] = useState(null);
@@ -22,9 +19,9 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       const [marketRes, riskRes, perfRes] = await Promise.all([
-        axios.get(`${API}/trading/market-state`),
-        axios.get(`${API}/trading/risk-state`),
-        axios.get(`${API}/trading/performance`)
+        api.get('/trading/market-state'),
+        api.get('/trading/risk-state'),
+        api.get('/trading/performance'),
       ]);
 
       setMarketState(marketRes.data);

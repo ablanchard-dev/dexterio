@@ -2,10 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, Award, Target, Activity } from 'lucide-react';
-import axios from 'axios';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import api from '@/apiClient';
 
 const Performance = () => {
   const [performance, setPerformance] = useState(null);
@@ -19,8 +16,8 @@ const Performance = () => {
   const fetchPerformanceData = async () => {
     try {
       const [perfRes, tradesRes] = await Promise.all([
-        axios.get(`${API}/trading/performance`),
-        axios.get(`${API}/trading/trades/history?limit=100`)
+        api.get('/trading/performance'),
+        api.get('/trading/trades/history?limit=100'),
       ]);
 
       setPerformance(perfRes.data);

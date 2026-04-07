@@ -1,19 +1,27 @@
 """Trading API Routes - Phase 1.4"""
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from fastapi import APIRouter, HTTPException, Depends, Query
+from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Dict, Any, Optional, Literal
+from datetime import datetime, timezone
+
+from services.bot_scheduler import start_bot, stop_bot, is_bot_running
+from engines.execution.ibkr_gateway import ibkr_connection_check
+from security.api_key import require_dexterio_api_key
+from security.http_errors import safe_http_500_detail
 import logging
 
 from engines.pipeline import TradingPipeline
 from engines.journal import TradeJournal, PerformanceStats
-from models.setup import Setup
 from models.trade import Trade
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/trading", tags=["trading"])
+router = APIRouter(
+    prefix="/trading",
+    tags=["trading"],
+    dependencies=[Depends(require_dexterio_api_key)],
+)
 
 # Global pipeline instance (singleton pattern)
 _pipeline_instance = None
@@ -128,13 +136,15 @@ class PerformanceResponse(BaseModel):
 
 class TradingControlRequest(BaseModel):
     """Control bot"""
-    action: str  # 'start', 'stop', 'close_all'
+    action: Literal["start", "stop", "close_all"]
 
 
 class ManualTradeRequest(BaseModel):
     """Manual trade execution"""
-    setup_id: str
+    setup_id: str = Field(..., min_length=1, max_length=128)
     override: bool = False
+
+    model_config = ConfigDict(str_strip_whitespace=True)
 
 
 # ============== API ENDPOINTS ==============
@@ -191,7 +201,7 @@ async def get_market_state():
     
     except Exception as e:
         logger.error(f"Error getting market state: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))
 
 
 @router.get("/liquidity-levels", response_model=List[LiquidityLevel])
@@ -233,7 +243,7 @@ async def get_liquidity_levels():
     
     except Exception as e:
         logger.error(f"Error getting liquidity levels: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))
 
 
 @router.get("/setups", response_model=List[SetupResponse])
@@ -274,7 +284,7 @@ async def get_setups():
     
     except Exception as e:
         logger.error(f"Error getting setups: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))
 
 
 @router.get("/trades/open", response_model=List[TradeResponse])
@@ -309,15 +319,15 @@ async def get_open_trades():
     
     except Exception as e:
         logger.error(f"Error getting open trades: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))
 
 
 @router.get("/trades/history", response_model=List[TradeResponse])
 async def get_trade_history(
-    limit: int = 100,
+    limit: int = Query(100, ge=1, le=500),
     playbook: Optional[str] = None,
     quality: Optional[str] = None,
-    outcome: Optional[str] = None
+    outcome: Optional[str] = None,
 ):
     """Get trade history with filters"""
     try:
@@ -363,7 +373,7 @@ async def get_trade_history(
     
     except Exception as e:
         logger.error(f"Error getting trade history: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))
 
 
 @router.get("/performance", response_model=PerformanceResponse)
@@ -393,7 +403,7 @@ async def get_performance():
     
     except Exception as e:
         logger.error(f"Error getting performance: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))
 
 
 @router.get("/risk-state", response_model=RiskStateResponse)
@@ -419,7 +429,28 @@ async def get_risk_state():
     
     except Exception as e:
         logger.error(f"Error getting risk state: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))
+
+
+@router.get("/bot-status")
+async def get_bot_status():
+    """État de la boucle automatique paper/live."""
+    return {
+        "running": is_bot_running(),
+        "interval_sec": settings.LIVE_LOOP_INTERVAL_SEC,
+        "execution_backend": settings.EXECUTION_BACKEND,
+        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
+    }
+
+
+@router.get("/ibkr-connection")
+async def get_ibkr_connection():
+    """Vérifie que TWS / IB Gateway répond (ib_insync optionnel)."""
+    return ibkr_connection_check(
+        settings.IBKR_HOST,
+        settings.IBKR_PORT,
+        settings.IBKR_CLIENT_ID,
+    )
 
 
 @router.post("/control")
@@ -427,25 +458,43 @@ async def control_trading(request: TradingControlRequest):
     """Control trading bot"""
     try:
         pipeline = get_pipeline()
-        
+
         if request.action == 'start':
-            # TODO: Implement auto trading loop
-            return {"status": "started", "message": "Auto trading started (not yet implemented)"}
-        
-        elif request.action == 'stop':
-            # TODO: Implement stop
-            return {"status": "stopped", "message": "Auto trading stopped"}
-        
-        elif request.action == 'close_all':
+            if settings.EXECUTION_BACKEND == "ibkr" and settings.LIVE_TRADING_ENABLED:
+                chk = ibkr_connection_check(
+                    settings.IBKR_HOST,
+                    settings.IBKR_PORT,
+                    settings.IBKR_CLIENT_ID,
+                )
+                if not chk.get("ok"):
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"IBKR injoignable: {chk.get('detail', chk)}",
+                    )
+            out = await start_bot(get_pipeline, settings.LIVE_LOOP_INTERVAL_SEC)
+            if settings.EXECUTION_BACKEND == "ibkr" and settings.LIVE_TRADING_ENABLED:
+                out["warning"] = (
+                    "Connexion TWS validée pour le démarrage ; le routage des ordres bracket "
+                    "vers IBKR dans ExecutionEngine reste à activer — les positions peuvent "
+                    "encore être simulées en local selon la build."
+                )
+            return out
+
+        if request.action == 'stop':
+            await stop_bot()
+            return {"status": "stopped", "message": "Boucle automatique arrêtée"}
+
+        if request.action == 'close_all':
             result = pipeline.close_all_positions_eod()
-            return {"status": "closed", "closed_positions": result['closed_positions']}
-        
-        else:
-            raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+            return {"status": "closed", "closed_positions": result["closed_positions"]}
+
+        raise HTTPException(status_code=400, detail="Invalid action")
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error controlling trading: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))
 
 
 @router.post("/execute-manual")
@@ -490,7 +539,11 @@ async def execute_manual_trade(request: ManualTradeRequest):
             'position_calc': position_calc
         }
         
-        order_result = pipeline.execution_engine.place_order(target_setup, risk_allocation)
+        order_result = pipeline.execution_engine.place_order(
+            target_setup,
+            risk_allocation,
+            current_time=datetime.now(timezone.utc),
+        )
         
         if not order_result['success']:
             raise HTTPException(status_code=400, detail=f"Order failed: {order_result['reason']}")
@@ -510,4 +563,4 @@ async def execute_manual_trade(request: ManualTradeRequest):
         raise
     except Exception as e:
         logger.error(f"Error executing manual trade: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_http_500_detail(e))

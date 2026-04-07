@@ -3,11 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TrendingUp, TrendingDown, Target, CheckCircle, AlertCircle } from 'lucide-react';
-import axios from 'axios';
+import api from '@/apiClient';
 import { format } from 'date-fns';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
 
 const Setups = () => {
   const [setups, setSetups] = useState([]);
@@ -22,7 +19,7 @@ const Setups = () => {
 
   const fetchSetups = async () => {
     try {
-      const response = await axios.get(`${API}/trading/setups`);
+      const response = await api.get('/trading/setups');
       setSetups(response.data);
       setLoading(false);
     } catch (error) {
@@ -33,9 +30,9 @@ const Setups = () => {
   const executeManualTrade = async (setupId) => {
     try {
       setExecuting(setupId);
-      await axios.post(`${API}/trading/execute-manual`, {
+      await api.post('/trading/execute-manual', {
         setup_id: setupId,
-        override: false
+        override: false,
       });
       alert('Trade executed successfully!');
       fetchSetups();

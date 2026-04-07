@@ -25,6 +25,15 @@ if mongo_url:
 # Create the main app without a prefix
 app = FastAPI()
 
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -100,6 +109,12 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     """Shutdown handler: close DB client and ProcessPoolExecutor"""
+    try:
+        from services.bot_scheduler import stop_bot
+        await stop_bot()
+    except Exception as e:
+        logger.error(f"Error stopping trading loop: {e}")
+
     if client:
         client.close()
     

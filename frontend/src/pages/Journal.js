@@ -5,11 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChevronDown, ChevronUp, Search, Filter } from 'lucide-react';
-import axios from 'axios';
+import api from '@/apiClient';
 import { format } from 'date-fns';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
 
 const Journal = () => {
   const [trades, setTrades] = useState([]);
@@ -33,7 +30,7 @@ const Journal = () => {
 
   const fetchTrades = async () => {
     try {
-      const response = await axios.get(`${API}/trading/trades/history?limit=100`);
+      const response = await api.get('/trading/trades/history?limit=100');
       setTrades(response.data);
       setLoading(false);
     } catch (error) {
