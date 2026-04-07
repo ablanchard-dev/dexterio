@@ -6,8 +6,12 @@ Commit 2: Guardrails runtime (kill-switch, circuit breakers)
 Commit 3: Money Management 2R/1R (TwoTierRiskState)
 """
 import logging
+import json
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date, timedelta
+from pathlib import Path
+import yaml
 from models.risk import (
     RiskEngineState, 
     PositionSizingResult, 
@@ -19,6 +23,11 @@ from models.setup import Setup
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    """Parse un booléen depuis l'environnement."""
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
 # ============================================================================
@@ -50,11 +59,65 @@ AGGRESSIVE_DENYLIST = [
     'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # PATCH 2: Quarantiné (job_ae6e4740: 6 trades, 0 win, -1.399R)
 ]
 
-# Playbooks AUTORISÉS en mode SAFE (sniper A+ uniquement)
-SAFE_ALLOWLIST = [
-    # PATCH 2: SCALP_Aplus_1_Mini_FVG_Retest_NY_Open retiré (quarantiné)
-    # Aucun playbook A+ actif pour l'instant en mode SAFE
-]
+def _resolve_latest_aggressive_playbook_stats_file() -> Optional[Path]:
+    """
+    Retourne le fichier playbook_stats le plus récent (run AGGRESSIVE),
+    ou None si introuvable.
+    """
+    explicit_path = os.environ.get("SAFE_PLAYBOOK_STATS_FILE", "").strip()
+    if explicit_path:
+        p = Path(explicit_path)
+        return p if p.exists() else None
+
+    results_dir = Path(__file__).resolve().parent.parent / "results"
+    if not results_dir.exists():
+        return None
+
+    candidates = sorted(
+        results_dir.glob("playbook_stats_job_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
+
+
+def _build_safe_allowlist_from_aggressive_results() -> List[str]:
+    """
+    SAFE = playbooks les plus robustes observés en AGGRESSIVE.
+
+    Critères:
+    - total_r > 0
+    - trades >= SAFE_MIN_TRADES_FOR_SELECTION (default: 10)
+    - triés par total_r desc puis winrate desc
+    - limités à SAFE_TOP_N_PLAYBOOKS (default: 3)
+    """
+    min_trades = int(os.environ.get("SAFE_MIN_TRADES_FOR_SELECTION", "10"))
+    top_n = int(os.environ.get("SAFE_TOP_N_PLAYBOOKS", "3"))
+
+    stats_file = _resolve_latest_aggressive_playbook_stats_file()
+    if not stats_file:
+        return []
+
+    try:
+        with stats_file.open("r", encoding="utf-8") as f:
+            stats = json.load(f)
+    except Exception:
+        return []
+
+    rows = []
+    for playbook_name, data in stats.items():
+        trades = int(data.get("trades", 0) or 0)
+        total_r = float(data.get("total_r", 0.0) or 0.0)
+        winrate = float(data.get("winrate", 0.0) or 0.0)
+        if trades >= min_trades and total_r > 0:
+            rows.append((playbook_name, total_r, winrate))
+
+    rows.sort(key=lambda x: (x[1], x[2]), reverse=True)
+    return [name for name, _, _ in rows[:top_n]]
+
+
+# Playbooks AUTORISÉS en mode SAFE (drivés par perf AGGRESSIVE)
+SAFE_ALLOWLIST = _build_safe_allowlist_from_aggressive_results()
 
 
 # ============================================================================
@@ -111,6 +174,16 @@ class RiskEngine:
             trading_mode=settings.TRADING_MODE,
             base_r_unit_dollars=base_r_unit,
         )
+
+        # Mode spécial backtest long: laisser passer tous les playbooks
+        # pour les classer ensuite (best/worst) sans filtres de mode.
+        self.eval_allow_all_playbooks = _env_flag("RISK_EVAL_ALLOW_ALL_PLAYBOOKS", "false")
+        # Optionnel: desserrer aussi les limites anti-spam/caps pour maximiser
+        # la couverture des playbooks pendant l'audit.
+        self.eval_relax_caps = _env_flag("RISK_EVAL_RELAX_CAPS", "false")
+        # Audit long: ne pas désactiver les playbooks en cours de run (stats complètes)
+        self.eval_disable_kill_switch = _env_flag("RISK_EVAL_DISABLE_KILL_SWITCH", "false")
+        self._paper_wave1_allowlist = self._load_paper_wave1_allowlist()
         
         # P0 ÉTAPE 3: Attribut temporaire pour stocker rejets (accessible depuis engine.py)
         self._last_filter_rejects = {
@@ -131,8 +204,18 @@ class RiskEngine:
             f"state.trading_mode={mode} | "
             f"settings.TRADING_MODE={settings_mode} | "
             f"AGGRESSIVE_ALLOWLIST len={aggressive_len} (first5={aggressive_first5}) | "
-            f"SAFE_ALLOWLIST len={safe_len} (first5={safe_first5})"
+            f"SAFE_ALLOWLIST len={safe_len} (first5={safe_first5}) | "
+            f"PAPER_USE_WAVE1_PLAYBOOKS={getattr(settings, 'PAPER_USE_WAVE1_PLAYBOOKS', False)} | "
+            f"PAPER_WAVE1_ALLOWLIST len={len(self._paper_wave1_allowlist)} | "
+            f"RISK_EVAL_ALLOW_ALL_PLAYBOOKS={self.eval_allow_all_playbooks} | "
+            f"RISK_EVAL_RELAX_CAPS={self.eval_relax_caps} | "
+            f"RISK_EVAL_DISABLE_KILL_SWITCH={self.eval_disable_kill_switch}"
         )
+        if safe_len == 0:
+            logger.warning(
+                "[P0] SAFE_ALLOWLIST is empty. "
+                "No profitable aggressive playbook matched current selection filters."
+            )
         
         # Option B: nombre de playbooks actifs (CORE + A+) – renseigné par BacktestEngine
         self._active_playbooks_count: int = 0
@@ -199,6 +282,10 @@ class RiskEngine:
             (allowed: bool, reason: str)
         """
         mode = self.state.trading_mode
+
+        # MODE AUDIT LONG: bypass complet pour observer la vraie perf
+        if self.eval_allow_all_playbooks:
+            return True, "RISK_EVAL_ALLOW_ALL_PLAYBOOKS=true"
         
         # Check denylist globale (prioritaire)
         if playbook_name in AGGRESSIVE_DENYLIST:
@@ -209,6 +296,11 @@ class RiskEngine:
             stats = self.state.playbook_stats.get(playbook_name)
             reason = stats.disable_reason if stats else "kill-switch triggered"
             return False, f"Playbook '{playbook_name}' disabled: {reason}"
+
+        # Gate 3: allowlist explicite Wave 1 pour le runtime paper.
+        if getattr(settings, "PAPER_USE_WAVE1_PLAYBOOKS", False) and self._paper_wave1_allowlist:
+            if playbook_name not in self._paper_wave1_allowlist:
+                return False, f"Playbook '{playbook_name}' not in PAPER Wave1 allowlist"
         
         # Check allowlist selon mode
         if mode == 'SAFE':
@@ -219,6 +311,28 @@ class RiskEngine:
                 return False, f"Playbook '{playbook_name}' not in AGGRESSIVE allowlist"
         
         return True, "OK"
+
+    def _load_paper_wave1_allowlist(self) -> List[str]:
+        file_path = getattr(settings, "PAPER_WAVE1_PLAYBOOKS_FILE", "").strip()
+        if not file_path:
+            return []
+        p = Path(file_path)
+        if not p.is_absolute():
+            p = Path(__file__).resolve().parent.parent.parent / p
+        if not p.exists():
+            return []
+        try:
+            with p.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            rows = data.get("playbooks", []) if isinstance(data, dict) else []
+            out = []
+            for row in rows:
+                if isinstance(row, dict) and row.get("name"):
+                    out.append(str(row["name"]))
+            return out
+        except Exception as e:
+            logger.warning("Wave1 allowlist load failed (%s): %s", p, e)
+            return []
     
     def check_cooldown_and_session_limit(self, setup: Setup, current_time: datetime, current_session: str) -> tuple[bool, str]:
         """
@@ -240,6 +354,9 @@ class RiskEngine:
         
         key_cooldown = (setup.symbol, playbook_name)
         key_session = (setup.symbol, playbook_name, current_session)
+
+        if self.eval_relax_caps:
+            return True, "RISK_EVAL_RELAX_CAPS=true"
         
         # Check cooldown (par mode)
         mode = self.state.trading_mode
@@ -405,6 +522,8 @@ class RiskEngine:
         - Hard stop immédiat si Total_R ≤ -25R
         - Après N≥30 trades: si Total_R ≤ -10R OU PF < 0.85 → disable
         """
+        if self.eval_disable_kill_switch:
+            return
         if playbook_name in self.state.disabled_playbooks:
             return  # Déjà désactivé
         
@@ -450,6 +569,10 @@ class RiskEngine:
             'cap_trades_reached': False,
             'reason': 'OK'
         }
+
+        if self.eval_relax_caps:
+            result['reason'] = 'RISK_EVAL_RELAX_CAPS=true'
+            return result
         
         # Check stop_run (MaxDD)
         if self.state.max_drawdown_r >= CIRCUIT_STOP_RUN_DD_R:
@@ -486,6 +609,9 @@ class RiskEngine:
         """
         key = f"{current_day}_{symbol}"
         count = self.state.trades_per_day_symbol.get(key, 0)
+
+        if self.eval_relax_caps:
+            return True, "RISK_EVAL_RELAX_CAPS=true"
         
         if count >= CIRCUIT_MAX_TRADES_DAY_SYMBOL:
             return False, f"Cap trades reached: {count} trades for {symbol} today"
@@ -643,6 +769,13 @@ class RiskEngine:
         # Reset si nouveau jour
         if datetime.now().date() != self.state.today_date:
             self.reset_daily_counters()
+
+        if self.eval_relax_caps:
+            return {
+                'trading_allowed': True,
+                'reason': 'RISK_EVAL_RELAX_CAPS=true',
+                'limits_status': {}
+            }
         
         # Check circuit breakers
         cb_result = self.check_circuit_breakers(self.state.today_date)
@@ -741,11 +874,12 @@ class RiskEngine:
             if grade_upper in ('APLUS', 'A_PLUS', 'A+'):
                 grade = 'A+'
         
-        if grade == 'A+' or category == 'A_PLUS_ONLY':
-            if setup.trade_type == 'DAILY' and self.state.daily_aplus_daily_count >= 1:
-                return {'allowed': False, 'reason': 'A+ DAILY quota reached for today'}
-            if setup.trade_type == 'SCALP' and self.state.daily_aplus_scalp_count >= 1:
-                return {'allowed': False, 'reason': 'A+ SCALP quota reached for today'}
+        if not self.eval_relax_caps:
+            if grade == 'A+' or category == 'A_PLUS_ONLY':
+                if setup.trade_type == 'DAILY' and self.state.daily_aplus_daily_count >= 1:
+                    return {'allowed': False, 'reason': 'A+ DAILY quota reached for today'}
+                if setup.trade_type == 'SCALP' and self.state.daily_aplus_scalp_count >= 1:
+                    return {'allowed': False, 'reason': 'A+ SCALP quota reached for today'}
         
         return {'allowed': True, 'reason': 'OK'}
     

@@ -1133,7 +1133,7 @@ class BacktestEngine:
                 # P0 FIX: Utiliser setup.playbook_name (source de vérité unique)
                 playbook_name = setup.playbook_name if setup.playbook_name else "unknown"
                 
-                logger.error(
+                logger.debug(
                     f"[DEBUG] SETUP MATCHED | "
                     f"bar={bar_num} | "
                     f"playbook={playbook_name} | "
