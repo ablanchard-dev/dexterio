@@ -4,10 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Shield, AlertTriangle, CheckCircle, TrendingUp, TrendingDown } from 'lucide-react';
-import axios from 'axios';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import api from '@/apiClient';
 
 const RiskManagement = () => {
   const [riskState, setRiskState] = useState(null);
@@ -21,7 +18,7 @@ const RiskManagement = () => {
 
   const fetchRiskState = async () => {
     try {
-      const response = await axios.get(`${API}/trading/risk-state`);
+      const response = await api.get('/trading/risk-state');
       setRiskState(response.data);
       setLoading(false);
     } catch (error) {
@@ -33,7 +30,7 @@ const RiskManagement = () => {
     if (!window.confirm('Are you sure you want to close all open positions?')) return;
 
     try {
-      await axios.post(`${API}/trading/control`, { action: 'close_all' });
+      await api.post('/trading/control', { action: 'close_all' });
       alert('All positions closed successfully');
       fetchRiskState();
     } catch (error) {

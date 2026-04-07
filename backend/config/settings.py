@@ -68,7 +68,30 @@ class Settings:
     # Paper Trading
     PAPER_TRADING: bool = os.environ.get('PAPER_TRADING', 'true').lower() == 'true'
     
+    # Live loop: intervalle entre deux passes (analyse + mise à jour positions)
+    LIVE_LOOP_INTERVAL_SEC: float = float(os.environ.get('LIVE_LOOP_INTERVAL_SEC', '60'))
+    # Réduit les appels Yahoo Finance répétés (yfinance) pendant la boucle paper/live
+    DATA_FEED_CACHE_SECONDS: float = float(os.environ.get('DATA_FEED_CACHE_SECONDS', '45'))
+
+    # Exécution: paper (simulation locale) ou ibkr (ordres réels via TWS / Gateway)
+    EXECUTION_BACKEND: str = os.environ.get('EXECUTION_BACKEND', 'paper').strip().lower()
+    IBKR_HOST: str = os.environ.get('IBKR_HOST', '127.0.0.1')
+    IBKR_PORT: int = int(os.environ.get('IBKR_PORT', '7497'))  # paper TWS souvent 7497, live 7496
+    IBKR_CLIENT_ID: int = int(os.environ.get('IBKR_CLIENT_ID', '1'))
+    # Ne passe à True qu’après tests paper; requiert EXECUTION_BACKEND=ibkr + ib_insync
+    LIVE_TRADING_ENABLED: bool = os.environ.get('LIVE_TRADING_ENABLED', 'false').lower() in {
+        '1', 'true', 'yes', 'on',
+    }
+
+    # Workers ProcessPool pour les jobs backtest
+    BACKTEST_MAX_WORKERS: int = max(1, int(os.environ.get('BACKTEST_MAX_WORKERS', '2')))
+
     # Slippage Simulation
     SLIPPAGE_TICKS: float = 0.02  # $0.02 per share average slippage
-    
+
+    # Si False (défaut prod), les erreurs 500 ne renvoient pas le détail d'exception au client
+    EXPOSE_INTERNAL_ERRORS: bool = os.environ.get(
+        "EXPOSE_INTERNAL_ERRORS", "false"
+    ).lower() in {"1", "true", "yes", "on"}
+
 settings = Settings()
