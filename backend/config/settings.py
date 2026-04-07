@@ -86,6 +86,14 @@ class Settings:
     # Workers ProcessPool pour les jobs backtest
     BACKTEST_MAX_WORKERS: int = max(1, int(os.environ.get('BACKTEST_MAX_WORKERS', '2')))
 
+    # Gate 3 / Wave 1: allowlist paper explicite optionnelle
+    PAPER_USE_WAVE1_PLAYBOOKS: bool = os.environ.get(
+        "PAPER_USE_WAVE1_PLAYBOOKS", "false"
+    ).lower() in {"1", "true", "yes", "on"}
+    PAPER_WAVE1_PLAYBOOKS_FILE: str = os.environ.get(
+        "PAPER_WAVE1_PLAYBOOKS_FILE", "backend/knowledge/paper_wave1_playbooks.yaml"
+    )
+
     # Slippage Simulation
     SLIPPAGE_TICKS: float = 0.02  # $0.02 per share average slippage
 

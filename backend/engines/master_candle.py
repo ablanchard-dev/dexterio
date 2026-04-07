@@ -156,7 +156,7 @@ def calculate_master_candle(
             break
     
     if ny_open_ts is None:
-        logger.warning("No candle found after NY open (09:30)")
+        logger.debug("No candle found after NY open (09:30)")
         return None
     
     # Calculer session_date si non fourni
@@ -173,7 +173,7 @@ def calculate_master_candle(
     ]
     
     if not mc_candles:
-        logger.warning(f"No candles in MC window ({ny_open_ts} to {mc_end_ts})")
+        logger.debug(f"No candles in MC window ({ny_open_ts} to {mc_end_ts})")
         return None
     
     # Calculer MC high/low/range
