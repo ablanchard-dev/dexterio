@@ -6,6 +6,7 @@ File-based job storage with async execution
 import json
 import uuid
 import logging
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -27,7 +28,8 @@ def get_executor():
         # Si shutdown, créer un nouvel executor
         if _executor is not None and _executor_shutdown:
             logger.warning("Creating new executor after shutdown")
-        _executor = ProcessPoolExecutor(max_workers=2)
+        max_w = max(1, int(os.environ.get("BACKTEST_MAX_WORKERS", "2")))
+        _executor = ProcessPoolExecutor(max_workers=max_w)
         _executor_shutdown = False
     return _executor
 

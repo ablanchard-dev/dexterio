@@ -1,7 +1,7 @@
 """Trading Pipeline - Orchestration Phase 1.1 + 1.2 + 1.3"""
 import logging
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from engines.data_feed import DataFeedEngine
 from engines.market_state import MarketStateEngine
 from engines.liquidity import LiquidityEngine
@@ -86,7 +86,7 @@ class TradingPipeline:
                 
                 # 2. Market State
                 logger.info("[2/8] Market State...")
-                session_info = get_session_info(datetime.utcnow())
+                session_info = get_session_info(datetime.now(timezone.utc))
                 market_state = self.market_state_engine.create_market_state(
                     symbol, multi_tf_data,
                     {'current_session': session_info.get('name', 'unknown'), 'session_levels': {}}
@@ -176,7 +176,7 @@ class TradingPipeline:
                     market_state,
                     self.liquidity_engine,
                     ict_patterns,
-                    datetime.utcnow()
+                    datetime.now(timezone.utc)
                 )
                 
                 logger.info(f"  Matched {len(playbook_matches)} playbooks")
@@ -232,7 +232,7 @@ class TradingPipeline:
         """Génère un résumé des setups détectés"""
         
         summary = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'trading_mode': settings.TRADING_MODE,
             'total_setups': 0,
             'by_symbol': {},
@@ -262,7 +262,8 @@ class TradingPipeline:
             Dict avec résultats d'exécution, trades ouverts, stats
         """
         symbols = symbols or settings.SYMBOLS
-        
+        now = datetime.now(timezone.utc)
+
         logger.info("=== Starting Full Trading Loop (Phase 1.1 + 1.2 + 1.3) ===")
         
         # 1. Vérifier limites quotidiennes
@@ -335,7 +336,7 @@ class TradingPipeline:
                 'position_calc': position_calc
             }
             
-            order_result = self.execution_engine.place_order(setup, risk_allocation)
+            order_result = self.execution_engine.place_order(setup, risk_allocation, current_time=now)
             
             if order_result['success']:
                 trade = order_result['trade']
@@ -370,7 +371,8 @@ class TradingPipeline:
                 market_data[symbol] = price
         
         # Mettre à jour positions
-        events = self.execution_engine.update_open_trades(market_data)
+        now = datetime.now(timezone.utc)
+        events = self.execution_engine.update_open_trades(market_data, current_time=now)
         
         # Récupérer trades fermés récents (ceux qui viennent d'être fermés)
         closed_trades = [t for t in self.execution_engine.get_closed_trades() 
@@ -406,11 +408,14 @@ class TradingPipeline:
         open_trades = self.execution_engine.get_open_trades()
         closed_count = 0
         
+        now = datetime.now(timezone.utc)
         for trade in open_trades:
             # Récupérer prix actuel
             current_price = self.data_feed.get_latest_price(trade.symbol)
             if current_price:
-                self.execution_engine.close_trade(trade.id, 'eod', current_price)
+                self.execution_engine.close_trade(
+                    trade.id, 'eod', current_price, current_time=now
+                )
                 closed_count += 1
         
         logger.info(f"EOD: Closed {closed_count} position(s)")
