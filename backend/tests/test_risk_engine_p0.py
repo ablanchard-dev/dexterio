@@ -192,7 +192,8 @@ class TestPlaybookAllowlist:
         """Vérifier que la allowlist contient les playbooks baseline"""
         assert 'News_Fade' in AGGRESSIVE_ALLOWLIST
         assert 'Session_Open_Scalp' in AGGRESSIVE_ALLOWLIST
-        assert 'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open' in AGGRESSIVE_ALLOWLIST
+        # Quarantaine volontaire : voir AGGRESSIVE_DENYLIST dans risk_engine
+        assert 'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open' in AGGRESSIVE_DENYLIST
     
     def test_aggressive_denylist_contains_destructeurs(self):
         """Vérifier que la denylist contient les playbooks destructeurs"""

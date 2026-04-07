@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import logging
+import time
 from config.settings import settings
 from models.market_data import Candle
 
@@ -17,6 +18,11 @@ class DataFeedEngine:
         self.source = source
         self.candles_cache = {symbol: {tf: [] for tf in settings.TIMEFRAMES} 
                               for symbol in self.symbols}
+        # Cache court pour limiter le rate-limit Yahoo en boucle live / APIs
+        self._multi_tf_cache_until: Dict[str, float] = {}
+        self._multi_tf_cached: Dict[str, Dict[str, List[Candle]]] = {}
+        self._price_cache_until: Dict[str, float] = {}
+        self._price_cached: Dict[str, float] = {}
         logger.info(f"DataFeedEngine initialized with symbols: {self.symbols}, source: {source}")
     
     def fetch_historical_data(self, symbol: str, period: str = '5d', interval: str = '1m') -> List[Candle]:
@@ -64,13 +70,31 @@ class DataFeedEngine:
     
     def get_latest_price(self, symbol: str) -> Optional[float]:
         """
-        Récupère le dernier prix connu
+        Récupère le dernier prix connu (avec cache TTL pour la boucle paper/live).
         """
+        now = time.monotonic()
+        ttl = float(getattr(settings, "DATA_FEED_CACHE_SECONDS", 45.0))
+        if symbol in self._price_cached and self._price_cache_until.get(symbol, 0) > now:
+            return self._price_cached[symbol]
+
+        # Réutiliser les bougies 1m déjà en cache si disponibles
+        multi = self._multi_tf_cached.get(symbol)
+        if multi and multi.get("1m"):
+            c1m = multi["1m"]
+            if c1m:
+                px = float(c1m[-1].close)
+                self._price_cached[symbol] = px
+                self._price_cache_until[symbol] = now + ttl
+                return px
+
         try:
             ticker = yf.Ticker(symbol)
             data = ticker.history(period='1d', interval='1m')
             if not data.empty:
-                return float(data['Close'].iloc[-1])
+                px = float(data['Close'].iloc[-1])
+                self._price_cached[symbol] = px
+                self._price_cache_until[symbol] = now + ttl
+                return px
         except Exception as e:
             logger.error(f"Error getting latest price for {symbol}: {e}")
         return None
@@ -138,10 +162,10 @@ class DataFeedEngine:
         
         # Resample selon timeframe
         tf_map = {
-            '5m': '5T',
-            '15m': '15T',
-            '1h': '1H',
-            '4h': '4H',
+            '5m': '5min',
+            '15m': '15min',
+            '1h': '1h',
+            '4h': '4h',
             '1d': '1D'
         }
         
@@ -181,6 +205,14 @@ class DataFeedEngine:
         Returns:
             Dict avec clés = timeframes, valeurs = listes de Candles
         """
+        now = time.monotonic()
+        ttl = float(getattr(settings, "DATA_FEED_CACHE_SECONDS", 45.0))
+        if (
+            symbol in self._multi_tf_cached
+            and self._multi_tf_cache_until.get(symbol, 0) > now
+        ):
+            return self._multi_tf_cached[symbol]
+
         result = {}
         
         # Récupérer 1m (base)
@@ -197,5 +229,12 @@ class DataFeedEngine:
         
         logger.info(f"Retrieved multi-timeframe data for {symbol}: " + 
                    f"{', '.join([f'{k}:{len(v)}' for k, v in result.items()])}")
-        
+
+        self._multi_tf_cached[symbol] = result
+        self._multi_tf_cache_until[symbol] = now + ttl
+        # Aligner le cache prix sur la dernière 1m
+        if result.get("1m"):
+            self._price_cached[symbol] = float(result["1m"][-1].close)
+            self._price_cache_until[symbol] = now + ttl
+
         return result
