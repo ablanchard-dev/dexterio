@@ -1,0 +1,3 @@
+# Dépendances optionnelles — connexion Interactive Brokers (TWS / Gateway)
+# Installation: pip install -r requirements-ibkr.txt
+ib-insync>=0.9.86

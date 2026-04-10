@@ -1,0 +1,38 @@
+wave: paper_wave1
+generated_at: '2026-04-10T12:00:00Z'
+selection_mode: phase3_p2_gate_nov2025_spy_qqq
+notes: >-
+  Phase 3 après lab court Nov 2025 (SPY+QQQ) avec bypass P2 : LSS exécute en backtest.
+  En paper avec PAPER_USE_WAVE1_PLAYBOOKS=true, la quarantaine dynamique YAML ne s'applique pas
+  aux playbooks listés ici (RiskEngine._is_in_denylist). Denylist statique inchangée.
+period:
+  start: '2025-11-01'
+  end: '2025-11-30'
+playbooks:
+  - name: NY_Open_Reversal
+    rank: 1
+    metrics:
+      trades: 162
+      winrate: 51.23456790123457
+      profit_factor: 1.723691616547853
+      total_r_net: 15.79962255299934
+      expectancy_r: 0.0975285342777737
+      stability_score: null
+  - name: News_Fade
+    rank: 2
+    metrics:
+      trades: 0
+      winrate: 0.0
+      profit_factor: 0.0
+      total_r_net: 0.0
+      expectancy_r: 0.0
+      stability_score: null
+  - name: Liquidity_Sweep_Scalp
+    rank: 3
+    metrics:
+      trades: 8
+      winrate: 12.5
+      profit_factor: 0.14774656023095556
+      total_r_net: -4.577227249999974
+      expectancy_r: -0.5721534062499967
+      stability_score: null

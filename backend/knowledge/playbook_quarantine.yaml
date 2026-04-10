@@ -1,0 +1,23 @@
+generated_from: C:\bots\dexterio1-main\backend\results\playbooks_leaderboard_24m.json
+quarantine:
+- playbook: Liquidity_Sweep_Scalp
+  reason: high_loss_r
+  trades: 492
+  total_r_net: -9.809253818000089
+- playbook: Morning_Trap_Reversal
+  reason: high_loss_r
+  trades: 206
+  total_r_net: -12.149875080999934
+- playbook: SCALP_Aplus_1_Mini_FVG_Retest_NY_Open
+  reason: high_loss_r
+  trades: 699
+  total_r_net: -32.316044388375005
+- playbook: NY_Lunch_Breakout_Reprice
+  reason: high_loss_r
+  trades: 649
+  total_r_net: -47.50240873350005
+- playbook: Trend_Continuation_FVG_Retest
+  reason: >-
+    lab_nov_2025_spy_qqq_1m: -22.32R net, PF 0.0, 98 trades (MarketState.current_session corrigé) —
+    playbook retiré de AGGRESSIVE_ALLOWLIST et ajouté à AGGRESSIVE_DENYLIST
+shortlist: []

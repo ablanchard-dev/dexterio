@@ -1,0 +1,28 @@
+---
+description: Rester dans les limites d’usage Cursor (abonnement) — appels et portée minimaux
+alwaysApply: true
+---
+
+# Usage Cursor — rester dans ton abonnement
+
+L’objectif est de **ne jamais consommer plus de quota/outils** que nécessaire pour la tâche demandée.
+
+## Comportement
+
+- **Périmètre strict** : ne pas élargir la tâche (refactors, docs, explorations) sans demande explicite.
+- **Moins d’outils** : regrouper les lectures/recherches ; éviter les appels parallèles massifs si une passe suffit.
+- **Pas d’agent en sous-traitance** pour des questions simples ou un seul fichier ; réserver les Task/subagents aux gros travaux autorisés par l’utilisateur.
+- **Modèle** : privilégier le chemin le plus économique quand la tâche est locale et courte (petit diff, une réponse, une commande ciblée).
+- **Terminal** : ne pas lancer suites de tests/builds lourds ou en boucle sans raison ; une exécution ciblée suffit en général.
+- **Contexte** : ne pas relire des centaines de fichiers « pour être sûr » ; cibler par grep/chemin puis lire le minimum.
+- **Itérations** : si la demande est satisfaite, s’arrêter ; ne pas enchaîner des « bonus » non demandés.
+
+## Exemple
+
+```text
+Demande : corriger une typo dans settings.py
+✅ Lire settings.py, un correctif, terminer.
+❌ Auditer tout le repo, lancer tous les tests, mettre à jour 5 docs.
+```
+
+Si l’utilisateur impose un plafond explicite (requêtes, budget, pas de sous-agent), **le respecter strictement**.

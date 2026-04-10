@@ -6,7 +6,7 @@ La Phase 3B modifie la **sémantique d’exécution** pour trois playbooks uniqu
 
 En particulier pour **NY_Open_Reversal** et **News_Fade** (DAILY) :
 
-- **`session_end`** : clôture à la borne de fin de fenêtre dérivée du YAML (timezone `America/New_York`), au lieu de prolonger jusqu’à une sortie **EOD** implicite pour une partie des trades.
+- `**session_end`** : clôture à la borne de fin de fenêtre dérivée du YAML (timezone `America/New_York`), au lieu de prolonger jusqu’à une sortie **EOD** implicite pour une partie des trades.
 - **Breakeven à `breakeven_at_rr` du YAML (1.0R)** au lieu du seuil global historique **0.5R** (qui, de plus, ne s’appliquait pas correctement tant que `Trade.breakeven_moved` n’existait pas sur le modèle).
 
 Pour **Liquidity_Sweep_Scalp** :
@@ -21,32 +21,36 @@ Conséquences sur les indicateurs agrégés : **distribution des R**, nombre et 
 
 ## Baseline « pré-3B » (référence chiffrée, même fenêtre lab)
 
-Référence : fenêtre **`labfull_202511`** (SPY+QQQ, `summary_labfull_202511_AGGRESSIVE_DAILY_SCALP.json` + `trades_labfull_202511_AGGRESSIVE_DAILY_SCALP.parquet`) tels que présents sur disque **avant** régénération post-3B.
+Référence : fenêtre `**labfull_202511`** (SPY+QQQ, `summary_labfull_202511_AGGRESSIVE_DAILY_SCALP.json` + `trades_labfull_202511_AGGRESSIVE_DAILY_SCALP.parquet`) tels que présents sur disque **avant** régénération post-3B.
 
 Résumé agrégé (summary) :
 
-| Indicateur | Valeur |
-|------------|--------:|
-| `total_trades` | 170 |
-| `total_pnl_r` | ≈ 11.53 |
-| `NY_Open_Reversal` trades | 162 |
-| `NY_Open_Reversal` `total_r` | ≈ 15.80 |
-| `Liquidity_Sweep_Scalp` trades | 8 |
-| `Liquidity_Sweep_Scalp` `total_r` | ≈ −4.27 |
-| `News_Fade` | 0 trade dans ce export parquet (fenêtre / concurrence) |
+
+| Indicateur                        | Valeur                                                 |
+| --------------------------------- | ------------------------------------------------------ |
+| `total_trades`                    | 170                                                    |
+| `total_pnl_r`                     | ≈ 11.53                                                |
+| `NY_Open_Reversal` trades         | 162                                                    |
+| `NY_Open_Reversal` `total_r`      | ≈ 15.80                                                |
+| `Liquidity_Sweep_Scalp` trades    | 8                                                      |
+| `Liquidity_Sweep_Scalp` `total_r` | ≈ −4.27                                                |
+| `News_Fade`                       | 0 trade dans ce export parquet (fenêtre / concurrence) |
+
 
 Répartition des **exit_reason** (parquet, même run) :
 
-| Playbook | exit_reason | count |
-|----------|-------------|------:|
-| NY_Open_Reversal | SL | 66 |
-| NY_Open_Reversal | TP1 | 58 |
-| NY_Open_Reversal | eod | 38 |
-| Liquidity_Sweep_Scalp | SL | 2 |
-| Liquidity_Sweep_Scalp | TP1 | 1 |
-| Liquidity_Sweep_Scalp | time_stop | 5 |
 
-Interprétation baseline : une part significative des NY se termine encore en **`eod`** ; après 3B, on attend une **baisse** de `eod` au profit de **`session_end`** (et des sorties modifiées après BE 1R).
+| Playbook              | exit_reason | count |
+| --------------------- | ----------- | ----- |
+| NY_Open_Reversal      | SL          | 66    |
+| NY_Open_Reversal      | TP1         | 58    |
+| NY_Open_Reversal      | eod         | 38    |
+| Liquidity_Sweep_Scalp | SL          | 2     |
+| Liquidity_Sweep_Scalp | TP1         | 1     |
+| Liquidity_Sweep_Scalp | time_stop   | 5     |
+
+
+Interprétation baseline : une part significative des NY se termine encore en `**eod`** ; après 3B, on attend une **baisse** de `eod` au profit de `**session_end`** (et des sorties modifiées après BE 1R).
 
 ---
 
@@ -69,10 +73,10 @@ Set-Location c:\bots\dexterio1-main\backend
 python -c "import pandas as pd; df=pd.read_parquet('results/labs/full_playbooks_24m/trades_labfull_202511_AGGRESSIVE_DAILY_SCALP.parquet'); print(df.groupby(['playbook','exit_reason']).size())"
 ```
 
-3. Comparer **avant/après** pour NY / NF / LSS : trades, `total_r`, tableau `exit_reason`, et présence de **`session_end`** sur NY/NF.
-4. **News_Fade — concurrence post-risk (sélection `max(final_score)`) :** dans `debug_counts_labfull_*.json`, lire `news_fade_post_risk_final_pool_count`, `news_fade_post_risk_lost_final_selection_count`, `news_fade_post_risk_lost_final_selection_by_winner` et `news_fade_post_risk_won_final_selection_count`. La part de NF présente dans le pool final mais écartée au profit d’un autre playbook vaut `lost_final_selection_count / final_pool_count` (si `final_pool_count > 0`).
+1. Comparer **avant/après** pour NY / NF / LSS : trades, `total_r`, tableau `exit_reason`, et présence de `**session_end`** sur NY/NF.
+2. **News_Fade — concurrence post-risk (sélection `max(final_score)`) :** dans `debug_counts_labfull_*.json`, lire `news_fade_post_risk_final_pool_count`, `news_fade_post_risk_lost_final_selection_count`, `news_fade_post_risk_lost_final_selection_by_winner` et `news_fade_post_risk_won_final_selection_count`. La part de NF présente dans le pool final mais écartée au profit d’un autre playbook vaut `lost_final_selection_count / final_pool_count` (si `final_pool_count > 0`).
 
-**Sauvegarde recommandée :** avant de régénérer, copier les fichiers `summary_*`, `trades_*.parquet` / `.csv` et `debug_counts_*` sous un suffixe `_pre_phase3b_execution` pour garder une preuve reproductible côte à côte.
+**Sauvegarde recommandée :** avant de régénérer, copier les fichiers `summary_`*, `trades_*.parquet` / `.csv` et `debug_counts_*` sous un suffixe `_pre_phase3b_execution` pour garder une preuve reproductible côte à côte.
 
 ---
 
@@ -95,3 +99,4 @@ Après **re-baseline** des métriques Wave 1 sur la sémantique 3B (au moins un 
 - Paper : `backend/engines/execution/paper_trading.py`
 - Parité backtest SCALP : `backend/backtest/engine.py` (`_effective_max_scalp_minutes_for_trade`)
 - Tests : `backend/tests/test_phase3b_execution.py`
+
