@@ -191,6 +191,12 @@ class BacktestEngine:
             "trades_opened_by_minute": {},              # {minute_key: count}
             "trades_opened_by_minute_by_symbol": {},    # {minute_key: {symbol: count}}
             "blocked_by_per_minute_cap": 0,              # Nombre de setups bloqués par cap par minute
+            # News_Fade — sélection finale (après risk filter) : un seul setup / symbole / minute = max(final_score)
+            "news_fade_post_risk_final_pool_count": 0,
+            "news_fade_post_risk_final_pool_multi_setup_count": 0,
+            "news_fade_post_risk_won_final_selection_count": 0,
+            "news_fade_post_risk_lost_final_selection_count": 0,
+            "news_fade_post_risk_lost_final_selection_by_winner": {},
         }
         
         logger.info(f"BacktestEngine initialized - Mode: {config.trading_mode}, Types: {config.trade_types}")
@@ -1255,8 +1261,36 @@ class BacktestEngine:
             self.debug_counts["setups_rejected_by_reason"]["rejected_by_mode"] += len(setups)
             return None
         
-        # Retourner le meilleur setup
-        return max(filtered_setups, key=lambda s: s.final_score)
+        # Sélection finale : un setup / symbole / barre parmi les candidats post-risk (Wave 2 / diagnostic NF).
+        winner = max(filtered_setups, key=lambda s: s.final_score)
+        nf_in_pool = any(
+            (getattr(s, "playbook_name", None) or "") == "News_Fade" for s in filtered_setups
+        )
+        if nf_in_pool:
+            dc = self.debug_counts
+            dc["news_fade_post_risk_final_pool_count"] = (
+                dc.get("news_fade_post_risk_final_pool_count", 0) + 1
+            )
+            if len(filtered_setups) > 1:
+                dc["news_fade_post_risk_final_pool_multi_setup_count"] = (
+                    dc.get("news_fade_post_risk_final_pool_multi_setup_count", 0) + 1
+                )
+            wname = getattr(winner, "playbook_name", None) or "UNKNOWN"
+            if wname == "News_Fade":
+                dc["news_fade_post_risk_won_final_selection_count"] = (
+                    dc.get("news_fade_post_risk_won_final_selection_count", 0) + 1
+                )
+            else:
+                dc["news_fade_post_risk_lost_final_selection_count"] = (
+                    dc.get("news_fade_post_risk_lost_final_selection_count", 0) + 1
+                )
+                lost_by = dc.get("news_fade_post_risk_lost_final_selection_by_winner")
+                if not isinstance(lost_by, dict):
+                    lost_by = {}
+                    dc["news_fade_post_risk_lost_final_selection_by_winner"] = lost_by
+                lost_by[wname] = lost_by.get(wname, 0) + 1
+
+        return winner
     
     def _process_bar(self, symbol: str, current_time: datetime) -> Optional[Setup]:
         """Construit le meilleur setup pour un symbole et une minute donnée.
