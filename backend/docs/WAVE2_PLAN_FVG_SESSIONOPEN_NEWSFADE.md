@@ -13,7 +13,7 @@
 |----------|-------------------------|----------------------|
 | **FVG_Fill_Scalp** | M=96, S=0 | Aucun setup créé après match playbook : rejets dans `generate_setups` / `_determine_direction` / edge filters / `_calculate_price_levels` / absence FVG dans `ict_patterns` sur la plupart des minutes (ICT alimenté surtout aux clôtures 5m/15m — voir `engine.py` ~1076–1093). |
 | **Session_Open_Scalp** | M=622, S=0 | Idem funnel setup ; playbook **continuation** : `_determine_direction` exige bias + faible indécision ; `_rebalance_grade_if_needed` pénalise fortement sans sweep/BOS (`setup_engine_v2.py` ~465+). |
-| **News_Fade** | SR=1, T=0 | Setup passe risk mais **aucun** trade : après risk, un seul setup par symbole/barre = `max(filtered_setups, key=final_score)` (`engine.py` ~1345–1346) ; puis `_execute_setup` peut échouer (cooldown, session cap, daily cap, `can_take_setup`, `place_order`). |
+| **News_Fade** | SR=1, T=0 | Setup passe risk mais **aucun** trade : après risk, un seul setup par symbole/barre = `max(filtered_setups, key=final_score)` ; puis `_execute_setup` peut échouer (cooldown, session cap, daily cap, `can_take_setup`, `place_order`). |
 
 ---
 
@@ -35,12 +35,20 @@
 
 ### 2.3 News_Fade (trade path)
 
-- **Cause probable 1 :** même minute qu’un autre setup autorisé avec **score plus haut** → NF jamais choisi (`max(..., key=final_score)`).
+- **Cause probable 1 :** même minute qu’un autre setup autorisé avec **score plus haut** → NF jamais choisi (`max(..., key=final_score)`). En cas d’**égalité** de `final_score`, Python retient le **premier** setup dans `filtered_setups` (ordre non garanti côté moteur — à noter dans l’interprétation).
 - **Cause probable 2 :** `_execute_setup` : cooldown / max trades session / daily cap / sizing invalide.
+- **Instrumentation (sélection finale post-risk), export `debug_counts*.json` :**
+  - `news_fade_post_risk_final_pool_count` : barres où **au moins un** setup `News_Fade` est dans `filtered_setups` (candidat à la sélection finale).
+  - `news_fade_post_risk_final_pool_multi_setup_count` : parmi celles-ci, barres avec **plus d’un** candidat post-risk (concurrence réelle pour `max(final_score)`).
+  - `news_fade_post_risk_won_final_selection_count` : NF est le setup retenu (`winner.playbook_name == "News_Fade"`).
+  - `news_fade_post_risk_lost_final_selection_count` : NF est dans le pool mais **un autre** playbook gagne le `max(final_score)`.
+  - `news_fade_post_risk_lost_final_selection_by_winner` : décompte par nom du playbook gagnant (ex. `NY_Open_Reversal`).
+- **Lecture produit :** part de perte au tirage final =  
+  `news_fade_post_risk_lost_final_selection_count / news_fade_post_risk_final_pool_count` (si le dénominateur > 0). Comparer avec `setups_after_risk_filter_by_playbook["News_Fade"]` (agrégat par setup, pas par barre) pour le contexte amont.
 - **Patch minimal (choix à trancher) :**
   - **A)** Tie-break ou priorité **documentée** pour NF dans un sous-ensemble de minutes (ex. fenêtres `time_windows` du YAML) — **garde stricte** sur le nom.
-  - **B)** Log + compteur `debug_counts` pour refus NF après risk (`trades_attempted` vs `opened`) avant tout changement de logique.
-- **Recommandation :** commencer par **B** (instrumentation seule), puis **A** si les logs confirment la perte au `max(score)`.
+  - **B)** Compteurs `trades_attempted_by_playbook` vs `trades_opened_by_playbook` pour NF **après** constat sur les compteurs ci-dessus.
+- **Recommandation :** lire d’abord les compteurs **sélection finale** sur un lab post-3B ; n’envisager **A** que si `lost_final_selection` domine clairement le goulot par rapport à `_execute_setup`.
 
 ---
 
@@ -83,8 +91,8 @@ python -m pytest tests/... -q
 
 ## 6. Parallèle avec validation post-3B
 
-- **3B :** re-lab + `PHASE_3B_COMPARABILITY` / métriques exit — **indépendant** des patches Wave 2 ci-dessus.
-- **Ordre conseillé :** finir **instrumentation NF (étape B)** sans changer 3B ; patches FVG/SOS sur **branche ou commits séparés** après constat chiffré.
+- **3B :** re-lab + `PHASE_3B_COMPARABILITY` / métriques exit — **indépendant** des patches Wave 2 ci-dessus. Les compteurs `news_fade_post_risk_*` sont inclus dans le même `debug_counts` exporté par le lab : les consommer **sur le run post-3B** pour baseline comparable.
+- **Ordre conseillé :** finaliser la validation 3B (exit_reason + ces compteurs NF) ; puis patches FVG/SOS / éventuelle priorité NF sur **commits séparés** après constat chiffré.
 
 ---
 
