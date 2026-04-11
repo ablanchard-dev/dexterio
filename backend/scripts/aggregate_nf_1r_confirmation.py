@@ -146,6 +146,109 @@ def _build_rows() -> List[Dict[str, Any]]:
     return rows
 
 
+def _campaign_rollups(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    from collections import defaultdict
+
+    agg: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"nf_trades": 0.0, "sum_r": 0.0, "weeks": 0.0, "sum_tp_pct": 0.0, "sum_se_pct": 0.0}
+    )
+    for r in rows:
+        camp = str(r.get("campaign") or "")
+        if camp == "PHASE_B_REFERENCE" or not camp.startswith("nf1r_confirm_"):
+            continue
+        a = agg[camp]
+        a["nf_trades"] += float(r.get("trades") or 0)
+        a["sum_r"] += float(r.get("sum_r") or 0.0)
+        a["weeks"] += 1.0
+        a["sum_tp_pct"] += float(r.get("pct_tp") or 0.0)
+        a["sum_se_pct"] += float(r.get("pct_session_end") or 0.0)
+    out: List[Dict[str, Any]] = []
+    for camp in sorted(agg.keys()):
+        a = agg[camp]
+        n = int(a["nf_trades"])
+        w = int(a["weeks"])
+        e = (a["sum_r"] / n) if n else None
+        out.append(
+            {
+                "campaign": camp,
+                "weeks_completed": w,
+                "nf_trades_total": n,
+                "sum_r_nf_total": round(a["sum_r"], 4),
+                "expectancy_r_nf": round(e, 6) if e is not None else None,
+                "mean_pct_tp": round(a["sum_tp_pct"] / w, 2) if w else None,
+                "mean_pct_session_end": round(a["sum_se_pct"] / w, 2) if w else None,
+            }
+        )
+    return out
+
+
+def _gate_decision(
+    *,
+    ref: Optional[Dict[str, Any]],
+    week_rows: List[Dict[str, Any]],
+    _rollups: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Heuristique documentée ; révision humaine si proche des seuils."""
+    n_weeks = len(week_rows)
+    total_trades = sum(int(r.get("trades") or 0) for r in week_rows)
+    total_sr = sum(float(r.get("sum_r") or 0.0) for r in week_rows)
+    e = (total_sr / total_trades) if total_trades else None
+    ref_e = float(ref["expectancy_r"]) if ref and ref.get("expectancy_r") is not None else None
+
+    if n_weeks < 10:
+        return {
+            "gate": "KEEP_1R_PROVISIONAL",
+            "reason": f"fenêtres nf1r_confirm complétées={n_weeks} (<10 requis pour gate ferme)",
+            "nf_trades_total": total_trades,
+            "expectancy_r_nf": e,
+        }
+    if ref is None or ref_e is None:
+        return {
+            "gate": "KEEP_1R_PROVISIONAL",
+            "reason": "référence PHASE B (_phase_b_nf_tp1_aggregate.json) absente ou incomplète",
+            "nf_trades_total": total_trades,
+            "expectancy_r_nf": e,
+        }
+    if total_trades == 0 or e is None:
+        return {
+            "gate": "KEEP_1R_PROVISIONAL",
+            "reason": "aucun trade NF agrégé sur les fenêtres nf1r_confirm",
+            "nf_trades_total": total_trades,
+            "expectancy_r_nf": e,
+        }
+    # Divergence nette vs ref nov2025 @1R (expectancy positive) sur volume suffisant
+    if total_trades >= 40 and e < 0 and ref_e > 0.02:
+        return {
+            "gate": "REOPEN_1R_VS_1P5R",
+            "reason": (
+                f"expectancy NF agrégée négative ({e:.4f}R) vs ref PHASE B positive ({ref_e:.4f}R), "
+                f"n={total_trades} — rouvrir arbitrage 1.0R vs 1.5R sur mêmes fenêtres"
+            ),
+            "nf_trades_total": total_trades,
+            "expectancy_r_nf": e,
+        }
+    if total_trades >= 25 and e < ref_e - 0.12:
+        return {
+            "gate": "REOPEN_1R_VS_1P5R",
+            "reason": f"expectancy NF {e:.4f} << ref nov {ref_e:.4f} sur n={total_trades}",
+            "nf_trades_total": total_trades,
+            "expectancy_r_nf": e,
+        }
+    if total_trades >= 45 and e >= ref_e - 0.06:
+        return {
+            "gate": "PROMOTE_1R_TO_PAPER_CANDIDATE",
+            "reason": f"expectancy alignée ref (Δ≤0.06) et volume n={total_trades}",
+            "nf_trades_total": total_trades,
+            "expectancy_r_nf": e,
+        }
+    return {
+        "gate": "KEEP_1R_PROVISIONAL",
+        "reason": "volume ou expectancy dans zone intermédiaire — révision manuelle",
+        "nf_trades_total": total_trades,
+        "expectancy_r_nf": e,
+    }
+
+
 def _md_table(rows: List[Dict[str, Any]]) -> str:
     lines = [
         "# PHASE 1 — Tableau confirmation News_Fade 1.0R",
@@ -166,6 +269,27 @@ def _md_table(rows: List[Dict[str, Any]]) -> str:
     for r in rows:
         lines.append(f"- **{r.get('campaign')} / {r.get('label')}** : `{r.get('exit_reason_counts', {})}`")
     lines.append("")
+    lines.append("## Agrégats par campagne")
+    lines.append("")
+    lines.append("| campaign | semaines | NF trades | ΣR NF | E[R] NF | mean %TP | mean %session_end |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|")
+    # rollups passed via closure — regenerate from rows
+    for u in _campaign_rollups(rows):
+        e = u.get("expectancy_r_nf")
+        es = f"{e:.4f}" if e is not None else "n/a"
+        lines.append(
+            f"| {u['campaign']} | {u['weeks_completed']} | {u['nf_trades_total']} | "
+            f"{u['sum_r_nf_total']:.2f} | {es} | {u.get('mean_pct_tp')} | {u.get('mean_pct_session_end')} |"
+        )
+    lines.append("")
+    lines.append("## Gate (heuristique)")
+    gate = _gate_decision(
+        ref=_reference_nov2025_1r(),
+        week_rows=[r for r in rows if str(r.get("campaign") or "").startswith("nf1r_confirm_")],
+        rollups=_campaign_rollups(rows),
+    )
+    lines.append(f"- **{gate['gate']}** — {gate['reason']}")
+    lines.append("")
     lines.append("## Funnel NY / LSS (extraits summary)")
     for r in rows:
         if r.get("funnel_NY") is not None:
@@ -184,10 +308,16 @@ def main() -> int:
     args = parser.parse_args()
 
     rows = _build_rows()
+    ref = _reference_nov2025_1r()
+    rollups = _campaign_rollups(rows)
+    week_rows = [r for r in rows if str(r.get("campaign") or "").startswith("nf1r_confirm_")]
+    gate = _gate_decision(ref=ref, week_rows=week_rows, rollups=rollups)
     out_path = Path(args.out_json)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "reference_phase_b_nov2025_tp1_1r": _reference_nov2025_1r(),
+        "reference_phase_b_nov2025_tp1_1r": ref,
+        "campaign_rollups": rollups,
+        "gate_nf_1r": gate,
         "windows": rows,
     }
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
