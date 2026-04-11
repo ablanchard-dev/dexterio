@@ -1,49 +1,48 @@
 # Roadmap portefeuille SAFE / FULL (état réel, sans activation massive)
 
-Référence contexte **D27** : allowlists / quarantaines documentées dans `risk_engine.py` et docs labs ; pas d’élargissement arbitraire ici.
+Référence **D27** : allowlists / quarantaines dans `risk_engine.py` ; pas d’élargissement arbitraire.
 
-## Avancées réelles intégrées
+## Avancées réelles (après phases 1–5)
 
-- **News_Fade** : stop OPTION A ; **tp1_rr = min_rr = 1.0R** (PHASE C, provisoire) ; multi-week nov2025 sweep PHASE B ; confirmation multi-mois **en cours** (`nf1r_confirm_*`).
-- **FVG_Fill_Scalp** : actif certaines fenêtres ; **0 match** sur sep w01 — Wave 2 **NEEDS_SECOND_PATCH**.
-- **Session_Open_Scalp** : trades observés mini-lab — **READY_WITH_LIMITATIONS**.
+- **News_Fade** : YAML **1.0R** (PHASE C) ; sweep PHASE B nov favorable ; **confirmation 12 semaines** aug+sep+oct (`nf1r_confirm_*`) → gate automatique **`REOPEN_1R_VS_1P5R`** (E[R] agrégée négative vs ref nov @1R, n=85). Voir `_nf_1r_confirmation_aggregate.json`.
+- **FVG_Fill_Scalp** : patch **W2-1** (range autorisé) ; preuve RUN sep w01 **213 matches / 32 trades** vs **0** avant ; test `test_wave2_fvg_fill_scalp_w21_yaml.py`.
+- **Session_Open_Scalp** : **READY_WITH_LIMITATIONS** (pas de patch supplémentaire ici).
+- **Paper backend** : **`PAPER_READY_SUPERVISED_HARDENED`** (`run_manifest.json` + Pydantic).
+- **Contrats** : `RunSummaryV0` + `CampaignManifestV0` validés en tests.
 
 ## Quatre paniers
 
 ### CORE_PAPER_NOW
 
-- **Logique** : playbooks déjà **dans AGGRESSIVE_ALLOWLIST** avec preuves mini-lab récentes + NF 1.0R canonique.
-- **Preuves** : `mini_lab_summary_*`, `_phase_b_nf_tp1_aggregate.json`, `nf1r_confirm_*` (en cours).
-- **Blockers** : confirmation NF sur ≥2 mois pour stabiliser le réglage.
-- **Condition d’entrée** : gate PHASE 1 → PROMOTE ou maintien supervisé explicite.
+- **Logique** : noyau AGGRESSIVE **supervisé** ; NF **après** arbitrage tp1 (sweep 1.0 vs 1.5 sur les **12 fenêtres** de confirmation).
+- **Preuves** : `CORE_PAPER_NOW_LAUNCH.md`, agrégats `nf1r_confirm_*`, manifest par run.
+- **Blockers** : décision **tp1** NF ; stabilité FVG W2-1 sur >1 semaine si exigé produit.
+- **Condition d’entrée** : gate NF ≠ REOPEN **ou** décision explicite produit après sweep.
 
 ### NEXT_WAVE_PAPER
 
-- **Logique** : **FVG_Fill_Scalp** après patch ciblé (setup/ICT) ; éventuellement affinage Session_Open.
-- **Preuves** : plan `WAVE2_PLAN_FVG_SESSIONOPEN_NEWSFADE.md` ; statut `WAVE2_FVG_SESSION_OPEN_STATUS.md`.
-- **Blockers** : diagnostic FVG sur semaines à matches nuls ; mini-lab 1j symbole unique.
-- **Condition d’entrée** : `setups_created_by_playbook["FVG_Fill_Scalp"] > 0` sur run de validation.
+- **Logique** : affiner FVG (second levier si besoin) ; Session_Open si caps/concurrence à traiter.
+- **Preuves** : `WAVE2_FVG_SESSION_OPEN_STATUS.md`, `WAVE2_PLAN_*`.
+- **Blockers** : volume FVG trop bruyant post W2-1.
+- **Condition d’entrée** : labs 2–4 semaines FVG post-patch.
 
 ### FUTURE_SAFE
 
-- **Logique** : sous-ensemble **SAFE_POLICY** + allowlist SAFE (actuellement vide côté CORE rentable — voir logs risk).
-- **Preuves** : audits existants ; pas de volume SAFE validé en parallèle AGGRESSIVE.
-- **Blockers** : définition produit SAFE (quels playbooks, quels caps) + lab dédié.
-- **Condition d’entrée** : décision produit + `SAFE_ALLOWLIST` non vide cohérent.
+- **Logique** : sous-ensemble SAFE + `SAFE_ALLOWLIST` non vide cohérent.
+- **Blockers** : définition produit + perf SAFE.
+- **Condition d’entrée** : décision produit dédiée.
 
 ### FUTURE_FULL
 
-- **Logique** : élargissement massif allowlist (15–20 playbooks) **non ciblé** par cette roadmap.
-- **Preuves** : N/A (volontairement non activé).
-- **Blockers** : stabilisation CORE_PAPER + Wave 2 + garde-fous live.
-- **Condition d’entrée** : critères risque + perf par playbook (hors scope immédiat).
+- **Logique** : allowlist large (15–20 pb) — **non ciblé**.
+- **Blockers** : CORE_PAPER stable + risque live.
 
 ## DÉCISION
 
-Ne **pas** activer SAFE/FULL large : priorité **CORE_PAPER_NOW** supervisé + **NEXT_WAVE_PAPER** pour FVG.
+Priorité : **(1)** sweep **tp1 NF** sur fenêtres `nf1r_confirm_*`, **(2)** campagne `paper_supervised_*` avec manifest, **(3)** pas d’activation SAFE/FULL large.
 
 ## NEXT STEP
 
-1. Finaliser campagnes `nf1r_confirm_*` (sep/oct/aug).
-2. Patch FVG minimal + test (Wave 2).
-3. Schéma `RunSummaryV0` validé en CI (contrat front).
+1. Script sweep `tp1_rr` **1.0 vs 1.5** répliquant la grille calendaire `nf1r_confirm_*` (même méthode que PHASE B).
+2. Validateur **TradeRowV0** (ligne parquet).
+3. SAFE : atelier produit + mini-lab dédié.

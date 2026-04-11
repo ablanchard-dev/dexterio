@@ -1,51 +1,51 @@
-# Wave 2 — Statut FVG_Fill_Scalp & Session_Open_Scalp (repo-driven)
+# Wave 2 — Statut FVG_Fill_Scalp & Session_Open_Scalp (mis à jour)
 
-## A. Diagnostic (preuves chiffrées)
+## FVG_Fill_Scalp — patch **W2-1** (YAML uniquement)
 
-### Source A — `mini_lab_summary_202511_w01.json` (baseline `mini_week/202511_w01/`)
+### Preuve goulot (avant patch)
 
-| Playbook | matches | setups | after_risk | trades |
-|----------|--------:|-------:|-----------:|-------:|
-| FVG_Fill_Scalp | 67 | 67 | 67 | 17 |
-| Session_Open_Scalp | 15 | 9 | 9 | 9 |
+| Source | semaine | matches FVG | setups | trades FVG |
+|--------|---------|------------:|-------:|-----------:|
+| `nf1r_confirm_sep2025/202509_w01/mini_lab_summary_*.json` | sep w01 | **0** | 0 | 0 |
+| `mini_week/202511_w01/mini_lab_summary_*.json` | nov w01 | 67 | 67 | 17 |
 
-### Source B — `mini_lab_summary_202509_w01.json` (`nf1r_confirm_sep2025/202509_w01/`, YAML canonique NF 1.0R)
+Hypothèse validée : **filtre contexte `day_type=trend` + structure sans `range`** excluait largement la semaine testée.
 
-| Playbook | matches | setups | after_risk | trades |
-|----------|--------:|-------:|-----------:|-------:|
-| FVG_Fill_Scalp | 0 | 0 | 0 | 0 |
-| Session_Open_Scalp | 18 | 12 | 12 | 12 |
+### Patch minimal
 
-### Lecture
+- Fichier : `knowledge/playbooks.yml`, playbook **FVG_Fill_Scalp** seul.
+- Changement : `day_type_allowed: ["trend", "range"]`, `structure_htf: [..., "range"]`.
+- **NY / News_Fade** : non modifiés.
 
-- **Session_Open_Scalp** : funnel **non nul** sur les deux fenêtres ; trades exécutés.
-- **FVG_Fill_Scalp** : **forte dépendance au régime / semaine** — actif sur nov w01, **aucun match** sur sep w01 (même runner, même allowlist AGGRESSIVE).
-- Alignement avec `docs/WAVE2_PLAN_FVG_SESSIONOPEN_NEWSFADE.md` : goulot FVG côté **setup / patterns ICT** (FVG présents sur 1m), pas uniquement risk.
+### Preuve RUN (après patch)
 
-## B. Décision technique (goulot principal)
+- Commande :  
+  `run_mini_lab_week.py --start 2025-09-01 --end 2025-09-07 --label 202509_w01 --output-parent wave2_fvg_w21_validate`
+- Résultat funnel **FVG** : **matches 213**, **setups 77**, **trades 32** (même fenêtre que preuve « 0 »).
+- Funnel **NY_Open_Reversal** : inchangé vs preuve sep w01 précédente (1 / 1 / 1 / 0 trades).
 
-| Playbook | Goulot principal |
-|----------|------------------|
-| FVG_Fill_Scalp | **Funnel setup amont** (matches ICT FVG + filtres jour/trend) |
-| Session_Open_Scalp | **READY_WITH_LIMITATIONS** — funnel OK ; volumes modérés |
+### Test
 
-## C. Patch minimal (cette livraison)
+- `tests/test_wave2_fvg_fill_scalp_w21_yaml.py` — charge `PlaybookLoader` et assert `range` présent.
 
-**Aucun patch moteur** — diagnostic seulement. Tout changement FVG (détection 1m, filtre trend, RR edge) exige mini-lab ciblé + preuve non-régression NY.
+### Verdict FVG
 
-## D. Tests & mini-lab
+**READY_WITH_LIMITATIONS** — funnel et trades **non nuls** sur semaine de référence ; étendre à 2–4 semaines supplémentaires avant « READY » sans réserves.
 
-- Tests existants playbooks / risk non modifiés ici.
-- Mini-lab ciblé futur : 1 semaine + assert `matches_by_playbook["FVG_Fill_Scalp"] > 0` après patch documenté dans WAVE2 plan.
+---
 
-## E. Verdict
+## Session_Open_Scalp
 
-| Playbook | Verdict |
-|----------|---------|
-| FVG_Fill_Scalp | **NEEDS_SECOND_PATCH** (hors scope de ce commit ; preuve sep w01 = 0 match) |
-| Session_Open_Scalp | **READY_WITH_LIMITATIONS** (trades > 0 ; surveiller sur plus de fenêtres) |
+- **Aucun patch** dans cette séquence (priorité FVG respectée).
+- Preuve existante : trades > 0 sur mini-labs nov w01 et sep w01 (voir historiques `mini_lab_summary`).
 
-## NEXT (Wave 2)
+### Verdict Session_Open
 
-1. Instrumenter `setup_engine_reject_reasons` / FVG sur run court **FVG-only** (symbole unique) selon plan Wave 2.
-2. Un seul levier à la fois (YAML filtre **ou** scope détection **uniquement** `FVG_Fill_Scalp`).
+**READY_WITH_LIMITATIONS** (inchangé).
+
+---
+
+## NEXT
+
+1. Mini-labs FVG sur **oct w01** + **aug w01** avec même `output-parent` pattern `wave2_fvg_w21_*` si besoin de stabilité multi-mois.
+2. Si FVG trop bruyant : assouplir **un seul** autre levier (scoring ou famille chandelles), jamais NY.
