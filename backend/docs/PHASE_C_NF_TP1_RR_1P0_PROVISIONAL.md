@@ -4,6 +4,7 @@
 
 - **Décision opérationnelle** : utiliser **1.0R** comme **premier objectif (TP1)** et **seuil `min_rr`** pour News_Fade en paper, en attendant confirmation sur d’autres fenêtres.
 - **Non définitif** : ce réglage est **provisoire**. Il repose sur le mini-lab **nov2025** (PHASE B) et sur un arbitrage paper (plus de sorties TP réelles, moins de dépendance à `session_end`, comportement jugé plus exécutable vs 1.5R pour un écart de ΣR négligeable sur l’échantillon).
+- **Mise à jour PHASE 1 (12 semaines aug+sep+oct 2025)** : l’agrégateur `aggregate_nf_1r_confirmation.py` conclut **`REOPEN_1R_VS_1P5R`** (E[R] NF agrégée négative vs ref nov @1R, n=85). Voir `PHASE_1_NF_1R_CONFIRMATION_PROTOCOL.md` et `_nf_1r_confirmation_aggregate.json`.
 - **Révision** : toute dérive sur d’autres mois / régimes doit déclencher une réanalyse (voir plan de validation ci-dessous).
 
 ## Fondement (rappel PHASE B)

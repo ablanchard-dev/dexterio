@@ -56,7 +56,7 @@ cd backend
 
 **Dossiers attendus** : `results/labs/mini_week/nf1r_confirm_<mois>/<YYYYMM_w0x>/`
 
-Artefacts par fenêtre : `mini_lab_summary_<label>.json`, `trades_miniweek_<run_id>_AGGRESSIVE_DAILY_SCALP.parquet`, `debug_counts_*.json`, etc.
+Artefacts par fenêtre : `mini_lab_summary_<label>.json`, `run_manifest.json`, `trades_miniweek_<run_id>_AGGRESSIVE_DAILY_SCALP.parquet`, `debug_counts_*.json`, etc.
 
 ## Agrégation
 
@@ -78,16 +78,20 @@ La ligne **PHASE_B_REFERENCE** reprend l’agrégat **4 semaines** nov2025 @ tp1
 - **Même semaine calendaire, seul NF change** : preuve structurée en PHASE B (funnel NY/LSS identiques entre variantes tp1).
 - **Mois différents** : les **nombres absolus** NY/LSS **varient** avec le marché ; la validation est **absence de régression YAML** (NY/LSS non modifiés dans le fichier) + cohérence moteur. Comparer le funnel NY d’une fenêtre **confirm** à une **re-run baseline impossible sans ancien YAML** ; en pratique : vérifier que les champs funnel restent peuplés de façon cohérente et qu’aucun patch NF n’a touché `NY_Open_Reversal` dans `playbooks.yml`.
 
-## Critères de décision (gate)
+## Critères de décision (gate) — implémentés dans `aggregate_nf_1r_confirmation.py`
 
 | Situation | Gate |
 |-----------|------|
-| Moins de 2 mois complets (≥4 semaines / mois) agrégés | **KEEP_1R_PROVISIONAL** |
-| ≥2 mois ; expectancy NF et ΣR du même ordre que nov2025 @1R ; %TP reste matériel | **PROMOTE_1R_TO_PAPER_CANDIDATE** (supervisé) |
-| ≥2 mois ; dégradation forte et stable (ex. expectancy très négative, 0 TP1 récurrent) vs nov | **REOPEN_1R_VS_1P5R** |
+| `< 10` fenêtres `nf1r_confirm_*` | **KEEP_1R_PROVISIONAL** |
+| `n ≥ 40` trades NF agrégés, **E[R] < 0** alors que ref PHASE B **> 0.02** | **REOPEN_1R_VS_1P5R** |
+| `n ≥ 25` et **E[R] < ref − 0.12** | **REOPEN_1R_VS_1P5R** (seuil relatif) |
+| `n ≥ 45` et **E[R] ≥ ref − 0.06** | **PROMOTE_1R_TO_PAPER_CANDIDATE** |
+| Sinon | **KEEP_1R_PROVISIONAL** (zone intermédiaire) |
 
-**Preuve actuelle (2026-04-11)** : `nf1r_confirm_sep2025/202509_w01` exécuté ; **n = 7** trades NF — **échantillon trop petit** pour REOPEN ; profil extrême (100 % `session_end`) → **compléter** w02–w04 sep + oct + aug avant gate finale.
+## Gate courante (preuve agrégat)
 
-## Gate courante
+Campagnes complétées : **sep2025 + oct2025 + aug2025** (12 semaines, `nf1r_confirm_*`), **n = 85** trades NF agrégés, **E[R] ≈ −0,050** vs ref nov2025 @1R **E[R] ≈ +0,055** (`_phase_b_nf_tp1_aggregate.json`).
 
-**KEEP_1R_PROVISIONAL** — infrastructure et premier run réel hors nov2025 livrés ; confirmation statistique multi-mois **en cours / à poursuivre** selon commandes ci-dessus.
+**Décision automatique** : **`REOPEN_1R_VS_1P5R`** — voir clé `gate_nf_1r` dans `results/labs/mini_week/_nf_1r_confirmation_aggregate.json` et tableau `docs/PHASE_1_NF_1R_CONFIRMATION_TABLE.md`.
+
+**Interprétation produit** : relancer un **mini-sweep tp1** (1.0 vs 1.5) sur **les mêmes 12 fenêtres** pour décider si la dérive vient du réglage TP1 ou du régime ; **ne pas** changer NY.
