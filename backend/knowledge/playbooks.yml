@@ -500,8 +500,10 @@
   
   context_requirements:
     htf_bias_allowed: ["bullish", "bearish"]
-    day_type_allowed: ["trend"]
-    structure_htf: ["uptrend", "downtrend"]
+    # Wave 2 — W2-1 : FVG_Fill_Scalp uniquement ; NY / NF non modifiés.
+    # Preuve goulot : funnel FVG=0 sur nf1r_confirm_sep2025/202509_w01 vs >0 sur nov w01.
+    day_type_allowed: ["trend", "range"]
+    structure_htf: ["uptrend", "downtrend", "range"]
     london_sweep_required: false
     volatility_min: null
     volatility_max: null
