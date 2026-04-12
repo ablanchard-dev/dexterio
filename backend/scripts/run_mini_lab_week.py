@@ -26,7 +26,7 @@ if str(backend_dir) not in sys.path:
 from backtest.engine import BacktestEngine
 from config.settings import settings
 from models.backtest import BacktestConfig
-from utils.lab_environment_snapshot import snapshot_risk_lab_environment
+from utils.lab_environment_snapshot import build_lab_environment_for_manifest
 from utils.path_resolver import historical_data_path, results_path
 
 
@@ -224,7 +224,7 @@ def main() -> int:
             "respect_allowlists": respect,
             "bypass_lss_quarantine": bypass_lss,
             "run_clock_mode": "BACKTEST",
-            "lab_environment": snapshot_risk_lab_environment(),
+            "lab_environment": build_lab_environment_for_manifest(symbols),
         }
         (out / "run_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         print(f"[mini_lab] wrote {summary_path}", flush=True)
