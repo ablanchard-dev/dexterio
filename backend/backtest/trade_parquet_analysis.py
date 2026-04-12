@@ -2,7 +2,7 @@
 Analyse post-hoc d'un parquet de trades (style « analyzer » Backtrader TradeAnalyzer,
 sans dépendre de backtrader : agrégats simples sur colonnes Dexterio).
 
-Usage : diagnostics labs, futures rapports, alignement avec contrats TradeRowV0.
+Usage : diagnostics labs, futures rapports ; validation ligne à ligne possible via `contracts.trade_row_v0.parse_trade_row_v0`.
 """
 from __future__ import annotations
 
