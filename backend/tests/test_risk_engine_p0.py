@@ -201,6 +201,8 @@ class TestPlaybookAllowlist:
         assert 'BOS_Momentum_Scalp' in AGGRESSIVE_DENYLIST
         assert 'Power_Hour_Expansion' in AGGRESSIVE_DENYLIST
         assert 'DAY_Aplus_1_Liquidity_Sweep_OB_Retest' in AGGRESSIVE_DENYLIST
+        assert 'Trend_Continuation_FVG_Retest' in AGGRESSIVE_DENYLIST
+        assert 'Trend_Continuation_FVG_Retest' not in AGGRESSIVE_ALLOWLIST
     
     def test_is_playbook_allowed_allowlist(self):
         """Vérifier que les playbooks allowlist sont autorisés"""
@@ -217,6 +219,14 @@ class TestPlaybookAllowlist:
         engine.state.trading_mode = 'AGGRESSIVE'
         
         allowed, reason = engine.is_playbook_allowed('London_Sweep_NY_Continuation')
+        assert allowed is False
+        assert 'DENYLIST' in reason
+
+    def test_trend_fvg_retest_denied_aggressive(self):
+        """Quarantaine / policy : Trend FVG retest refusé en AGGRESSIVE."""
+        engine = RiskEngine(initial_capital=5000.0)
+        engine.state.trading_mode = 'AGGRESSIVE'
+        allowed, reason = engine.is_playbook_allowed('Trend_Continuation_FVG_Retest')
         assert allowed is False
         assert 'DENYLIST' in reason
 

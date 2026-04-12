@@ -43,7 +43,6 @@ AGGRESSIVE_ALLOWLIST = [
     # Réalité job_ae6e4740: 6 trades, 0 win, -1.399R ❌ TOXIQUE
     # Playbooks du YAML (activation progressive selon calibration)
     'NY_Open_Reversal',
-    'Trend_Continuation_FVG_Retest',
     'Morning_Trap_Reversal',
     'Liquidity_Sweep_Scalp',
     'FVG_Fill_Scalp',
@@ -57,6 +56,8 @@ AGGRESSIVE_DENYLIST = [
     'DAY_Aplus_1_Liquidity_Sweep_OB_Retest',   # Sweep/BOS non détectés ❌
     'Lunch_Range_Scalp',                       # Toxique ❌
     'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # PATCH 2: Quarantiné (job_ae6e4740: 6 trades, 0 win, -1.399R)
+    # Aligné knowledge/playbook_quarantine.yaml + lab nov 2025 SPY/QQQ 1m (voir doc D27 / EDGE_EXPERIMENT_PROTOCOL)
+    'Trend_Continuation_FVG_Retest',
 ]
 
 def _resolve_latest_aggressive_playbook_stats_file() -> Optional[Path]:
