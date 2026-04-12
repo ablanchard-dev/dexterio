@@ -77,6 +77,44 @@ Chaque run `run_mini_lab_week` enregistre la même vérification dans `run_manif
 
 Les outils **compare** / **walk-forward** / **leakage audit** ne changent pas les playbooks : ils rendent les campagnes **auditables** à chaque marche de l’échelle.
 
+## Boucle « masse » — backtests nombreux et peaufinage playbooks (objectif R)
+
+Objectif : **beaucoup de runs comparables** pour ajuster YAML / filtres **sans** perdre la traçabilité (manifest, `git_sha`, même symboles / coûts).
+
+### Prérequis (bloquant avant « massivement »)
+
+1. **Données 1m** : étendre SPY/QQQ (ou autres) **au-delà** de la première barre actuelle du repo ; sinon toute campagne longue reste plafonnée (cf. preflight warmup).
+2. **Un runner par campagne** : choisir **un** protocole par objectif — ne pas mélanger les sorties `labfull_*` et `miniweek_*` dans les mêmes agrégats sans le documenter.
+
+### Chaîne standard (déjà dans le repo)
+
+| Étape | Outil |
+|-------|--------|
+| Couverture avant run long | `scripts/backtest_data_preflight.py` |
+| Grilles de semaines figées | `scripts/run_mini_lab_multiweek.py` (`PRESETS` + `--output-parent`, `--playbooks-yaml`, `--skip-existing`) |
+| Fenêtres OOS walk-forward | `scripts/run_walk_forward_mini_lab.py` (relayez les flags mini-lab **sans** `--` parasite entre les deux scripts) |
+| Rolling mensuel full-playbooks (autre protocole) | `scripts/run_full_playbooks_lab.py` |
+| Sweeps paramétriques (ex. NF tp1) | `scripts/run_mini_lab_phase_b_nf_tp1_sweep.py` |
+| Comparer deux résumés | `scripts/compare_mini_lab_summaries.py` |
+| Après campagne multi-runs | `scripts/audit_campaign_output_parent.py`, `scripts/rollup_campaign_summaries.py`, `scripts/campaign_gate_verdict.py` |
+| Qualité run long | `scripts/backtest_leakage_audit.py` |
+
+### Règles pour que le peaufinage serve le **R**
+
+- **Métrique principale** : `trade_metrics_parquet.expectancy_r` et rollup `expectancy_r_weighted_by_trades` — pas seulement `final_capital` (souvent trompeur entre runs).
+- **Une variante = un artefact versionné** : YAML sous `knowledge/campaigns/` + `output_parent` unique + commit git (ou tag) pour rejouer la même campagne.
+- **Réduire avant d’ajouter** : la campagne core-3 a montré beaucoup de trades et E[R] négative — le levier est souvent **moins de trades** (filtres, grades, sessions), pas plus de playbooks.
+
+### Parallélisation (hors code moteur)
+
+Les runners enchaînent des **sous-processus séquentiels** par design (stabilité, pas de fuite d’état). Pour lancer **N campagnes indépendantes** en parallèle (ex. N YAML sur la même fenêtre), utiliser plusieurs terminaux ou un orchestrateur externe (`parallel`, file de jobs) — **une sortie `output_parent` par job**.
+
+### Définition de « système fini » côté backtest
+
+- Preflight + manifest + rollup + gate reproductibles sur **toute** plage couverte par les parquet.
+- Playbooks : boucle **éditer YAML → run → compare → décider** sans scripts ad hoc non documentés.
+- Aucune promesse de **max R** : le système livre des **mesures honnêtes** ; le R vient des hypothèses validées par les campagnes.
+
 ## Paper
 
 Aucun niveau de ce ladder **n’implique** paper automatiquement. Gate honnête : **LIMITED_PAPER_READY_IF_SCOPE_REDUCED** après validation intermédiaire + périmètre explicite.
