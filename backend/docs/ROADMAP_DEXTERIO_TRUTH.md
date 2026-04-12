@@ -14,7 +14,7 @@ Les autres documents sont **des preuves ou des plans historiques** ; en cas de c
 
 | Conflit | Résolution |
 |---------|------------|
-| `ROADMAP_COMPLETE.md` Phase B « 0 % » vs code avec `backtest/costs.py` + tests | **Le code fait foi** : coûts IBKR/slippage/spread sont intégrés au backtest. **Phase B du fichier racine = obsolète** sur le fond ; ne plus s’en servir pour l’état coûts. |
+| `ROADMAP_COMPLETE.md` Phase B « 0 % » vs code avec `backtest/costs.py` + tests | **Résolu (doc 2026-04)** : coûts = **code** ; la **Phase B** de `ROADMAP_COMPLETE.md` décrit désormais le **livré** (chemins `backend/backtest/*`, `backend/tests/test_backtest_costs.py`). |
 | `PHASE_4_D27_*.md` « phases 5–8 ouvertes » vs `PHASES_4_8_POINTER.md` « 4–8 couvertes » | **Les deux vrais :** jalons **doc/tech** des phases 5–8 **faits** (preuves parquet SAFE nov, doc FULL, Phase 7 vol/day_type, tests coûts). **Gates produit** (SAFE multi-mois, FULL discipliné, paper large) **encore ouverts**. |
 | Quarantaine YAML vs allowlist code pour `Morning_Trap_Reversal` | **Allowlist code** : MTR est **dans** `AGGRESSIVE_ALLOWLIST`. Le YAML quarantaine liste des **historiques stats** ; alignement produit = sujet **campagne**, pas ambiguïté d’exécution : le moteur autorise MTR si allowlist + risk OK. |
 | `Trend_Continuation_FVG_Retest` dans `playbooks.yml` mais bloqué | **DENYLIST** + retiré de l’allowlist → **non promouvable** en AGGRESSIVE tant que la policy n’est pas changée **explicitement** dans `risk_engine.py`. |
@@ -25,7 +25,7 @@ Les autres documents sont **des preuves ou des plans historiques** ; en cas de c
 
 | Axe (chantier) | Fichier source de vérité | Statut réel | Obsolète / partiel / actif | Blocages produit | Prochaine action |
 |----------------|---------------------------|-------------|----------------------------|------------------|------------------|
-| ZIP8 → prod A–E | `ROADMAP_COMPLETE.md` | Partiellement obsolète (surtout Phase B) | **Partiellement obsolète** | UI/paper/VPS non alignés sur ce seul fichier | Ne plus utiliser pour l’état **coûts** ; garder comme vision long terme UI/live |
+| ZIP8 → prod A–E | `ROADMAP_COMPLETE.md` | Vision A–E ; **Phase B coûts à jour** | **Partiellement obsolète** (surtout C–E tant non implémentés) | UI/paper/VPS non câblés comme dans le plan | **Coûts** = code + section Phase B du fichier racine ; **campagnes** = ladder + ce fichier |
 | Phases 0–8 audit / portfolio | `PHASES_4_8_POINTER.md` + `PHASE_*` | Jalons **faits** ; gates **ouverts** | **Actif** (interprétation) | SAFE « elite » non prouvé sur longue plage ; FULL expansion | Enchaîner **campagnes ladder** + OOS, pas reparcourir les phases en boucle |
 | SAFE / FULL / CORE_PAPER | `ROADMAP_SAFE_FULL_PORTFOLIO.md` + `CORE_PAPER_NOW_LAUNCH.md` | **Actif** | **Actif** | NF tp1 arbitrage ; FVG stabilité multi-fenêtre | Sweeps documentés ; paper **limité** seulement si gate |
 | Roadmap NF (stop / tp1) | `PHASE_A_NF_STOP_DECISION.md`, `PHASE_B_*`, docs arbitration | A **clos** ; B/C **gates** | **Actif** (décision) | `REOPEN_1R_VS_1P5R` etc. | **Hors scope backtest** sauf campagne YAML dérivée déjà supportée |
@@ -51,7 +51,7 @@ La **roadmap unique** opérationnelle pour DexterioBOT aujourd’hui est :
 
 **`ROADMAP_DEXTERIO_TRUTH.md` (ce fichier) + `BACKTEST_CAMPAIGN_LADDER.md` + `risk_engine.py` + `CORE_PAPER_NOW_LAUNCH.md`.**
 
-`ROADMAP_COMPLETE.md` reste une **carte historique** ; mettre à jour ou archiver sa Phase B lors d’une prochaine passe doc.
+`ROADMAP_COMPLETE.md` reste la **vision ZIP8 → prod** (phases A–E) ; la **Phase B (net-of-costs)** y est **alignée** sur le code (pas seulement le bandeau).
 
 ---
 
@@ -59,4 +59,3 @@ La **roadmap unique** opérationnelle pour DexterioBOT aujourd’hui est :
 
 1. Utiliser `campaign_gate_verdict` + ladder contract pour chaque campagne (`--manifest-only` si summary absent).
 2. CI : workflow `.github/workflows/backtest-campaign-tools.yml` + `scripts/backtest_campaign_smoke.py`.
-3. Mettre à jour `ROADMAP_COMPLETE.md` Phase B sur le code (au-delà du bandeau) si besoin doc-only.
