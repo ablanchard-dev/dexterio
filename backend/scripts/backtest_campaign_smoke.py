@@ -21,6 +21,7 @@ TESTS = [
     "tests/test_backtest_data_coverage.py",
     "tests/test_backtest_campaign_tools.py",
     "tests/test_campaign_gate_verdict.py",
+    "tests/test_campaign_output_audit.py",
 ]
 
 
