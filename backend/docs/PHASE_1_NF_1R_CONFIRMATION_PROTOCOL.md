@@ -94,4 +94,4 @@ Campagnes complétées : **sep2025 + oct2025 + aug2025** (12 semaines, `nf1r_con
 
 **Décision automatique** : **`REOPEN_1R_VS_1P5R`** — voir clé `gate_nf_1r` dans `results/labs/mini_week/_nf_1r_confirmation_aggregate.json` et tableau `docs/PHASE_1_NF_1R_CONFIRMATION_TABLE.md`.
 
-**Interprétation produit** : relancer un **mini-sweep tp1** (1.0 vs 1.5) sur **les mêmes 12 fenêtres** pour décider si la dérive vient du réglage TP1 ou du régime ; **ne pas** changer NY.
+**Interprétation produit** : arbitrage **1.0R vs 1.5R** sur les mêmes fenêtres aug/sep/oct avec **YAML dérivés** — voir **`PHASE_NF_TP1_ARBITRATION.md`** (les dossiers `nf1r_confirm_*` seuls ne prouvent pas tp1=1.0 au moteur si le canonique n’était pas 1.0 au commit du run). **Ne pas** changer NY.

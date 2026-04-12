@@ -2,7 +2,7 @@
 
 ## Périmètre (état réel post–PHASE 1 agrégée)
 
-- **News_Fade** : gate automatique **`REOPEN_1R_VS_1P5R`** sur aug+sep+oct 2025 (E[R] agrégée négative vs ref nov @1R) — **ne pas** figer 1.0R comme vérité paper avant sweep de confirmation sur les **12 mêmes fenêtres**.
+- **News_Fade** : gate **`REOPEN_1R_VS_1P5R`** — arbitrage **1.0R vs 1.5R** avec YAML dérivés sur les **12 mêmes fenêtres** : **`PHASE_NF_TP1_ARBITRATION.md`**. Ne pas promouvoir NF dans le noyau paper avant **`decision.decision`** dans `_nf_tp1_arbitration_aggregate.json` (les seuls `nf1r_confirm_*` sans `playbooks_yaml` ne prouvent pas tp1=1.0 au moteur).
 - **FVG_Fill_Scalp** : patch **W2-1** déployé ; valider 1–2 semaines additionnelles.
 - **Session_Open_Scalp** : **READY_WITH_LIMITATIONS**.
 - **NY_Open_Reversal** : dans allowlist ; **ne pas modifier** le YAML ; surveiller funnel par run.
