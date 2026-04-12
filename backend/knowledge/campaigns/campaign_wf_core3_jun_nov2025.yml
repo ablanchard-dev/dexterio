@@ -1,0 +1,198 @@
+# Campagne WF 2025-06-03 → 2025-11-27 — sous-ensemble figé (hors YAML canonique NF).
+# IN: NY_Open_Reversal, FVG_Fill_Scalp, Session_Open_Scalp uniquement.
+# Copie verbatim des entrées correspondantes de knowledge/playbooks.yml au moment de la campagne.
+
+- playbook_name: "NY_Open_Reversal"
+  category: "DAYTRADE"
+  description: "Reversal à l'ouverture NY après sweep de liquidité London"
+
+  enabled_in_modes:
+    - "SAFE"
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  timefilters:
+    session: "NY"
+    time_range: ["09:30", "11:00"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "manipulation_reversal"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: true
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: true
+
+  candlestick_patterns:
+    required_families:
+      - "engulfing"
+      - "pin_bar"
+      - "morning_star"
+      - "evening_star"
+    direction: "contrarian"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "pattern_close"
+    confirmation_tf: "1m"
+
+  stop_loss_logic:
+    type: "SWING"
+    distance: "recent_swing"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.0
+
+  scoring:
+    weights:
+      liquidity_sweep: 0.30
+      pattern_quality: 0.25
+      fvg_alignment: 0.20
+      smt_divergence: 0.15
+      context_strength: 0.10
+    grade_thresholds:
+      A_plus: 0.85
+      A: 0.75
+      B: 0.65
+
+- playbook_name: "FVG_Fill_Scalp"
+  category: "SCALP"
+  description: "Scalp sur remplissage partiel d'un FVG M1/M5"
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  timefilters:
+    session: "ANY"
+    time_range: ["09:30", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "range"]
+    structure_htf: ["uptrend", "downtrend", "range"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families:
+      - "doji"
+      - "spinning_top"
+      - "pin_bar"
+    direction: "trend_continuation"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"
+    confirmation_tf: "1m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "fvg_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: 2.0
+    breakeven_at_rr: 0.5
+
+  max_duration_minutes: 30
+
+  scoring:
+    weights:
+      fvg_quality: 0.45
+      pattern_quality: 0.30
+      trend_alignment: 0.25
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.70
+      B: 0.60
+
+- playbook_name: "Session_Open_Scalp"
+  category: "SCALP"
+  description: "Scalp sur la première réaction d'ouverture London/NY"
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  timefilters:
+    session: "ANY"
+    time_range: ["03:00", "03:15", "09:30", "09:45"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "range"]
+    structure_htf: ["uptrend", "downtrend", "range"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families:
+      - "marubozu"
+      - "engulfing"
+      - "hammer"
+      - "shooting_star"
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "range_break"
+    confirmation_tf: "1m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "opening_range"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: 2.0
+    breakeven_at_rr: 0.5
+
+  max_duration_minutes: 15
+
+  scoring:
+    weights:
+      range_quality: 0.40
+      pattern_quality: 0.35
+      volume: 0.25
+    grade_thresholds:
+      A_plus: 0.75
+      A: 0.65
+      B: 0.55

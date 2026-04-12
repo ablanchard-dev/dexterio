@@ -9,10 +9,11 @@ Usage (depuis backend/) :
   .venv/bin/python scripts/run_walk_forward_mini_lab.py \\
     --start 2025-08-01 --end 2025-11-30 --output-parent wf_aug_nov --dry-run
 
-  # Puis sans dry-run ; arguments après -- sont relayés à run_mini_lab_week :
+  # Puis sans dry-run ; les flags inconnus de ce script sont relayés à run_mini_lab_week
+  # (ne pas passer un « -- » seul : argparse de run_mini_lab_week le rejette).
   .venv/bin/python scripts/run_walk_forward_mini_lab.py \\
     --start 2025-08-01 --end 2025-11-30 --output-parent wf_aug_nov \\
-    -- --strict-manifest-coverage
+    --strict-manifest-coverage
 
   # Plan JSON produit par walk_forward_light.py :
   .venv/bin/python scripts/run_walk_forward_mini_lab.py \\
