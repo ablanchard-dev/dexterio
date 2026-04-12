@@ -16,6 +16,8 @@ Il manque encore : **reprise 24/7**, **API unifiée**, **alertes** — d’où l
 | Artefacts | OK | `results/labs/mini_week/...`, parquets trades, debug_counts |
 | Agrégats playbook | OK | `aggregate_mini_lab_summaries.py`, `aggregate_nf_1r_confirmation.py` |
 | Garde-fous risk | OK | `risk_engine.py`, env `RISK_EVAL_*` (mini-lab) |
+| Diagnostics parquet | OK | `backtest/trade_parquet_analyzer_bundle.py`, CLI `scripts/report_trades_parquet.py` |
+| Precheck lancement | OK | `scripts/paper_supervised_precheck.py` (compose preflight + rappels + bundle optionnel) |
 | Journal trades (export) | Partiel | Parquet trades par run ; `TradeJournal` global souvent neutralisé en lab (`_save` noop) |
 | Reprise / redémarrage session | **Manquant** | Pas de service long-running stateful documenté |
 | Monitoring / alertes | **Manquant** | Pas de hook standardisé hors logs |
@@ -23,6 +25,7 @@ Il manque encore : **reprise 24/7**, **API unifiée**, **alertes** — d’où l
 ## Checklist paper supervisé
 
 - [x] Préflight Git / venv : `scripts/paper_preflight.py` (+ tests `tests/test_paper_preflight.py`).
+- [x] Precheck consolidé : `scripts/paper_supervised_precheck.py` ; rapport parquet : `scripts/report_trades_parquet.py` (tests `tests/test_report_trades_parquet_cli.py`).
 - [x] Lancer un run reproductible avec mêmes flags risk.
 - [x] Séparer campagnes (`output-parent`) sans écraser baseline.
 - [x] Lire funnel NY/NF/LSS depuis `mini_lab_summary`.
