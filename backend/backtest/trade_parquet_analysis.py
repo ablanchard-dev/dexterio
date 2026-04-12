@@ -3,6 +3,7 @@ Analyse post-hoc d'un parquet de trades (style « analyzer » Backtrader TradeAn
 sans dépendre de backtrader : agrégats simples sur colonnes Dexterio).
 
 Usage : diagnostics labs, futures rapports ; validation ligne à ligne possible via `contracts.trade_row_v0.parse_trade_row_v0`.
+Pour plusieurs métriques sur le même fichier : `backtest.trade_parquet_analyzer_bundle.run_parquet_analyzer_bundle`.
 """
 from __future__ import annotations
 
