@@ -6,6 +6,9 @@ Usage (depuis backend/) :
   .venv/bin/python scripts/run_mini_lab_multiweek.py --preset nov2025
   .venv/bin/python scripts/run_mini_lab_multiweek.py --preset nov2025 --skip-existing
   .venv/bin/python scripts/run_mini_lab_multiweek.py --no-aggregate   # ne lance pas l’agrégateur
+
+Avant campagne supervisée : `scripts/paper_supervised_precheck.py` ; après trades :
+`scripts/report_trades_parquet.py <trades.parquet> --json`.
 """
 from __future__ import annotations
 
