@@ -1,5 +1,7 @@
 # 🗺️ ROADMAP COMPLÈTE — DEXTERIOBOT (ZIP8 → PRODUCTION)
 
+> **2026-04 — Pointeur :** la réconciliation des roadmaps DexterioBOT et l’état **campagnes / playbooks** vivent dans `backend/docs/ROADMAP_DEXTERIO_TRUTH.md` et `backend/docs/BACKTEST_CAMPAIGN_LADDER.md`. **La Phase B « net-of-costs » ci-dessous est obsolète sur le fond** : le backtest intègre déjà commissions/slippage/spread (`backtest/costs.py`) — ne plus utiliser le pourcentage « 0 % » comme vérité technique.
+
 **Objectif final** : Bot IBKR Live avec UI cockpit + VPS sécurisé + backtest réaliste
 
 ---

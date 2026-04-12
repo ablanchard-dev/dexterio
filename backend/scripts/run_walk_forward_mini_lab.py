@@ -58,6 +58,11 @@ def main() -> int:
         help="Aussi lancer les fenêtres train (4 runs au lieu de 2)",
     )
     p.add_argument("--dry-run", action="store_true", help="Afficher les commandes sans exécuter")
+    p.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Arrêter à la première sous-commande avec code ≠ 0 (sinon enchaîne tout et ret=max code)",
+    )
     args, forwarded = p.parse_known_args()
 
     if args.plan:
@@ -89,8 +94,9 @@ def main() -> int:
 
     campaign_root = results_path("labs", "mini_week", args.output_parent)
     campaign_root.mkdir(parents=True, exist_ok=True)
-    records = []
+    records: list[dict[str, object]] = []
     exit_max = 0
+    fail_fast_stopped: dict[str, object] | None = None
 
     for phase, sid, win in runs:
         label = f"{args.label_prefix}_s{sid}_{phase}"
@@ -108,11 +114,23 @@ def main() -> int:
         ]
         line = " ".join(cmd)
         print(line, flush=True)
-        records.append({"phase": phase, "split_id": sid, "window": win, "cmd": cmd})
+        rec: dict[str, object] = {
+            "phase": phase,
+            "split_id": sid,
+            "window": win,
+            "cmd": cmd,
+            "returncode": None,
+        }
+        records.append(rec)
         if args.dry_run:
             continue
         r = subprocess.run(cmd, cwd=str(backend_dir))
-        exit_max = max(exit_max, r.returncode)
+        rc = int(r.returncode)
+        rec["returncode"] = rc
+        exit_max = max(exit_max, rc)
+        if args.fail_fast and rc != 0:
+            fail_fast_stopped = {"label": label, "returncode": rc}
+            break
 
     meta = {
         "schema_version": "WalkForwardMiniLabCampaignV0",
@@ -121,6 +139,9 @@ def main() -> int:
         "label_prefix": args.label_prefix,
         "include_train": args.include_train,
         "dry_run": args.dry_run,
+        "fail_fast": bool(args.fail_fast),
+        "fail_fast_stopped": fail_fast_stopped,
+        "max_returncode": exit_max if not args.dry_run else None,
         "forwarded_argv": forwarded,
         "plan": plan,
         "runs": records,
