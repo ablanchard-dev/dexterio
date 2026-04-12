@@ -34,7 +34,7 @@ Il manque encore : **reprise 24/7**, **API unifiée**, **alertes** — d’où l
 ## Patchs backend faible rayon (recommandés plus tard)
 
 - Option : activer écriture journal parquet contrôlée en lab (flag) pour aligner avec futur contrat front.
-- Option : validateur **TradeRowV0** sur une ligne parquet réelle.
+- [x] Validateur **TradeRowV0** sur une ligne parquet (`contracts/trade_row_v0.py`, test sur échantillon versionné).
 
 ## Rollback
 
