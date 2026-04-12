@@ -8,6 +8,7 @@ import pytest
 
 from utils.backtest_leakage_audit import audit_trades_parquet_temporal
 from utils.mini_lab_summary_compare import compare_mini_lab_summaries
+from utils.mini_lab_trade_metrics_parquet import summarize_trades_parquet
 from utils.walk_forward_light import walk_forward_two_splits_expanding
 
 
@@ -22,6 +23,33 @@ def test_walk_forward_two_splits_shape() -> None:
 def test_walk_forward_too_short() -> None:
     with pytest.raises(ValueError, match="8 jours"):
         walk_forward_two_splits_expanding("2025-08-01", "2025-08-05")
+
+
+def test_summarize_trades_parquet_expectancy(tmp_path: Path) -> None:
+    df = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -1.0, 2.0],
+            "pnl_dollars": [10.0, -10.0, 20.0],
+        }
+    )
+    p = tmp_path / "t.parquet"
+    df.to_parquet(p, index=False)
+    m = summarize_trades_parquet(p)
+    assert m is not None
+    assert m["schema_version"] == "MiniLabTradeMetricsParquetV0"
+    assert m["trades_rows"] == 3
+    assert abs(float(m["expectancy_r"]) - (2.0 / 3.0)) < 1e-6
+    assert float(m["sum_pnl_dollars"]) == 20.0
+
+
+def test_compare_mini_lab_summaries_expectancy_from_metrics() -> None:
+    a = {"run_id": "a", "total_trades": 2, "funnel": {}, "trade_metrics_parquet": {"expectancy_r": 0.5}}
+    b = {"run_id": "b", "total_trades": 2, "funnel": {}, "trade_metrics_parquet": {"expectancy_r": 1.0}}
+    r = compare_mini_lab_summaries(a, b)
+    assert r["expectancy_r"]["a"] == 0.5
+    assert r["expectancy_r"]["b"] == 1.0
+    assert r["expectancy_r"]["delta"] == 0.5
+    assert r["sum_pnl_dollars_parquet"]["a"] is None
 
 
 def test_compare_mini_lab_summaries_funnel_delta() -> None:
