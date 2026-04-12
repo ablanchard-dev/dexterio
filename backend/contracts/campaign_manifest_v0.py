@@ -24,6 +24,10 @@ class CampaignManifestV0(BaseModel):
     output_parent: Optional[str] = None
     respect_allowlists: bool
     bypass_lss_quarantine: bool
+    # Nautilus-inspired : mode d'horloge explicite (backtest vs futur live) — pas de changement moteur.
+    run_clock_mode: Optional[str] = None
+    # Freqtrade-inspired : figer les env risk actifs pour reproductibilité paper/lab.
+    lab_environment: Optional[Dict[str, Any]] = None
 
 
 def parse_campaign_manifest_v0(data: Dict[str, Any]) -> CampaignManifestV0:
