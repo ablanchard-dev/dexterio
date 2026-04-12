@@ -78,6 +78,18 @@ def main() -> int:
         default=None,
         help="Transmis à run_mini_lab_week : sorties sous mini_week/<output-parent>/<label>/ (ne pas écraser la baseline)",
     )
+    parser.add_argument(
+        "--playbooks-yaml",
+        type=str,
+        default=None,
+        help="Chemin YAML dérivé (ex. sweep NF tp1) — transmis à chaque run_mini_lab_week",
+    )
+    parser.add_argument(
+        "--nf-tp1-rr",
+        type=float,
+        default=None,
+        help="Métadonnée PHASE B / arbitrage (summary uniquement) — transmis tel quel",
+    )
     args = parser.parse_args()
 
     week_script = backend_dir / "scripts" / "run_mini_lab_week.py"
@@ -121,6 +133,13 @@ def main() -> int:
         ]
         if args.output_parent:
             cmd.extend(["--output-parent", args.output_parent])
+        if args.playbooks_yaml:
+            yp = Path(args.playbooks_yaml)
+            if not yp.is_absolute():
+                yp = (backend_dir / yp).resolve()
+            cmd.extend(["--playbooks-yaml", str(yp)])
+        if args.nf_tp1_rr is not None:
+            cmd.extend(["--nf-tp1-rr", str(args.nf_tp1_rr)])
         print(f"[multiweek] RUN {label} {start}..{end}", flush=True)
         r = subprocess.run(cmd, cwd=str(backend_dir))
         if r.returncode != 0:
@@ -138,7 +157,8 @@ def main() -> int:
     elif args.output_parent and not args.no_aggregate:
         print(
             "[multiweek] skip aggregate_mini_lab_summaries (dédié baseline sans output-parent). "
-            "Utiliser scripts/aggregate_nf_1r_confirmation.py pour les campagnes nf1r_confirm_*.",
+            "Agrégateurs : aggregate_nf_1r_confirmation.py (nf1r_confirm_*), "
+            "aggregate_nf_tp1_arbitration.py (nf_tp1_arb_1p00_* vs nf_tp1_arb_1p50_*).",
             flush=True,
         )
     return 0
