@@ -60,13 +60,10 @@ def audit_run_subdir(run_dir: Path) -> Dict[str, Any]:
     return row
 
 
-def detect_runs_under_base(base: Path) -> Tuple[str, List[Dict[str, Any]]]:
+def campaign_run_directories(base: Path) -> Tuple[str, List[Path]]:
     """
-    Détecte la disposition :
-
-    - **nested** : sous-dossiers contenant chacun un `mini_lab_summary*.json` (campagnes `output_parent`).
-    - **flat** : le dossier `base` contient lui-même un `mini_lab_summary*.json` (run direct `mini_week/<label>/`).
-    - **empty** : rien à auditer.
+    Retourne `(layout, dirs)` où chaque `Path` est un dossier contenant au moins un summary
+    (même logique que `detect_runs_under_base`, sans lecture JSON).
     """
     if not base.is_dir():
         return "empty", []
@@ -78,12 +75,24 @@ def detect_runs_under_base(base: Path) -> Tuple[str, List[Dict[str, Any]]]:
     ]
     subs_sorted = sorted(subs_with, key=lambda p: p.name)
     if subs_sorted:
-        return "nested", [audit_run_subdir(p) for p in subs_sorted]
+        return "nested", subs_sorted
 
     if list(base.glob("mini_lab_summary*.json")):
-        return "flat", [audit_run_subdir(base)]
+        return "flat", [base]
 
     return "empty", []
+
+
+def detect_runs_under_base(base: Path) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Détecte la disposition :
+
+    - **nested** : sous-dossiers contenant chacun un `mini_lab_summary*.json` (campagnes `output_parent`).
+    - **flat** : le dossier `base` contient lui-même un `mini_lab_summary*.json` (run direct `mini_week/<label>/`).
+    - **empty** : rien à auditer.
+    """
+    layout, dirs = campaign_run_directories(base)
+    return layout, [audit_run_subdir(p) for p in dirs]
 
 
 def _walk_forward_meta(base: Path) -> Optional[Dict[str, Any]]:
