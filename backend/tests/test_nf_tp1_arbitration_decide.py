@@ -52,18 +52,18 @@ def test_unresolved_tie_expectancy() -> None:
     assert d == "KEEP_BOTH_UNRESOLVED_PENDING_MORE_DATA"
 
 
-def test_unresolved_trade_count_mismatch() -> None:
-    d, reason = decide_nf_tp1_arbitration(
+def test_trade_count_mismatch_does_not_block_switch() -> None:
+    """L'écart de cardinal n'invalide plus la décision (diagnostic séparé)."""
+    d, _ = decide_nf_tp1_arbitration(
         expectancy_1p00=-0.05,
         expectancy_1p50=-0.02,
-        sum_r_1p00=-4.0,
-        sum_r_1p50=-2.0,
+        sum_r_1p00=-4.25,
+        sum_r_1p50=-1.70,
         nf_trades_1p00=85,
         nf_trades_1p50=86,
         epsilon_er=0.015,
     )
-    assert d == "KEEP_BOTH_UNRESOLVED_PENDING_MORE_DATA"
-    assert "écart trades" in reason
+    assert d == "SWITCH_TO_1P5R"
 
 
 def test_unresolved_contradictory_signs() -> None:
