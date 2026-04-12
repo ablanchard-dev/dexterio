@@ -22,6 +22,7 @@ Il manque encore : **reprise 24/7**, **API unifiée**, **alertes** — d’où l
 
 ## Checklist paper supervisé
 
+- [x] Préflight Git / venv : `scripts/paper_preflight.py` (+ tests `tests/test_paper_preflight.py`).
 - [x] Lancer un run reproductible avec mêmes flags risk.
 - [x] Séparer campagnes (`output-parent`) sans écraser baseline.
 - [x] Lire funnel NY/NF/LSS depuis `mini_lab_summary`.
