@@ -1,9 +1,9 @@
-"""Audit filesystem des dossiers `labs/mini_week/<output_parent>/<label>/` (hors moteur)."""
+"""Audit filesystem des campagnes sous `labs/mini_week/` (nested ou flat, hors moteur)."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def _load_json(path: Path) -> Optional[Dict[str, Any]]:
@@ -15,7 +15,7 @@ def _load_json(path: Path) -> Optional[Dict[str, Any]]:
 
 def audit_run_subdir(run_dir: Path) -> Dict[str, Any]:
     """
-    Un sous-dossier de campagne (ex. `wf_s0_test` ou `202511_w01`).
+    Un dossier contenant les artefacts d'un run (ex. `wf_s0_test` ou `202511_w01` en layout flat).
     """
     label = run_dir.name
     row: Dict[str, Any] = {
@@ -60,41 +60,55 @@ def audit_run_subdir(run_dir: Path) -> Dict[str, Any]:
     return row
 
 
-def audit_output_parent(
-    output_parent: str,
-    *,
-    results_base: Optional[Path] = None,
-) -> Dict[str, Any]:
+def detect_runs_under_base(base: Path) -> Tuple[str, List[Dict[str, Any]]]:
     """
-    Parcourt `results/labs/mini_week/<output_parent>/` : chaque sous-dossier = un run.
-    Si `walk_forward_campaign.json` est présent à la racine du parent, l'inclut.
+    Détecte la disposition :
+
+    - **nested** : sous-dossiers contenant chacun un `mini_lab_summary*.json` (campagnes `output_parent`).
+    - **flat** : le dossier `base` contient lui-même un `mini_lab_summary*.json` (run direct `mini_week/<label>/`).
+    - **empty** : rien à auditer.
     """
-    if results_base is None:
-        from utils.path_resolver import results_path
+    if not base.is_dir():
+        return "empty", []
 
-        base = results_path("labs", "mini_week", output_parent)
-    else:
-        base = results_base / "labs" / "mini_week" / output_parent
+    subs_with = [
+        p
+        for p in base.iterdir()
+        if p.is_dir() and not p.name.startswith(".") and list(p.glob("mini_lab_summary*.json"))
+    ]
+    subs_sorted = sorted(subs_with, key=lambda p: p.name)
+    if subs_sorted:
+        return "nested", [audit_run_subdir(p) for p in subs_sorted]
 
-    rows: List[Dict[str, Any]] = []
-    if base.is_dir():
-        for sub in sorted(base.iterdir()):
-            if sub.is_dir():
-                rows.append(audit_run_subdir(sub))
+    if list(base.glob("mini_lab_summary*.json")):
+        return "flat", [audit_run_subdir(base)]
 
+    return "empty", []
+
+
+def _walk_forward_meta(base: Path) -> Optional[Dict[str, Any]]:
     wf_path = base / "walk_forward_campaign.json"
-    wf_block: Optional[Dict[str, Any]] = None
-    if wf_path.is_file():
-        raw = _load_json(wf_path)
-        if raw:
-            wf_block = {
-                "path": str(wf_path.resolve()),
-                "schema_version": raw.get("schema_version"),
-                "fail_fast": raw.get("fail_fast"),
-                "fail_fast_stopped": raw.get("fail_fast_stopped"),
-                "max_returncode": raw.get("max_returncode"),
-                "dry_run": raw.get("dry_run"),
-            }
+    if not wf_path.is_file():
+        return None
+    raw = _load_json(wf_path)
+    if not raw:
+        return None
+    return {
+        "path": str(wf_path.resolve()),
+        "schema_version": raw.get("schema_version"),
+        "fail_fast": raw.get("fail_fast"),
+        "fail_fast_stopped": raw.get("fail_fast_stopped"),
+        "max_returncode": raw.get("max_returncode"),
+        "dry_run": raw.get("dry_run"),
+    }
+
+
+def audit_campaign_base(base: Path, *, logical_name: str) -> Dict[str, Any]:
+    """
+    Audite `base` (dossier campagne ou dossier run unique selon détection).
+    """
+    layout, rows = detect_runs_under_base(base)
+    wf_block = _walk_forward_meta(base)
 
     cov_sum = [r["data_coverage_ok_summary"] is True for r in rows if r["summary_present"]]
     cov_man = [r["data_coverage_ok_manifest"] is True for r in rows if r["manifest_present"]]
@@ -113,7 +127,9 @@ def audit_output_parent(
 
     return {
         "schema_version": "CampaignOutputAuditV0",
-        "output_parent": output_parent,
+        "layout": layout,
+        "logical_name": logical_name,
+        "output_parent": logical_name,
         "base_path": str(base.resolve()) if base.exists() else str(base),
         "base_exists": base.is_dir(),
         "run_count": len(rows),
@@ -129,3 +145,19 @@ def audit_output_parent(
         and not failed_labels
         and (wf_block is None or wf_ok),
     }
+
+
+def audit_output_parent(
+    output_parent: str,
+    *,
+    results_base: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Parcourt `results/labs/mini_week/<output_parent>/` (nested ou flat)."""
+    if results_base is None:
+        from utils.path_resolver import results_path
+
+        base = results_path("labs", "mini_week", output_parent)
+    else:
+        base = results_base / "labs" / "mini_week" / output_parent
+
+    return audit_campaign_base(base, logical_name=output_parent)

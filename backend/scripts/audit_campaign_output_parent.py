@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-Audit des artefacts sous `results/labs/mini_week/<output_parent>/`.
+Audit des artefacts mini-lab sous `labs/mini_week/`.
 
-Pour chaque sous-dossier : `mini_lab_summary*.json`, `run_manifest.json`, champs couverture.
-Si `walk_forward_campaign.json` est présent : `max_returncode`, `fail_fast_stopped`.
+Détection automatique :
+
+- **nested** : `.../<output_parent>/<label>/mini_lab_summary*.json` (campagnes multi-runs).
+- **flat** : `.../mini_week/<label>/mini_lab_summary*.json` directement (run seul).
+
+`walk_forward_campaign.json` s’il est présent au même niveau que les runs audités.
 
 Usage (depuis backend/) :
   .venv/bin/python scripts/audit_campaign_output_parent.py --output-parent phase_b_nf_tp1rr_1p00
-  .venv/bin/python scripts/audit_campaign_output_parent.py --output-parent wf_aug_nov --strict
+  .venv/bin/python scripts/audit_campaign_output_parent.py --path results/labs/mini_week/202511_w01
 
-Exit 0 si overall_ok, 1 sinon, 2 si dossier absent.
+Exit 0 si overall_ok, 1 sinon, 2 avec --strict si base absente ou aucun run.
 """
 from __future__ import annotations
 
@@ -22,19 +26,29 @@ backend_dir = Path(__file__).resolve().parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from utils.campaign_output_audit import audit_output_parent  # noqa: E402
+from utils.campaign_output_audit import audit_campaign_base, audit_output_parent  # noqa: E402
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Audit campagne mini_week output_parent")
-    p.add_argument("--output-parent", type=str, required=True)
+    p = argparse.ArgumentParser(description="Audit campagne mini_week (nested ou flat)")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument(
+        "--output-parent",
+        type=str,
+        help="Nom sous results/labs/mini_week/<output_parent>/",
+    )
+    g.add_argument(
+        "--path",
+        type=str,
+        help="Chemin direct vers le dossier à auditer (relatif au cwd ou absolu)",
+    )
     p.add_argument(
         "--results-root",
         type=str,
         default=None,
-        help="Racine results (défaut: backend/results)",
+        help="Avec --output-parent uniquement : racine results (défaut: backend/results)",
     )
-    p.add_argument("--strict", action="store_true", help="Exit 2 si base absente ou aucun sous-dossier run")
+    p.add_argument("--strict", action="store_true", help="Exit 2 si base absente ou aucun run")
     p.add_argument(
         "--allow-empty",
         action="store_true",
@@ -43,8 +57,15 @@ def main() -> int:
     p.add_argument("--out", type=str, default=None)
     args = p.parse_args()
 
-    rb = Path(args.results_root).resolve() if args.results_root else None
-    rep = audit_output_parent(args.output_parent, results_base=rb)
+    if args.path:
+        base = Path(args.path).expanduser().resolve()
+        rep = audit_campaign_base(base, logical_name=base.name)
+    else:
+        if not args.output_parent:
+            print("ERROR: --output-parent requis", file=sys.stderr)
+            return 2
+        rb = Path(args.results_root).resolve() if args.results_root else None
+        rep = audit_output_parent(args.output_parent, results_base=rb)
 
     text = json.dumps(rep, indent=2, ensure_ascii=False)
     if args.out:
