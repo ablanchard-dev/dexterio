@@ -25,7 +25,8 @@
 
 ### Préchecks
 
-1. `git status` propre ; `git_sha` noté dans le manifest du run.
+1. `git status` propre ; `git_sha` noté dans le manifest du run.  
+   Automatiser : `cd backend && .venv/bin/python scripts/paper_preflight.py` (avertit si sale ; `--strict` → code 2 si non propre). Sortie machine : `--json`.
 2. Données 1m SPY/QQQ couvrent la fenêtre.
 3. YAML review : NY intact ; NF **tp1** tranché après REOPEN.
 
