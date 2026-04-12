@@ -16,7 +16,7 @@ Il manque encore : **reprise 24/7**, **API unifiée**, **alertes** — d’où l
 | Artefacts | OK | `results/labs/mini_week/...`, parquets trades, debug_counts |
 | Agrégats playbook | OK | `aggregate_mini_lab_summaries.py`, `aggregate_nf_1r_confirmation.py` |
 | Garde-fous risk | OK | `risk_engine.py`, env `RISK_EVAL_*` (mini-lab) |
-| Diagnostics parquet | OK | `backtest/trade_parquet_analyzer_bundle.py`, CLI `scripts/report_trades_parquet.py` |
+| Diagnostics parquet | OK | `trade_parquet_analyzer_bundle`, CLI `report_trades_parquet.py` ; option run `run_mini_lab_week.py --write-trades-analyzer-report` |
 | Precheck lancement | OK | `scripts/paper_supervised_precheck.py` (compose preflight + rappels + bundle optionnel) |
 | Journal trades (export) | Partiel | Parquet trades par run ; `TradeJournal` global souvent neutralisé en lab (`_save` noop) |
 | Reprise / redémarrage session | **Manquant** | Pas de service long-running stateful documenté |

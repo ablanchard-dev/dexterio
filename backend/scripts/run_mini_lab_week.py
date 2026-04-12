@@ -7,6 +7,9 @@ Usage (depuis backend/) :
   .venv/bin/python scripts/run_mini_lab_week.py --start 2025-11-03 --end 2025-11-09 --label 202511_w01
 
 Par défaut : allowlists respectées + bypass quarantaine LSS (aligné audit D27 / labfull_202511).
+
+Optionnel : `--write-trades-analyzer-report` écrit `mini_lab_trades_analyzer_report.json` dans le dossier
+du run (bundle analyzers sur le parquet trades, sans coût si désactivé — défaut).
 """
 from __future__ import annotations
 
@@ -26,7 +29,9 @@ if str(backend_dir) not in sys.path:
 from backtest.engine import BacktestEngine
 from config.settings import settings
 from models.backtest import BacktestConfig
+from backtest.trade_parquet_analyzer_bundle import run_parquet_analyzer_bundle
 from utils.lab_environment_snapshot import build_lab_environment_for_manifest
+from utils.mini_lab_artifacts import trades_parquet_path
 from utils.path_resolver import historical_data_path, results_path
 
 
@@ -111,6 +116,17 @@ def main() -> int:
         type=float,
         default=None,
         help="Métadonnée PHASE B (écrite dans mini_lab_summary) — n'affecte pas le moteur",
+    )
+    parser.add_argument(
+        "--write-trades-analyzer-report",
+        action="store_true",
+        help="Après le run : mini_lab_trades_analyzer_report.json (si parquet trades présent).",
+    )
+    parser.add_argument(
+        "--trades-analyzer-names",
+        type=str,
+        default="summary_r,exit_reason_mix,playbook_counts",
+        help="Analyzers CSV pour --write-trades-analyzer-report.",
     )
     args = parser.parse_args()
     respect = not args.no_respect_allowlists
@@ -229,6 +245,25 @@ def main() -> int:
         (out / "run_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         print(f"[mini_lab] wrote {summary_path}", flush=True)
         print(json.dumps(summary["funnel"], indent=2), flush=True)
+
+        if args.write_trades_analyzer_report:
+            tp = trades_parquet_path(out, run_id, config.trading_mode, config.trade_types)
+            if tp.is_file():
+                anames = [x.strip() for x in args.trades_analyzer_names.split(",") if x.strip()]
+                try:
+                    bundle = run_parquet_analyzer_bundle(tp, names=anames)
+                except (OSError, ValueError, KeyError) as e:
+                    print(f"[mini_lab] analyzer report failed: {e}", file=sys.stderr, flush=True)
+                    return 3
+                rep = out / "mini_lab_trades_analyzer_report.json"
+                rep.write_text(json.dumps(bundle, indent=2, default=str), encoding="utf-8")
+                print(f"[mini_lab] wrote {rep}", flush=True)
+            else:
+                print(
+                    f"[mini_lab] skip trades analyzer report (missing {tp})",
+                    file=sys.stderr,
+                    flush=True,
+                )
         return 0
     finally:
         if pl_mod is not None:
