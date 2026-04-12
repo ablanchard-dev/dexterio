@@ -68,12 +68,27 @@ def _bounds_to_window(
 
 
 def max_intraday_gap_minutes(datetimes: pd.Series) -> Optional[float]:
-    """Écart max entre barres consécutives (minutes). Utile pour détecter trous 1m."""
+    """Écart max entre barres consécutives (minutes), **toutes** paires — inclut week-ends si données RTH."""
     if datetimes is None or len(datetimes) < 2:
         return None
     s = pd.to_datetime(datetimes, utc=True).sort_values()
     delta = s.diff().dt.total_seconds().div(60.0)
     return float(delta.max())
+
+
+def max_gap_minutes_same_utc_day(datetimes: pd.Series) -> Optional[float]:
+    """Écart max entre barres **consécutives le même jour UTC** (évite faux positifs vendredi → lundi)."""
+    s = pd.to_datetime(datetimes, utc=True).sort_values()
+    if len(s) < 2:
+        return None
+    max_gap = 0.0
+    for i in range(1, len(s)):
+        if s.iloc[i].date() != s.iloc[i - 1].date():
+            continue
+        gap = (s.iloc[i] - s.iloc[i - 1]).total_seconds() / 60.0
+        if gap > max_gap:
+            max_gap = gap
+    return float(max_gap) if max_gap > 0 else None
 
 
 def check_backtest_data_coverage(
@@ -83,11 +98,16 @@ def check_backtest_data_coverage(
     start_date: str,
     end_date: str,
     htf_warmup_days: int = 0,
-    max_gap_warn_minutes: Optional[float] = 6.0,
+    max_gap_warn_minutes: Optional[float] = None,
+    gap_same_utc_day_only: bool = True,
+    ignore_warmup_check: bool = False,
 ) -> Dict[str, Any]:
     """
-    Vérifie que chaque parquet couvre [warmup_start, end_exclusive) en min/max
-    et signale les grands trous intra-fichier (1m).
+    Vérifie que chaque parquet couvre la fenêtre backtest [start, end] (fin exclusive moteur)
+    et optionnellement le warmup HTF.
+
+    - Toujours : ``tmin <= start_dt`` et ``tmax`` atteint la fin de fenêtre.
+    - Warmup : si ``htf_warmup_days > 0`` et pas ``ignore_warmup_check``, exige ``tmin <= warmup_start``.
 
     Returns:
         dict avec ok (bool), by_path, warnings, errors.
@@ -127,25 +147,46 @@ def check_backtest_data_coverage(
             continue
         tmin = pd.Timestamp(meta["min_utc"])
         tmax = pd.Timestamp(meta["max_utc"])
-        if tmin > warmup_start:
+        if tmin > start_dt:
             errors.append(
-                f"{sym}: min datetime {tmin} > warmup_start {warmup_start} "
-                f"(besoin de données pour warmup HTF si htf_warmup_days={htf_warmup_days})"
+                f"{sym}: première barre {tmin} est après start {start_dt} — élargir les données ou reculer --start"
+            )
+        if htf_warmup_days > 0 and not ignore_warmup_check:
+            if tmin > warmup_start:
+                errors.append(
+                    f"{sym}: min datetime {tmin} > warmup_start {warmup_start} "
+                    f"(pas assez d'historique pour htf_warmup_days={htf_warmup_days}; "
+                    f"utiliser --ignore-warmup-check pour n'exiger que [start,end])"
+                )
+        elif htf_warmup_days > 0 and ignore_warmup_check and tmin > warmup_start:
+            warnings.append(
+                f"{sym}: warmup HTF potentiellement incomplet (min {tmin} > warmup_start {warmup_start})"
             )
         if tmax < end_excl - pd.Timedelta(seconds=1):
             # Dernière barre strictement avant la fin de fenêtre demandée
             errors.append(
-                f"{sym}: max datetime {tmax} < fin de fenêtre attendue ({end_excl} exclus) — données trop courtes"
+                f"{sym}: max datetime {tmax} < fin de fenêtre attendue ({end_excl} exclus) — données trop courtes pour --end"
             )
         if max_gap_warn_minutes is not None:
             try:
                 s = _read_datetime_column(p)
-                mg = max_intraday_gap_minutes(s)
-                meta["max_gap_minutes"] = mg
+                if gap_same_utc_day_only:
+                    mg = max_gap_minutes_same_utc_day(s)
+                    meta["max_gap_minutes_same_utc_day"] = mg
+                else:
+                    mg = max_intraday_gap_minutes(s)
+                    meta["max_gap_minutes"] = mg
                 if mg is not None and mg > float(max_gap_warn_minutes):
-                    warnings.append(
-                        f"{sym}: écart max entre barres ≈ {mg:.1f} min (> {max_gap_warn_minutes}) — vérifier trous 1m"
-                    )
+                    if gap_same_utc_day_only:
+                        warnings.append(
+                            f"{sym}: écart max entre barres (même jour UTC) ≈ {mg:.1f} min "
+                            f"(> {max_gap_warn_minutes}) — vérifier trous 1m"
+                        )
+                    else:
+                        warnings.append(
+                            f"{sym}: écart max entre barres (toutes paires) ≈ {mg:.1f} min "
+                            f"(> {max_gap_warn_minutes})"
+                        )
             except Exception as e:
                 warnings.append(f"{sym}: impossible d'analyser les gaps ({e})")
         by_path.append(meta)
