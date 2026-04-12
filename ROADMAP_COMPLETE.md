@@ -1,6 +1,6 @@
 # 🗺️ ROADMAP COMPLÈTE — DEXTERIOBOT (ZIP8 → PRODUCTION)
 
-> **2026-04 — Pointeur :** la réconciliation des roadmaps DexterioBOT et l’état **campagnes / playbooks** vivent dans `backend/docs/ROADMAP_DEXTERIO_TRUTH.md` et `backend/docs/BACKTEST_CAMPAIGN_LADDER.md`. **La Phase B « net-of-costs » ci-dessous est obsolète sur le fond** : le backtest intègre déjà commissions/slippage/spread (`backtest/costs.py`) — ne plus utiliser le pourcentage « 0 % » comme vérité technique.
+> **2026-04 — Pointeur :** l’état **campagnes / playbooks / vérité opérationnelle** vit dans `backend/docs/ROADMAP_DEXTERIO_TRUTH.md` et `backend/docs/BACKTEST_CAMPAIGN_LADDER.md`. **Phase B (net-of-costs)** dans ce fichier est **alignée sur le code** (`backend/backtest/costs.py`, tests) ; les phases **C–E** restent surtout **plan / vision** tant que non implémentées.
 
 **Objectif final** : Bot IBKR Live avec UI cockpit + VPS sécurisé + backtest réaliste
 
@@ -10,7 +10,7 @@
 
 ```
 PHASE A (Windows Fix)        ━━━━━━━━━━ 95% ✅ BLOQUANT
-PHASE B (Net-of-costs)       ━━━━━━━━░░ 0%  🔴 BLOQUANT  
+PHASE B (Net-of-costs)       ━━━━━━━━━━ ✅   🟢 LIVRÉ (code)
 PHASE C (UI Backtest)        ━━━━░░░░░░ 0%  🟡 PARALLÈLE
 PHASE D (IBKR Paper)         ━░░░░░░░░░ 0%  🟡 APRÈS B
 PHASE E (VPS Deployment)     ░░░░░░░░░░ 0%  🟡 FINAL
@@ -53,190 +53,30 @@ python tools\smoke_suite.py            # Expected: ALL TESTS PASSED
 
 ---
 
-## 🎯 PHASE B — BACKTEST NET-OF-COSTS 🔴
+## 🎯 PHASE B — BACKTEST NET-OF-COSTS ✅ (livré code)
 
-### Objectif
+### Statut réel (aligné `backend/docs/ROADMAP_DEXTERIO_TRUTH.md`)
 
-Backtest **réaliste** avec commissions IBKR + fees + slippage + spread.
+Le moteur applique **commissions IBKR**, **fees** (option), **slippage**, **spread** ; voir `backend/backtest/costs.py`, champs `BacktestConfig` / `TradeResult` / `BacktestResult` dans `backend/models/backtest.py`, intégration dans `backend/backtest/engine.py`, tests `backend/tests/test_backtest_costs.py`.
 
-### Durée estimée : 2-3h
+### Reste optionnel
 
----
+- Rapports **metrics** gross vs net exhaustifs dans `backend/backtest/metrics.py` (le niveau trade est déjà là).
 
-### B.1 — Modèle de coûts (CORE)
+### Validation rapide
 
-#### B.1.1 Créer `backend/backtest/costs.py`
-
-**Fonctions pures** :
-- `calculate_ibkr_commission(shares, price, model)` → IBKR fixed/tiered
-- `calculate_regulatory_fees(shares, price, side)` → SEC + FINRA (sell only)
-- `calculate_slippage(shares, price, model)` → pct ou ticks
-- `calculate_spread_cost(shares, price, model)` → bid-ask implicit
-- `calculate_total_execution_costs()` → entry + exit costs
-
-**Modèles supportés** :
-- Commission : `"ibkr_fixed"`, `"ibkr_tiered"`, `"none"`
-- Slippage : `"pct"`, `"ticks"`, `"none"`
-- Spread : `"fixed_bps"`, `"none"`
-
----
-
-#### B.1.2 Étendre `BacktestConfig`
-
-**Ajout dans `backend/models/backtest.py`** :
-
-```python
-class BacktestConfig(BaseModel):
-    # ... existing fields ...
-    
-    # PHASE B: Execution costs model
-    commission_model: str = "ibkr_fixed"  # ibkr_fixed, ibkr_tiered, none
-    enable_reg_fees: bool = True
-    slippage_model: str = "pct"           # pct, ticks, none
-    slippage_pct: float = 0.0005          # 0.05% default
-    slippage_ticks: int = 1
-    spread_model: str = "fixed_bps"       # fixed_bps, none
-    spread_bps: float = 2.0               # 2 bps = 0.02%
+```bash
+cd backend && .venv/bin/python -m pytest tests/test_backtest_costs.py -q
 ```
 
----
+### Cartographie code
 
-#### B.1.3 Étendre `TradeResult`
-
-**Ajout colonnes costs** :
-
-```python
-class TradeResult(BaseModel):
-    # ... existing fields ...
-    
-    # PHASE B: Cost breakdown
-    entry_commission: float = 0.0
-    entry_reg_fees: float = 0.0
-    entry_slippage: float = 0.0
-    entry_spread_cost: float = 0.0
-    entry_total_cost: float = 0.0
-    
-    exit_commission: float = 0.0
-    exit_reg_fees: float = 0.0
-    exit_slippage: float = 0.0
-    exit_spread_cost: float = 0.0
-    exit_total_cost: float = 0.0
-    
-    total_costs: float = 0.0
-    
-    # PnL (gross vs net)
-    pnl_gross_dollars: float = 0.0
-    pnl_net_dollars: float = 0.0
-    pnl_gross_R: float = 0.0
-    pnl_net_R: float = 0.0
-```
-
----
-
-### B.2 — Intégration dans `engine.py`
-
-**Modifier `backend/backtest/engine.py`** :
-
-1. Import `costs.py`
-2. Dans `_execute_trade()` :
-   - Calculer costs entry/exit via `calculate_total_execution_costs()`
-   - Stocker gross PnL (actuel)
-   - Calculer net PnL = gross - total_costs
-   - Populer tous les champs costs du `TradeResult`
-
-3. Dans `_export_results()` :
-   - Export Parquet avec toutes colonnes costs
-   - Summary JSON avec métriques gross + net séparées
-
----
-
-### B.3 — Metrics net vs gross
-
-**Modifier `backend/backtest/metrics.py`** :
-
-```python
-def calculate_metrics(trades_df: pd.DataFrame, mode: str = "net") -> dict:
-    """
-    Calculate metrics on net (default) or gross PnL
-    
-    Args:
-        mode: "net" (with costs) or "gross" (without costs)
-    """
-    if mode == "net":
-        pnl_col = "pnl_net_R"
-    else:
-        pnl_col = "pnl_gross_R"
-    
-    # ... existing logic using pnl_col ...
-```
-
-**Export** :
-- `total_R_gross`
-- `total_R_net`
-- `profit_factor_gross`
-- `profit_factor_net`
-- `expectancy_gross`
-- `expectancy_net`
-
----
-
-### B.4 — Validation (runs 1d/5d max)
-
-#### Test 1 : 1 jour (2025-08-01)
-
-```powershell
-cd C:\bots\dexterio1-main\backend
-python -c "
-from models.backtest import BacktestConfig
-from backtest.engine import BacktestEngine
-from utils.path_resolver import historical_data_path
-
-config = BacktestConfig(
-    run_name='costs_test_1d',
-    symbols=['SPY'],
-    data_paths=[str(historical_data_path('1m', 'SPY.parquet'))],
-    start_date='2025-08-01',
-    end_date='2025-08-01',
-    trading_mode='AGGRESSIVE',
-    trade_types=['DAILY'],
-    htf_warmup_days=40,
-    commission_model='ibkr_fixed',
-    enable_reg_fees=True,
-    slippage_model='pct',
-    spread_model='fixed_bps'
-)
-
-engine = BacktestEngine(config)
-result = engine.run()
-
-print(f'Total R Gross: {result.total_pnl_r_gross:.2f}R')
-print(f'Total R Net:   {result.total_pnl_r_net:.2f}R')
-"
-```
-
-#### Test 2 : 5 jours
-
-```powershell
-# Même config, start='2025-08-01', end='2025-08-07'
-```
-
-#### Artefacts attendus
-
-- `trades_costs_test_1d_AGGRESSIVE_DAILY.parquet` avec colonnes costs
-- `summary_costs_test_1d_AGGRESSIVE_DAILY.json` avec gross + net
-- `costs_sanity_proof.json` :
-
-```json
-{
-  "run": "costs_test_1d",
-  "trades": 4,
-  "total_R_gross": 2.5,
-  "total_R_net": 2.1,
-  "net_less_than_gross": true,
-  "avg_cost_per_trade_dollars": 12.5,
-  "avg_cost_pct_of_trade_value": 0.08
-}
-```
+| Zone | Fichier |
+| --- | --- |
+| Modèle de coûts (IBKR, fees, slippage, spread) | `backend/backtest/costs.py` |
+| Config et résultats (trade / agrégat) | `backend/models/backtest.py` (`BacktestConfig`, `TradeResult`, `BacktestResult`) |
+| Application à l'exécution | `backend/backtest/engine.py` |
+| Tests de régression | `backend/tests/test_backtest_costs.py` |
 
 ---
 
@@ -769,12 +609,12 @@ async def protected_route(user = Depends(verify_token)):
 - [x] `backend/utils/path_resolver.py` (patched)
 - [x] `backend/tools/smoke_suite.py` (patched)
 
-### PHASE B 🔴
-- [ ] `backend/backtest/costs.py`
-- [ ] `backend/models/backtest.py` (extended)
-- [ ] `backend/backtest/engine.py` (costs integration)
-- [ ] `backend/backtest/metrics.py` (gross vs net)
-- [ ] Artefacts : trades with costs, summary gross+net
+### PHASE B ✅ (coûts livrés)
+- [x] `backend/backtest/costs.py`
+- [x] `backend/models/backtest.py` (champs coûts + PnL gross/net)
+- [x] `backend/backtest/engine.py` (intégration coûts)
+- [ ] `backend/backtest/metrics.py` (optionnel : métriques agrégées gross vs net exhaustives)
+- [x] Artefacts : trades avec colonnes coûts ; summary avec totaux gross/net (selon run)
 
 ### PHASE C 🟡
 - [ ] `backend/models/jobs.py`
@@ -797,12 +637,12 @@ async def protected_route(user = Depends(verify_token)):
 
 ## 🚦 RÈGLES D'AVANCEMENT
 
-1. ❌ **PHASE B ne démarre PAS avant validation PHASE A**
-2. ❌ **PHASE D ne démarre PAS avant validation PHASE B**
-3. ✅ **PHASE C peut être parallèle à B/D** (pas de dépendance technique)
+1. ❌ **PHASE D (paper IBKR)** : ne pas démarrer avant **PHASE A** validée sur l’environnement cible **et** régression coûts verte (`pytest tests/test_backtest_costs.py` depuis `backend/`).
+2. ✅ **PHASE B (net-of-costs)** est **livrée** dans le code ; n’en faire un chantier bloquant que pour des **extensions** (ex. métriques agrégées gross/net).
+3. ✅ **PHASE C peut être parallèle** à la préparation paper (pas de dépendance technique forte).
 4. ✅ Chaque phase → diff + artefacts + tests
 5. ✅ Smoke suite obligatoire avant chaque merge
 
 ---
 
-**🎯 PROCHAINE ACTION : Valider PHASE A puis implémenter PHASE B**
+**🎯 PROCHAINE ACTION :** boucler **PHASE A** si besoin ; enchaîner **PHASE C** (cockpit) ou les **campagnes** selon `backend/docs/ROADMAP_DEXTERIO_TRUTH.md`.
