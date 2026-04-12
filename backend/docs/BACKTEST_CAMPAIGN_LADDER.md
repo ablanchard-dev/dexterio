@@ -1,8 +1,10 @@
 # Échelle de campagnes backtest Dexterio (ladder)
 
+**Réconciliation roadmaps :** lire d’abord `docs/ROADMAP_DEXTERIO_TRUTH.md` (vérité unique des axes DexterioBOT).
+
 Objectif : **itération rapide** puis **validation longue** sans se mentir sur la couverture data ni sur les gates playbooks.
 
-Compatible avec : `run_mini_lab_week.py`, `run_mini_lab_multiweek.py`, `backtest_data_preflight.py`, manifests, analyzer bundle.
+Compatible avec : `run_mini_lab_week.py`, `run_mini_lab_multiweek.py`, `backtest_data_preflight.py`, manifests, analyzer bundle, `scripts/campaign_gate_verdict.py`.
 
 ## Outils (post–`DataCoverageV0` manifest)
 
@@ -14,8 +16,29 @@ Compatible avec : `run_mini_lab_week.py`, `run_mini_lab_multiweek.py`, `backtest
 | `scripts/run_walk_forward_mini_lab.py` | Enchaîne `run_mini_lab_week` par fenêtre (sous-processus) + `walk_forward_campaign.json` | ≥ lab 1 mois |
 | `mini_lab_summary.trade_metrics_parquet` | `expectancy_r` / `sum_pnl_dollars` depuis parquet trades post-run | Tous niveaux (compare exploitable) |
 | `scripts/backtest_leakage_audit.py` | Trades `entry<=exit`, OHLCV monotone, option coverage fenêtre | ≥ validation 3 mois (batch CI / manuel) |
+| `scripts/campaign_gate_verdict.py` | Verdict déclaratif `NOT_READY` / `BACKTEST_READY…` / `LIMITED_PAPER…` (JSON) | Après chaque run « promotion » |
 
-## Niveaux
+## Contrat opérationnel par niveau (exécutable)
+
+| Niveau | Objectif | Artefacts obligatoires | Checks obligatoires | Seuil qualité min | Playbooks autorisés (défaut) | Passage niveau suivant |
+|--------|----------|------------------------|---------------------|-------------------|------------------------------|------------------------|
+| **1 jour** | Smoke moteur + slice data | logs ; `mini_lab_summary` si script semaine raccourci ; ou debug_counts équivalent | `backtest_data_preflight` OU `data_coverage_ok` dans manifest si mini-lab | Pas d’exception ; slice non vide | Tout ce qui est déjà en allowlist **ou** run isolé playbook | 1 semaine stable |
+| **1 semaine** | Funnel reproductible | `mini_lab_summary_*.json`, `run_manifest.json`, parquet trades | `data_coverage` manifest ; option `--strict-manifest-coverage` | Funnel non nul pour au moins un playbook cible ; `git_sha` présent | Noyau : NY, LSS, FVG, Session ; NF seulement si YAML figé campagne | 4 semaines cohérentes |
+| **1 mois** | Stabilité courte | 4× artefacts semaine **ou** run custom + agrégat (`aggregate_mini_lab_summaries` / JSON maison) | Preflight sur union des dates ; `compare_mini_lab_summaries` entre semaines | Pas de contradiction majeure funnel vs parquet | Idem semaine ; **pas** de YAML NF ad-hoc non versionné | 3 mois OOS planifié |
+| **3 mois** | 1ʳᵉ courbe R intermédiaire | Dossier `output-parent` ; tous manifests ; WF optionnel (`run_walk_forward_mini_lab`) | `backtest_data_preflight` **strict** ; `backtest_leakage_audit` trades+data | `campaign_gate_verdict` ≠ `NOT_READY` avec options strictes négociées | Uniquement allowlist **sans** deny ; **exclure** sweeps tp1 / Wave2 expérimental des agrégats « noyau » | 6 mois |
+| **6 mois** | Régimes multiples | 2× blocs 3 mois + comparaison | Même que 3 mois + compare inter-blocs | Robustesse (pas un seul mois porteur) | Idem 3 mois | 1 an |
+| **1 an** | Gate sérieux paper élargi | Campagne unique + tables/agrégats | OOS documenté ; coûts moteur actifs dans les runs | Drawdown / R interprétables (hors ce doc) | Noyau stable uniquement | 2 ans **ou** paper limité si gate |
+| **2 ans** | Stress long | Idem 1 an ×2 ou calendrier continu | Anti-leakage + qualité data | Pas de sursimulation évidente | Même noyau ; **Trend_Continuation** / A+ deny **hors** promo | Paper limité **seulement** si verdict + scope produit |
+
+Commandes types : preflight et gate —
+
+```bash
+.venv/bin/python scripts/backtest_data_preflight.py --start A --end B --warmup-days 30
+.venv/bin/python scripts/campaign_gate_verdict.py path/mini_lab_summary_*.json --manifest path/run_manifest.json \\
+  --require-manifest-coverage --require-trade-metrics
+```
+
+## Niveaux (vue courte)
 
 | Niveau | Fenêtre type | Objectif | Coût CPU | Artefacts minimum | Réussite | Échec | Promotion |
 |--------|----------------|----------|----------|-------------------|----------|-------|-----------|
