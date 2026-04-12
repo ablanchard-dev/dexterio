@@ -41,6 +41,9 @@ cd backend
   --output-parent paper_supervised_<YYYYMMDD> \
   --skip-existing \
   --no-aggregate
+
+# Optionnel : un `mini_lab_trades_analyzer_report.json` par semaine (coût léger post-run)
+# .venv/bin/python scripts/run_mini_lab_multiweek.py ... --write-trades-analyzer-report
 ```
 
 ### Surveillance
