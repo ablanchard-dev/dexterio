@@ -26,7 +26,7 @@
 
 - Module : `backend/contracts/campaign_manifest_v0.py`
 - Test : `tests/test_campaign_manifest_v0_contract.py` (artefact `wave2_fvg_w21_validate/202509_w01/run_manifest.json`).
-- Champs **optionnels** (nouveaux runs mini-lab) : `run_clock_mode` (`BACKTEST` pour l’instant), `lab_environment` (snapshot `RISK_*` via `utils/lab_environment_snapshot.py`, inspiration reproductibilité type Freqtrade dry-run / config figée).
+- Champs **optionnels** (nouveaux runs mini-lab) : `run_clock_mode` (`BACKTEST` pour l’instant), `lab_environment` (snapshot `RISK_*` + `data_fingerprint_v0` via `utils/lab_environment_snapshot.py` : empreinte chemins/taille/mtime des parquets 1m par symbole ; désactiver avec `DEXTERIO_OMIT_DATA_FINGERPRINT=1`).
 
 ### 2.3 `TradeRowV0`
 

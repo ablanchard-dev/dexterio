@@ -11,6 +11,9 @@ Ne lit pas les anciens `nf1r_confirm_*` (YAML canonique sans override ≠ preuve
 Usage (depuis backend/) :
   .venv/bin/python scripts/aggregate_nf_tp1_arbitration.py
   .venv/bin/python scripts/aggregate_nf_tp1_arbitration.py --out-md docs/PHASE_NF_TP1_ARBITRATION_TABLE.md
+
+Alias documenté (même comportement, forward des args) :
+  .venv/bin/python scripts/regen_nf_tp1_arbitration_artifacts.py
 """
 from __future__ import annotations
 

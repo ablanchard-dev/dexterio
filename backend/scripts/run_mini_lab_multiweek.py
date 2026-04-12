@@ -158,7 +158,7 @@ def main() -> int:
         print(
             "[multiweek] skip aggregate_mini_lab_summaries (dédié baseline sans output-parent). "
             "Agrégateurs : aggregate_nf_1r_confirmation.py (nf1r_confirm_*), "
-            "aggregate_nf_tp1_arbitration.py (nf_tp1_arb_1p00_* vs nf_tp1_arb_1p50_*).",
+            "regen_nf_tp1_arbitration_artifacts.py (alias aggregate_nf_tp1_arbitration.py).",
             flush=True,
         )
     return 0

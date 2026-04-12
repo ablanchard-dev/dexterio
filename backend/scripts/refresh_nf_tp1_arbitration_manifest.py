@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Écrit uniquement le manifest de complétude campagne arbitrage NF tp1 (scan disque)."""
+"""Écrit uniquement le manifest de complétude campagne arbitrage NF tp1 (scan disque).
+
+Pour **manifest + agrégat JSON** alignés, préférer :
+`scripts/regen_nf_tp1_arbitration_artifacts.py` (délègue à `aggregate_nf_tp1_arbitration.py`).
+"""
 from __future__ import annotations
 
 import argparse
