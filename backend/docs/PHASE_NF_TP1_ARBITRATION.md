@@ -38,21 +38,46 @@ for preset in aug2025 sep2025 oct2025; do
     --nf-tp1-rr 1.5 --skip-existing --no-aggregate
 done
 
-# Agrégation + tableau
+# Manifest de complétude seul (scan disque)
+.venv/bin/python scripts/refresh_nf_tp1_arbitration_manifest.py
+
+# Agrégation + tableau (+ réécrit le manifest)
 .venv/bin/python scripts/aggregate_nf_tp1_arbitration.py \
   --out-json results/labs/mini_week/_nf_tp1_arbitration_aggregate.json \
   --out-md docs/PHASE_NF_TP1_ARBITRATION_TABLE.md
 ```
 
+## Manifest de campagne (complétude)
+
+- **Fichier** : `results/labs/mini_week/_nf_tp1_arbitration_campaign_manifest.json`
+- **Spécification des 12 paires** : `utils/nf_tp1_arbitration_campaign.py` (`NF_TP1_ARBITRATION_WINDOWS` — à garder aligné avec `run_mini_lab_multiweek.PRESETS` pour aug/sep/oct).
+- Contenu : liste attendue, `pairs_complete`, `pairs_missing`, `global_status` (`NOT_STARTED` | `IN_PROGRESS` | `COMPLETE_OK`).
+
+## Alignement du nombre de trades NF (évolution)
+
+**Pourquoi l’égalité stricte existait** : hypothèse « mêmes entrées, seul le TP1 change » → même cardinal de trades **News_Fade** ; éviter de comparer E[R]/ΣR sur des **cohortes de tailles différentes** (biais de composition).
+
+**Pourquoi ce n’est plus un blocage dur** : en pratique le moteur peut produire de **petits écarts** (ordre d’exécution, risk, effets de bord session). L’agrégateur calcule maintenant `trade_count_alignment` (`aligned` / `minor` / `moderate` / `major`) avec **notes** ; des niveaux `moderate` ou `major` alimentent **`decision.warnings`** sans invalider automatiquement `KEEP_1P0R` / `SWITCH_TO_1P5R`. Interprétation prudente si `major`.
+
+## Seuil ε (`epsilon_er`, défaut 0.015R)
+
+**Nature** : seuil **opérationnel heuristique** — pas intervalle de confiance, pas test d’hypothèse formel sur E[R].
+
+**Logique métier** : exiger un écart **net** entre les deux bras après agrégation sur **12 semaines**, plutôt que trancher sur des différences du même ordre que le **bruit de petits sous-échantillons** hebdomadaires.
+
+**Ancrage factuel (repo)** : sur PHASE B nov (`_phase_b_nf_tp1_aggregate.json`), l’écart d’expectancy entre tp1=1.0 et tp1=1.5 sur **27** trades NF est ~**4·10⁻⁴R**, donc **très** inférieur à 0.015R : le seuil vise une séparation **structurelle** sur la campagne multi-semaines, pas le micro-raffinement d’un seul mois.
+
+**Où c’est documenté** : ce fichier ; recopie technique dans `decision.epsilon_er_rationale` (JSON agrégat) et constante `EPSILON_ER_RATIONALE` dans `scripts/aggregate_nf_tp1_arbitration.py`. Surcharge possible : `aggregate_nf_tp1_arbitration.py --epsilon-er <valeur>`.
+
 ## Décision (implémentée)
 
-Seuil **ε = 0.015R** sur **ΔE[R] = E[R]_1.5 − E[R]_1.0** (global, 12 fenêtres appariées), avec **ΣR** cohérent :
+Seuil **ε** (défaut **0.015R**) sur **ΔE[R] = E[R]_1.5 − E[R]_1.0** (global, 12 fenêtres appariées), avec **ΣR** cohérent :
 
 | Code | Condition (schéma) |
 |------|---------------------|
 | **SWITCH_TO_1P5R** | ΔE[R] ≥ ε et ΣR_1.5 > ΣR_1.0 |
 | **KEEP_1P0R** | ΔE[R] ≤ −ε et ΣR_1.5 < ΣR_1.0 |
-| **KEEP_BOTH_UNRESOLVED_PENDING_MORE_DATA** | sinon ; ou **≠ 12** paires ; ou **trades NF** différents entre bras ; ou \|ΔE[R]\| < ε |
+| **KEEP_BOTH_UNRESOLVED_PENDING_MORE_DATA** | sinon ; ou **≠ 12** paires complètes ; ou \|ΔE[R]\| < ε ; ou contradiction ΔE[R] vs ΔΣR |
 
 ## Mise à jour YAML canonique
 
@@ -62,7 +87,8 @@ Seuil **ε = 0.015R** sur **ΔE[R] = E[R]_1.5 − E[R]_1.0** (global, 12 fenêtr
 
 ## Artefacts
 
-- JSON : `results/labs/mini_week/_nf_tp1_arbitration_aggregate.json`
+- Manifest : `results/labs/mini_week/_nf_tp1_arbitration_campaign_manifest.json`
+- JSON agrégat : `results/labs/mini_week/_nf_tp1_arbitration_aggregate.json`
 - MD : `docs/PHASE_NF_TP1_ARBITRATION_TABLE.md` (après agrégation)
 
 ## Décision finalisée (post-run)
