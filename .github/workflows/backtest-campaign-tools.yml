@@ -2,6 +2,7 @@
 name: backtest-campaign-tools
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "backend/utils/backtest_data_coverage.py"

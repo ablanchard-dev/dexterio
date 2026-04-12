@@ -57,5 +57,5 @@ La **roadmap unique** opérationnelle pour DexterioBOT aujourd’hui est :
 
 ## NEXT STEP
 
-1. Utiliser `campaign_gate_verdict` + ladder contract pour chaque campagne (`--manifest-only` si summary absent).
-2. CI : workflow `.github/workflows/backtest-campaign-tools.yml` + `scripts/backtest_campaign_smoke.py`.
+1. **Gate campagne (process)** : pour chaque run visant une **promotion** sur l’échelle `BACKTEST_CAMPAIGN_LADDER.md`, exécuter `backend/scripts/campaign_gate_verdict.py` avec les options du niveau (voir la table « Contrat opérationnel » dans ce ladder). Sans `mini_lab_summary` encore disponible : `--manifest-only path/run_manifest.json`. Avec summary : `summary.json --manifest path/run_manifest.json` et, si le niveau l’exige, `--require-manifest-coverage` / `--require-trade-metrics`.
+2. **CI outils campagne** : le workflow `.github/workflows/backtest-campaign-tools.yml` lance `backend/scripts/backtest_campaign_smoke.py` (pytest ciblé : couverture data, compare, gate, audit sorties, rollup). Déclenchement sur push/PR des chemins listés dans le YAML ; **exécution manuelle** via `workflow_dispatch` sur GitHub. Vérif locale : `cd backend && .venv/bin/python scripts/backtest_campaign_smoke.py`.
