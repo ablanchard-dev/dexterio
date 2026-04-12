@@ -9,6 +9,9 @@ Usage (depuis backend/) :
 
 Avant campagne supervisée : `scripts/paper_supervised_precheck.py` ; après trades :
 `scripts/report_trades_parquet.py <trades.parquet> --json`.
+
+Rapport analyzers par fenêtre (transmis à chaque `run_mini_lab_week`) :
+`--write-trades-analyzer-report [--trades-analyzer-names CSV]`.
 """
 from __future__ import annotations
 
@@ -93,6 +96,17 @@ def main() -> int:
         default=None,
         help="Métadonnée PHASE B / arbitrage (summary uniquement) — transmis tel quel",
     )
+    parser.add_argument(
+        "--write-trades-analyzer-report",
+        action="store_true",
+        help="Transmis à run_mini_lab_week : mini_lab_trades_analyzer_report.json par fenêtre",
+    )
+    parser.add_argument(
+        "--trades-analyzer-names",
+        type=str,
+        default="summary_r,exit_reason_mix,playbook_counts",
+        help="Transmis avec --write-trades-analyzer-report (liste CSV)",
+    )
     args = parser.parse_args()
 
     week_script = backend_dir / "scripts" / "run_mini_lab_week.py"
@@ -143,6 +157,9 @@ def main() -> int:
             cmd.extend(["--playbooks-yaml", str(yp)])
         if args.nf_tp1_rr is not None:
             cmd.extend(["--nf-tp1-rr", str(args.nf_tp1_rr)])
+        if args.write_trades_analyzer_report:
+            cmd.append("--write-trades-analyzer-report")
+            cmd.extend(["--trades-analyzer-names", args.trades_analyzer_names])
         print(f"[multiweek] RUN {label} {start}..{end}", flush=True)
         r = subprocess.run(cmd, cwd=str(backend_dir))
         if r.returncode != 0:
