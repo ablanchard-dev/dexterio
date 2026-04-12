@@ -30,8 +30,10 @@ from backtest.engine import BacktestEngine
 from config.settings import settings
 from models.backtest import BacktestConfig
 from backtest.trade_parquet_analyzer_bundle import run_parquet_analyzer_bundle
+from utils.backtest_data_coverage import check_backtest_data_coverage
 from utils.lab_environment_snapshot import build_lab_environment_for_manifest
 from utils.mini_lab_artifacts import trades_parquet_path
+from utils.mini_lab_funnel_playbooks import MINI_LAB_FUNNEL_PLAYBOOKS
 from utils.path_resolver import historical_data_path, results_path
 
 
@@ -66,16 +68,6 @@ def _funnel_excerpt(counts: Dict[str, Any], playbook: str) -> Dict[str, Any]:
         "after_risk": counts.get("setups_after_risk_filter_by_playbook", {}).get(playbook, 0),
         "trades": counts.get("trades_opened_by_playbook", {}).get(playbook, 0),
     }
-
-
-# Ordre multi-week / Wave 2 : funnel standardisé dans chaque `mini_lab_summary_*.json`
-MINI_LAB_FUNNEL_PLAYBOOKS: List[str] = [
-    "NY_Open_Reversal",
-    "News_Fade",
-    "Liquidity_Sweep_Scalp",
-    "FVG_Fill_Scalp",
-    "Session_Open_Scalp",
-]
 
 
 def main() -> int:
@@ -127,6 +119,16 @@ def main() -> int:
         type=str,
         default="summary_r,exit_reason_mix,playbook_counts",
         help="Analyzers CSV pour --write-trades-analyzer-report.",
+    )
+    parser.add_argument(
+        "--manifest-ignore-warmup-check",
+        action="store_true",
+        help="Bloc data_coverage du manifest : ne pas exiger l’historique avant --start (warmup HTF)",
+    )
+    parser.add_argument(
+        "--strict-manifest-coverage",
+        action="store_true",
+        help="Sort en erreur (code 4) si la couverture parquet ne couvre pas la fenêtre (avant run long)",
     )
     args = parser.parse_args()
     respect = not args.no_respect_allowlists
@@ -198,6 +200,24 @@ def main() -> int:
         if args.nf_tp1_rr is not None:
             print(f"[mini_lab] nf_tp1_rr(meta)={args.nf_tp1_rr}", flush=True)
         engine.load_data()
+        dc_report = check_backtest_data_coverage(
+            data_paths=list(config.data_paths),
+            symbols=list(config.symbols),
+            start_date=args.start,
+            end_date=args.end,
+            htf_warmup_days=int(config.htf_warmup_days),
+            max_gap_warn_minutes=None,
+            ignore_warmup_check=bool(args.manifest_ignore_warmup_check),
+        )
+        if args.strict_manifest_coverage and not dc_report["ok"]:
+            print(
+                "ERROR: --strict-manifest-coverage et couverture données insuffisante:\n"
+                + "\n".join(dc_report.get("errors") or []),
+                file=sys.stderr,
+                flush=True,
+            )
+            return 4
+
         result = engine.run()
         counts = getattr(engine, "debug_counts", {}) or {}
 
@@ -216,6 +236,8 @@ def main() -> int:
             "output_parent": args.output_parent,
             "playbooks_yaml": str(playbooks_yaml_path) if playbooks_yaml_path else None,
             "nf_tp1_rr_meta": args.nf_tp1_rr,
+            "data_coverage_ok": bool(dc_report["ok"]),
+            "data_coverage_error_count": len(dc_report.get("errors") or []),
             "total_trades": result.total_trades,
             "final_capital": str(result.final_capital),
             "playbooks_registered_count": counts.get("playbooks_registered_count"),
@@ -241,6 +263,18 @@ def main() -> int:
             "bypass_lss_quarantine": bypass_lss,
             "run_clock_mode": "BACKTEST",
             "lab_environment": build_lab_environment_for_manifest(symbols),
+            "data_coverage": {
+                "schema_version": "DataCoverageV0",
+                "coverage_ok": bool(dc_report["ok"]),
+                "warmup_start_utc": dc_report["warmup_start_utc"],
+                "start_utc": dc_report["start_utc"],
+                "end_exclusive_utc": dc_report["end_exclusive_utc"],
+                "htf_warmup_days": dc_report.get("htf_warmup_days", int(config.htf_warmup_days)),
+                "ignore_warmup_check": bool(args.manifest_ignore_warmup_check),
+                "errors": dc_report.get("errors") or [],
+                "warnings": dc_report.get("warnings") or [],
+                "by_path": dc_report.get("by_path") or [],
+            },
         }
         (out / "run_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         print(f"[mini_lab] wrote {summary_path}", flush=True)

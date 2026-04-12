@@ -4,6 +4,15 @@ Objectif : **itération rapide** puis **validation longue** sans se mentir sur l
 
 Compatible avec : `run_mini_lab_week.py`, `run_mini_lab_multiweek.py`, `backtest_data_preflight.py`, manifests, analyzer bundle.
 
+## Outils (post–`DataCoverageV0` manifest)
+
+| Outil | Rôle | Ladder |
+|--------|------|--------|
+| `run_manifest.json` → `data_coverage` | Preuve couverture parquet vs `[start,end]` + warmup (même logique que preflight) | ≥ micro-lab ; **obligatoire** avant ≥ 1 mois si `--strict-manifest-coverage` |
+| `scripts/compare_mini_lab_summaries.py` | Diff JSON entre deux `mini_lab_summary_*.json` (funnel, `total_trades`, `final_capital`) | Tous niveaux après deux runs |
+| `scripts/walk_forward_light.py` | 2 splits OOS + train expanding (calendrier seul) | ≥ lab 1 mois / validation 3–24 mois |
+| `scripts/backtest_leakage_audit.py` | Trades `entry<=exit`, OHLCV monotone, option coverage fenêtre | ≥ validation 3 mois (batch CI / manuel) |
+
 ## Niveaux
 
 | Niveau | Fenêtre type | Objectif | Coût CPU | Artefacts minimum | Réussite | Échec | Promotion |
@@ -23,10 +32,22 @@ cd backend
 .venv/bin/python scripts/backtest_data_preflight.py --start YYYY-MM-DD --end YYYY-MM-DD --warmup-days 30
 ```
 
+Chaque run `run_mini_lab_week` enregistre la même vérification dans `run_manifest.json` sous `data_coverage` (et des champs résumés dans `mini_lab_summary_*.json`). Utiliser `--strict-manifest-coverage` pour **bloquer** un run si la couverture est insuffisante.
+
 ## Gates playbooks (rappel)
 
 - **Denylist / quarantaine** : ne pas polluer les agrégats « noyau » avec playbooks exclus (`risk_engine.py`, `playbook_quarantine.yaml`).
 - **NF** : pas de YAML canonique tant que gate tp1 non tranché.
+
+## Portefeuille playbooks × niveau (campagne uniquement)
+
+| Niveau | Playbooks « noyau » recommandés | À exclure / isoler des validations longues |
+|--------|----------------------------------|---------------------------------------------|
+| Smoke 1j / micro-lab 1 sem | NY, LSS (scalp), FVG/Session si déjà en allowlist | Tout playbook en quarantaine / deny |
+| Lab 1 mois | + News_Fade **si** YAML figé pour la campagne | Variantes YAML ad-hoc non versionnées |
+| Validation 3–24 mois | Uniquement playbooks **stables** et documentés dans le manifest (`playbooks_yaml`, `git_sha`) | Playbooks expérimentaux Wave 2, sweeps tp1, toute entrée non alignée `risk_engine` + `playbook_quarantine` |
+
+Les outils **compare** / **walk-forward** / **leakage audit** ne changent pas les playbooks : ils rendent les campagnes **auditables** à chaque marche de l’échelle.
 
 ## Paper
 
