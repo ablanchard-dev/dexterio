@@ -1,7 +1,10 @@
 """Verdict gate campagne (lecture JSON)."""
 from __future__ import annotations
 
-from utils.campaign_gate_verdict import compute_campaign_gate_verdict
+from utils.campaign_gate_verdict import (
+    compute_campaign_gate_verdict,
+    verdict_from_manifest_path,
+)
 
 
 def test_not_ready_missing_coverage() -> None:
@@ -32,6 +35,22 @@ def test_limited_paper_canonical() -> None:
     }
     r = compute_campaign_gate_verdict(s, require_trade_metrics=True)
     assert r["verdict"] == "LIMITED_PAPER_READY_WITH_PLAYBOOK_SET_AGGRESSIVE_CANONICAL"
+
+
+def test_verdict_from_manifest_only_coverage_ok(tmp_path) -> None:
+    import json
+
+    m = {
+        "run_id": "x",
+        "respect_allowlists": True,
+        "playbooks_yaml": None,
+        "data_coverage": {"coverage_ok": True, "schema_version": "DataCoverageV0"},
+    }
+    p = tmp_path / "m.json"
+    p.write_text(json.dumps(m), encoding="utf-8")
+    r = verdict_from_manifest_path(p, require_manifest_coverage=True)
+    assert r["source"] == "manifest_only"
+    assert r["verdict"] == "BACKTEST_READY_BUT_NOT_PAPER_READY"
 
 
 def test_manifest_mismatch_run_id() -> None:

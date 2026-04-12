@@ -267,6 +267,8 @@ def main() -> int:
             "output_parent": args.output_parent,
             "respect_allowlists": respect,
             "bypass_lss_quarantine": bypass_lss,
+            "playbooks_yaml": str(playbooks_yaml_path) if playbooks_yaml_path else None,
+            "nf_tp1_rr_meta": args.nf_tp1_rr,
             "run_clock_mode": "BACKTEST",
             "lab_environment": build_lab_environment_for_manifest(symbols),
             "data_coverage": {

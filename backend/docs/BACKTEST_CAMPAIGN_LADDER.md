@@ -16,7 +16,8 @@ Compatible avec : `run_mini_lab_week.py`, `run_mini_lab_multiweek.py`, `backtest
 | `scripts/run_walk_forward_mini_lab.py` | Enchaîne `run_mini_lab_week` par fenêtre (sous-processus) + `walk_forward_campaign.json` | ≥ lab 1 mois |
 | `mini_lab_summary.trade_metrics_parquet` | `expectancy_r` / `sum_pnl_dollars` depuis parquet trades post-run | Tous niveaux (compare exploitable) |
 | `scripts/backtest_leakage_audit.py` | Trades `entry<=exit`, OHLCV monotone, option coverage fenêtre | ≥ validation 3 mois (batch CI / manuel) |
-| `scripts/campaign_gate_verdict.py` | Verdict déclaratif `NOT_READY` / `BACKTEST_READY…` / `LIMITED_PAPER…` (JSON) | Après chaque run « promotion » |
+| `scripts/campaign_gate_verdict.py` | Verdict déclaratif `NOT_READY` / `BACKTEST_READY…` / `LIMITED_PAPER…` (JSON) ; `--manifest-only` si pas de summary | Après chaque run « promotion » |
+| `scripts/backtest_campaign_smoke.py` | Pytest ciblé outils campagne (+ preflight optionnel via env) | CI / avant PR campagne |
 
 ## Contrat opérationnel par niveau (exécutable)
 
