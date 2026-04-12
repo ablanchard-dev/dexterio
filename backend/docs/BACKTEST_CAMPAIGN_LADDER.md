@@ -18,7 +18,7 @@ Compatible avec : `run_mini_lab_week.py`, `run_mini_lab_multiweek.py`, `backtest
 | `scripts/backtest_leakage_audit.py` | Trades `entry<=exit`, OHLCV monotone, option coverage fenêtre | ≥ validation 3 mois (batch CI / manuel) |
 | `scripts/campaign_gate_verdict.py` | Verdict déclaratif `NOT_READY` / `BACKTEST_READY…` / `LIMITED_PAPER…` (JSON) ; `--manifest-only` si pas de summary | Après chaque run « promotion » |
 | `scripts/backtest_campaign_smoke.py` | Pytest ciblé outils campagne (+ preflight optionnel via env) | CI / avant PR campagne |
-| `scripts/audit_campaign_output_parent.py` | Audit JSON de tous les runs sous un `output_parent` (+ `walk_forward_campaign.json`) | Après WF / multiweek |
+| `scripts/audit_campaign_output_parent.py` | Audit JSON : **nested** (`output_parent`/`label/`) ou **flat** (`mini_week/<label>/` via `--path`) + `walk_forward_campaign.json` | Après WF / multiweek / run seul |
 
 ## Contrat opérationnel par niveau (exécutable)
 
