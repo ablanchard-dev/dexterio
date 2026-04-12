@@ -57,5 +57,6 @@ La **roadmap unique** opérationnelle pour DexterioBOT aujourd’hui est :
 
 ## NEXT STEP
 
-1. Utiliser `campaign_gate_verdict` + ladder contract pour chaque campagne.
-2. Mettre à jour `ROADMAP_COMPLETE.md` avec un bandeau « obsolète pour coûts » ou synchroniser Phase B sur le code (doc only).
+1. Utiliser `campaign_gate_verdict` + ladder contract pour chaque campagne (`--manifest-only` si summary absent).
+2. CI : workflow `.github/workflows/backtest-campaign-tools.yml` + `scripts/backtest_campaign_smoke.py`.
+3. Mettre à jour `ROADMAP_COMPLETE.md` Phase B sur le code (au-delà du bandeau) si besoin doc-only.

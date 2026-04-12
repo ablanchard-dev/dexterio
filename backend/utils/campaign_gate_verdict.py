@@ -30,6 +30,21 @@ def load_json(path: Path | str) -> Dict[str, Any]:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def mini_lab_summary_from_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Reconstruit un sous-ensemble de champs `mini_lab_summary` depuis `run_manifest.json`
+    (runs anciens sans summary enrichi, ou audit manifest seul).
+    """
+    dc = manifest.get("data_coverage") or {}
+    return {
+        "run_id": manifest.get("run_id"),
+        "data_coverage_ok": bool(dc.get("coverage_ok")),
+        "respect_allowlists": manifest.get("respect_allowlists"),
+        "playbooks_yaml": manifest.get("playbooks_yaml"),
+        "trade_metrics_parquet": None,
+    }
+
+
 def compute_campaign_gate_verdict(
     summary: Dict[str, Any],
     manifest: Optional[Dict[str, Any]] = None,
@@ -117,3 +132,12 @@ def verdict_from_paths(
     s = load_json(summary_path)
     m = load_json(manifest_path) if manifest_path else None
     return compute_campaign_gate_verdict(s, m, **kwargs)
+
+
+def verdict_from_manifest_path(manifest_path: Path | str, **kwargs: Any) -> Dict[str, Any]:
+    """Gate à partir du manifest uniquement (pas de `trade_metrics_parquet` si absent du JSON)."""
+    m = load_json(manifest_path)
+    s = mini_lab_summary_from_manifest(m)
+    rep = compute_campaign_gate_verdict(s, m, **kwargs)
+    rep["source"] = "manifest_only"
+    return rep

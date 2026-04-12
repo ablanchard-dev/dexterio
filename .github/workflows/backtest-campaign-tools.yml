@@ -1,0 +1,62 @@
+# Outils campagne backtest (hors run long moteur) — compare, preflight utils, gate verdict, WF helpers.
+name: backtest-campaign-tools
+
+on:
+  push:
+    paths:
+      - "backend/utils/backtest_data_coverage.py"
+      - "backend/utils/campaign_gate_verdict.py"
+      - "backend/utils/mini_lab_artifacts.py"
+      - "backend/utils/mini_lab_funnel_playbooks.py"
+      - "backend/utils/mini_lab_summary_compare.py"
+      - "backend/utils/mini_lab_trade_metrics_parquet.py"
+      - "backend/utils/walk_forward_light.py"
+      - "backend/utils/backtest_leakage_audit.py"
+      - "backend/scripts/backtest_data_preflight.py"
+      - "backend/scripts/compare_mini_lab_summaries.py"
+      - "backend/scripts/walk_forward_light.py"
+      - "backend/scripts/run_walk_forward_mini_lab.py"
+      - "backend/scripts/campaign_gate_verdict.py"
+      - "backend/scripts/backtest_campaign_smoke.py"
+      - "backend/scripts/backtest_leakage_audit.py"
+      - "backend/scripts/run_mini_lab_week.py"
+      - "backend/tests/test_backtest_data_coverage.py"
+      - "backend/tests/test_backtest_campaign_tools.py"
+      - "backend/tests/test_campaign_gate_verdict.py"
+      - ".github/workflows/backtest-campaign-tools.yml"
+  pull_request:
+    paths:
+      - "backend/utils/backtest_data_coverage.py"
+      - "backend/utils/campaign_gate_verdict.py"
+      - "backend/utils/mini_lab_artifacts.py"
+      - "backend/utils/mini_lab_funnel_playbooks.py"
+      - "backend/utils/mini_lab_summary_compare.py"
+      - "backend/utils/mini_lab_trade_metrics_parquet.py"
+      - "backend/utils/walk_forward_light.py"
+      - "backend/utils/backtest_leakage_audit.py"
+      - "backend/scripts/backtest_data_preflight.py"
+      - "backend/scripts/compare_mini_lab_summaries.py"
+      - "backend/scripts/walk_forward_light.py"
+      - "backend/scripts/run_walk_forward_mini_lab.py"
+      - "backend/scripts/campaign_gate_verdict.py"
+      - "backend/scripts/backtest_campaign_smoke.py"
+      - "backend/scripts/backtest_leakage_audit.py"
+      - "backend/scripts/run_mini_lab_week.py"
+      - "backend/tests/test_backtest_data_coverage.py"
+      - "backend/tests/test_backtest_campaign_tools.py"
+      - "backend/tests/test_campaign_gate_verdict.py"
+      - ".github/workflows/backtest-campaign-tools.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python scripts/backtest_campaign_smoke.py
