@@ -1,10 +1,16 @@
 """Execution Engine - Paper Trading"""
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from models.trade import Trade, Position
 from models.setup import Setup
 from engines.risk_engine import RiskEngine
+from engines.playbook_loader import get_playbook_loader
+from engines.execution.phase3b_execution import (
+    compute_session_window_end_utc,
+    is_phase3b_playbook,
+    should_attach_session_window_end,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +19,7 @@ class ExecutionEngine:
     
     def __init__(self, risk_engine: RiskEngine):
         self.risk_engine = risk_engine
+        self.playbook_loader = get_playbook_loader()
         self.open_trades = {}  # {trade_id: Trade}
         self.closed_trades = []
         self.slippage_ticks = 0.02  # $0.02
@@ -76,6 +83,39 @@ class ExecutionEngine:
             logger.warning(f"[GRADING TRACE] Trade {setup.id}: setup.match_score={match_score_setup}, setup.match_grade={match_grade_setup}, setup.grade_thresholds={'present' if grade_thresholds_setup else 'None'}")
             self._grading_trace_count += 1
         
+        playbook_name = setup.playbook_name or (
+            setup.playbook_matches[0].playbook_name if setup.playbook_matches else 'None'
+        )
+        pb_def = self.playbook_loader.get_playbook_by_name(playbook_name)
+        be_trigger_rr = None
+        session_window_end_utc = None
+        max_hold_minutes = None
+
+        if is_phase3b_playbook(playbook_name):
+            if setup.trade_type == "DAILY":
+                if pb_def is not None:
+                    try:
+                        be_trigger_rr = float(pb_def.breakeven_at_rr)
+                    except Exception:
+                        be_trigger_rr = 1.0
+                else:
+                    be_trigger_rr = 1.0
+                if pb_def is not None and should_attach_session_window_end(playbook_name, setup.trade_type):
+                    session_window_end_utc = compute_session_window_end_utc(pb_def, now_ts)
+            elif setup.trade_type == "SCALP":
+                if pb_def is not None and getattr(pb_def, "max_duration_minutes", None) is not None:
+                    try:
+                        max_hold_minutes = float(pb_def.max_duration_minutes)
+                    except Exception:
+                        max_hold_minutes = None
+
+        init_sl = float(setup.stop_loss)
+        if playbook_name == "News_Fade":
+            if abs(float(setup.entry_price) - init_sl) < 1e-9:
+                raise ValueError(
+                    "News_Fade: stop_loss must differ from entry_price (zero risk at open is invalid)"
+                )
+
         trade = Trade(
             date=now_ts.date(),
             time_entry=now_ts,
@@ -89,7 +129,7 @@ class ExecutionEngine:
             market_conditions=setup.notes,
             
             # Setup
-            playbook=setup.playbook_matches[0].playbook_name if setup.playbook_matches else 'None',
+            playbook=playbook_name,
             setup_quality=trade_quality,  # TASK 2: Utiliser trade_quality (pas setup.quality directement)
             setup_score=setup.final_score,
             trade_type=setup.trade_type,
@@ -99,6 +139,9 @@ class ExecutionEngine:
             match_grade=match_grade_setup,
             grade_thresholds=grade_thresholds_setup,
             score_scale_hint=score_scale_hint_setup,
+            breakeven_trigger_rr=be_trigger_rr,
+            session_window_end_utc=session_window_end_utc,
+            max_hold_minutes=max_hold_minutes,
             
             # P1: Propagation Master Candle info (Sprint 2)
             mc_high=getattr(setup, 'mc_high', None),
@@ -121,6 +164,7 @@ class ExecutionEngine:
             # Exécution (prix idéal, slippage appliqué dans calculate_total_execution_costs)
             entry_price=setup.entry_price,
             stop_loss=setup.stop_loss,
+            initial_stop_loss=init_sl,
             take_profit_1=setup.take_profit_1,
             take_profit_2=setup.take_profit_2,
             position_size=position_calc.position_size,
@@ -185,7 +229,8 @@ class ExecutionEngine:
                 pnl_points = trade.entry_price - current_price
             
             # pnl_dollars = pnl_points * trade.position_size  # Unused in update logic
-            risk_distance = abs(trade.entry_price - trade.stop_loss)
+            sl0 = trade.initial_stop_loss if trade.initial_stop_loss is not None else trade.stop_loss
+            risk_distance = abs(trade.entry_price - sl0)
             r_multiple = pnl_points / risk_distance if risk_distance > 0 else 0
             
             # 1. Vérifier Stop Loss
@@ -214,64 +259,104 @@ class ExecutionEngine:
                     'r_multiple': r_multiple
                 })
                 continue
+
+            def try_take_profits() -> bool:
+                """TP2 > TP1 ; retourne True si une clôture TP est programmée ce tick."""
+                tp1_hit = False
+                tp2_hit = False
+                if trade.take_profit_2:
+                    if trade.direction == 'LONG' and current_price >= trade.take_profit_2:
+                        tp2_hit = True
+                    elif trade.direction == 'SHORT' and current_price <= trade.take_profit_2:
+                        tp2_hit = True
+                if not tp2_hit and trade.take_profit_1:
+                    if trade.direction == 'LONG' and current_price >= trade.take_profit_1:
+                        tp1_hit = True
+                    elif trade.direction == 'SHORT' and current_price <= trade.take_profit_1:
+                        tp1_hit = True
+                if tp2_hit:
+                    trades_to_close.append({
+                        'trade_id': trade_id,
+                        'reason': 'TP2',
+                        'close_price': trade.take_profit_2
+                    })
+                    events.append({
+                        'trade_id': trade_id,
+                        'event_type': 'TP2_HIT',
+                        'r_multiple': r_multiple
+                    })
+                    if trade.take_profit_1:
+                        tp1_would_hit = (trade.direction == 'LONG' and current_price >= trade.take_profit_1) or \
+                                        (trade.direction == 'SHORT' and current_price <= trade.take_profit_1)
+                        if tp1_would_hit:
+                            logger.debug(
+                                f"Trade {trade_id}: TP2 hit ({trade.take_profit_2:.2f}), "
+                                f"TP1 ({trade.take_profit_1:.2f}) also hit but skipped (priority TP2)"
+                            )
+                    return True
+                if tp1_hit:
+                    trades_to_close.append({
+                        'trade_id': trade_id,
+                        'reason': 'TP1',
+                        'close_price': trade.take_profit_1
+                    })
+                    events.append({
+                        'trade_id': trade_id,
+                        'event_type': 'TP1_HIT',
+                        'r_multiple': r_multiple
+                    })
+                    return True
+                return False
+
+            # 1.b / 2 Phase 3B : News_Fade seul — TP avant session_end (NY et autres inchangés)
+            if trade.playbook == "News_Fade":
+                if try_take_profits():
+                    continue
+                if current_time and trade.trade_type == "DAILY" and trade.session_window_end_utc is not None:
+                    if current_time >= trade.session_window_end_utc:
+                        trades_to_close.append({
+                            'trade_id': trade_id,
+                            'reason': 'session_end',
+                            'close_price': current_price
+                        })
+                        events.append({
+                            'trade_id': trade_id,
+                            'event_type': 'SESSION_END',
+                            'session_window_end_utc': str(trade.session_window_end_utc),
+                        })
+                        continue
+            else:
+                if current_time and trade.trade_type == "DAILY" and trade.session_window_end_utc is not None:
+                    if current_time >= trade.session_window_end_utc:
+                        trades_to_close.append({
+                            'trade_id': trade_id,
+                            'reason': 'session_end',
+                            'close_price': current_price
+                        })
+                        events.append({
+                            'trade_id': trade_id,
+                            'event_type': 'SESSION_END',
+                            'session_window_end_utc': str(trade.session_window_end_utc),
+                        })
+                        continue
+                if try_take_profits():
+                    continue
             
-            # 2. Vérifier Take Profit (priorité TP2 > TP1, une seule close par tick)
-            # BUGFIX: Si TP2 et TP1 tous deux hit, on close TP2 uniquement (le plus profitable)
-            tp1_hit = False
-            tp2_hit = False
-            
-            if trade.take_profit_2:
-                if trade.direction == 'LONG' and current_price >= trade.take_profit_2:
-                    tp2_hit = True
-                elif trade.direction == 'SHORT' and current_price <= trade.take_profit_2:
-                    tp2_hit = True
-            
-            if not tp2_hit and trade.take_profit_1:
-                if trade.direction == 'LONG' and current_price >= trade.take_profit_1:
-                    tp1_hit = True
-                elif trade.direction == 'SHORT' and current_price <= trade.take_profit_1:
-                    tp1_hit = True
-            
-            # Décision : TP2 prioritaire (plus profitable), sinon TP1
-            if tp2_hit:
-                trades_to_close.append({
-                    'trade_id': trade_id,
-                    'reason': 'TP2',
-                    'close_price': trade.take_profit_2
-                })
-                events.append({
-                    'trade_id': trade_id,
-                    'event_type': 'TP2_HIT',
-                    'r_multiple': r_multiple
-                })
-                # Log si TP1 était aussi hit (debug)
-                if trade.take_profit_1:
-                    tp1_would_hit = (trade.direction == 'LONG' and current_price >= trade.take_profit_1) or \
-                                    (trade.direction == 'SHORT' and current_price <= trade.take_profit_1)
-                    if tp1_would_hit:
-                        logger.debug(f"Trade {trade_id}: TP2 hit ({trade.take_profit_2:.2f}), TP1 ({trade.take_profit_1:.2f}) also hit but skipped (priority TP2)")
-            elif tp1_hit:
-                trades_to_close.append({
-                    'trade_id': trade_id,
-                    'reason': 'TP1',
-                    'close_price': trade.take_profit_1
-                })
-                events.append({
-                    'trade_id': trade_id,
-                    'event_type': 'TP1_HIT',
-                    'r_multiple': r_multiple
-                })
-            
-            # 3. PATCH 3: Time-stop pour SCALP (empêcher overnight)
+            # 3. Time-stop pour SCALP (Phase 3B: max_hold_minutes playbook, sinon cap global legacy)
             if current_time and trade.trade_type == 'SCALP':
                 elapsed_minutes = (current_time - trade.time_entry).total_seconds() / 60.0
-                # Récupérer max_scalp_minutes depuis la config (via risk_engine si disponible)
-                max_scalp_minutes = getattr(self.risk_engine, '_max_scalp_minutes', 120.0)
+                max_scalp_minutes = (
+                    float(trade.max_hold_minutes)
+                    if trade.max_hold_minutes is not None
+                    else float(getattr(self.risk_engine, '_max_scalp_minutes', 120.0))
+                )
                 if elapsed_minutes >= max_scalp_minutes:
+                    close_time = trade.time_entry + timedelta(minutes=max_scalp_minutes)
                     trades_to_close.append({
                         'trade_id': trade_id,
                         'reason': 'time_stop',
-                        'close_price': current_price  # Close au prix actuel
+                        'close_price': current_price,  # Close au prix actuel
+                        'close_time': close_time,
                     })
                     events.append({
                         'trade_id': trade_id,
@@ -282,9 +367,10 @@ class ExecutionEngine:
                     logger.info(f"Trade {trade_id}: Time-stop SCALP after {elapsed_minutes:.1f}min (max={max_scalp_minutes})")
                     continue
             
-            # 4. Break-even (TJR: +0.5R)
+            # 4. Break-even (Phase 3B: seuil par playbook ; legacy: 0.5R)
             if hasattr(trade, 'breakeven_moved'):
-                if not trade.breakeven_moved and r_multiple >= 0.5:
+                trigger = trade.breakeven_trigger_rr if trade.breakeven_trigger_rr is not None else 0.5
+                if not trade.breakeven_moved and r_multiple >= trigger:
                     trade.stop_loss = trade.entry_price
                     trade.breakeven_moved = True
                     events.append({
@@ -306,7 +392,7 @@ class ExecutionEngine:
                 trade_id,
                 close_req['reason'],
                 close_req['close_price'],
-                current_time=current_time  # P0 FIX: Transmettre current_time
+                current_time=close_req.get('close_time') or current_time  # P0 FIX: Transmettre current_time
             )
             closed_trades.add(trade_id)
         
@@ -354,7 +440,8 @@ class ExecutionEngine:
         pnl_dollars = pnl_points * trade.position_size
         pnl_pct = (pnl_dollars / (trade.entry_price * trade.position_size)) * 100
         
-        risk_distance = abs(trade.entry_price - trade.stop_loss)
+        sl0 = trade.initial_stop_loss if trade.initial_stop_loss is not None else trade.stop_loss
+        risk_distance = abs(trade.entry_price - sl0)
         r_multiple = pnl_points / risk_distance if risk_distance > 0 else 0
         
         outcome = 'win' if pnl_dollars > 0 else ('loss' if pnl_dollars < 0 else 'breakeven')

@@ -13,6 +13,7 @@ from models.trade import Trade
 from models.backtest import BacktestConfig
 from backtest.engine import BacktestEngine
 import pandas as pd
+import pytest
 
 
 def _risk_alloc() -> dict:
@@ -57,6 +58,26 @@ def _mk_setup_wave1(
     )
 
 
+def _mk_setup_news_fade_short() -> Setup:
+    return Setup(
+        symbol="SPY",
+        direction="SHORT",
+        quality="A",
+        final_score=0.8,
+        playbook_name="News_Fade",
+        trade_type="DAILY",
+        entry_price=100.0,
+        stop_loss=100.5,
+        take_profit_1=98.5,
+        risk_reward=3.0,
+        market_bias="bearish",
+        session="NY",
+        playbook_matches=[
+            PlaybookMatch(playbook_name="News_Fade", confidence=0.9, matched_conditions=[])
+        ],
+    )
+
+
 def test_phase3b_guard_is_frozen_set():
     assert "NY_Open_Reversal" in PHASE3B_PLAYBOOKS
     assert "FVG_Fill_Scalp" not in PHASE3B_PLAYBOOKS
@@ -73,6 +94,7 @@ def test_breakeven_ny_open_reversal_at_1r_not_0_5r():
     tid = placed["trade_id"]
     tr = ex.open_trades[tid]
     assert tr.breakeven_trigger_rr == 1.0
+    assert tr.initial_stop_loss == 99.0
 
     ex.update_open_trades({"SPY": 100.5}, current_time=t0 + timedelta(minutes=1))
     assert tr.stop_loss == 99.0
@@ -90,6 +112,7 @@ def test_breakeven_news_fade_at_1r():
     placed = ex.place_order(_mk_setup_wave1("News_Fade", "DAILY"), _risk_alloc(), current_time=t0)
     tr = ex.open_trades[placed["trade_id"]]
     assert tr.breakeven_trigger_rr == 1.0
+    assert tr.initial_stop_loss == 99.0
 
     ex.update_open_trades({"SPY": 100.5}, current_time=t0 + timedelta(minutes=1))
     assert tr.breakeven_moved is False
@@ -137,6 +160,7 @@ def test_session_end_news_fade_closes_after_window_end():
         trade_type="DAILY",
         entry_price=100.0,
         stop_loss=99.0,
+        initial_stop_loss=99.0,
         take_profit_1=103.0,
         exit_price=0.0,
         position_size=10.0,
@@ -156,6 +180,167 @@ def test_session_end_news_fade_closes_after_window_end():
     assert tr.id not in ex.open_trades
     assert any(e.get("event_type") == "SESSION_END" for e in events)
     assert ex.closed_trades[-1].exit_reason == "session_end"
+
+
+def test_news_fade_tp_evaluated_before_session_end_when_both_conditions_hold():
+    """NF seul : au-delà de la borne fenêtre, si le prix touche TP1, TP l'emporte sur session_end."""
+    risk = RiskEngine(initial_capital=10_000.0)
+    ex = ExecutionEngine(risk)
+    t_entry = datetime(2025, 6, 15, 18, 30, tzinfo=timezone.utc)
+    t_after = datetime(2025, 6, 15, 19, 31, tzinfo=timezone.utc)
+    tr = Trade(
+        date=t_entry.date(),
+        time_entry=t_entry,
+        symbol="SPY",
+        direction="LONG",
+        bias_htf="bullish",
+        session_profile=0,
+        session="NY",
+        playbook="News_Fade",
+        setup_quality="A",
+        setup_score=0.8,
+        trade_type="DAILY",
+        entry_price=100.0,
+        stop_loss=99.0,
+        initial_stop_loss=99.0,
+        take_profit_1=103.0,
+        exit_price=0.0,
+        position_size=10.0,
+        risk_amount=10.0,
+        risk_pct=0.01,
+        pnl_dollars=0.0,
+        pnl_pct=0.0,
+        r_multiple=0.0,
+        outcome="pending",
+        exit_reason="",
+        confluences={},
+        breakeven_trigger_rr=1.0,
+        session_window_end_utc=datetime(2025, 6, 15, 19, 30, tzinfo=timezone.utc),
+    )
+    ex.open_trades[tr.id] = tr
+    events = ex.update_open_trades({"SPY": 103.0}, current_time=t_after)
+    assert tr.id not in ex.open_trades
+    assert any(e.get("event_type") == "TP1_HIT" for e in events)
+    assert ex.closed_trades[-1].exit_reason == "TP1"
+
+
+def test_ny_open_reversal_session_end_still_before_tp_when_both_conditions_hold():
+    """NY inchangé : session_end reste prioritaire sur TP si les deux sont possibles ce tick."""
+    risk = RiskEngine(initial_capital=10_000.0)
+    ex = ExecutionEngine(risk)
+    t_entry = datetime(2025, 6, 15, 18, 30, tzinfo=timezone.utc)
+    t_after = datetime(2025, 6, 15, 19, 31, tzinfo=timezone.utc)
+    tr = Trade(
+        date=t_entry.date(),
+        time_entry=t_entry,
+        symbol="SPY",
+        direction="LONG",
+        bias_htf="bullish",
+        session_profile=0,
+        session="NY",
+        playbook="NY_Open_Reversal",
+        setup_quality="A",
+        setup_score=0.8,
+        trade_type="DAILY",
+        entry_price=100.0,
+        stop_loss=99.0,
+        initial_stop_loss=99.0,
+        take_profit_1=103.0,
+        exit_price=0.0,
+        position_size=10.0,
+        risk_amount=10.0,
+        risk_pct=0.01,
+        pnl_dollars=0.0,
+        pnl_pct=0.0,
+        r_multiple=0.0,
+        outcome="pending",
+        exit_reason="",
+        confluences={},
+        breakeven_trigger_rr=1.0,
+        session_window_end_utc=datetime(2025, 6, 15, 19, 30, tzinfo=timezone.utc),
+    )
+    ex.open_trades[tr.id] = tr
+    events = ex.update_open_trades({"SPY": 103.0}, current_time=t_after)
+    assert tr.id not in ex.open_trades
+    assert any(e.get("event_type") == "SESSION_END" for e in events)
+    assert ex.closed_trades[-1].exit_reason == "session_end"
+
+
+def test_ny_tp1_same_tick_skips_breakeven_after_try_take_profits():
+    """Régression : après TP1, `continue` évite BE + effets de bord sur le même tick (branche non-NF)."""
+    risk = RiskEngine(initial_capital=10_000.0)
+    ex = ExecutionEngine(risk)
+    t_entry = datetime(2025, 6, 15, 18, 30, tzinfo=timezone.utc)
+    t_in_window = datetime(2025, 6, 15, 19, 0, tzinfo=timezone.utc)
+    tr = Trade(
+        date=t_entry.date(),
+        time_entry=t_entry,
+        symbol="SPY",
+        direction="LONG",
+        bias_htf="bullish",
+        session_profile=0,
+        session="NY",
+        playbook="NY_Open_Reversal",
+        setup_quality="A",
+        setup_score=0.8,
+        trade_type="DAILY",
+        entry_price=100.0,
+        stop_loss=99.0,
+        initial_stop_loss=99.0,
+        take_profit_1=103.0,
+        exit_price=0.0,
+        position_size=10.0,
+        risk_amount=10.0,
+        risk_pct=0.01,
+        pnl_dollars=0.0,
+        pnl_pct=0.0,
+        r_multiple=0.0,
+        outcome="pending",
+        exit_reason="",
+        confluences={},
+        breakeven_trigger_rr=1.0,
+        session_window_end_utc=datetime(2025, 6, 15, 19, 30, tzinfo=timezone.utc),
+    )
+    ex.open_trades[tr.id] = tr
+    events = ex.update_open_trades({"SPY": 103.0}, current_time=t_in_window)
+    assert tr.id not in ex.open_trades
+    assert ex.closed_trades[-1].exit_reason == "TP1"
+    assert any(e.get("event_type") == "TP1_HIT" for e in events)
+    assert not any(e.get("event_type") == "BREAKEVEN_MOVED" for e in events)
+
+
+def test_news_fade_initial_stop_preserved_after_breakeven_and_r_on_close():
+    """Breakeven met stop_loss=entry ; initial_stop_loss et R à la clôture utilisent le risque d'ouverture."""
+    risk = RiskEngine(initial_capital=10_000.0)
+    ex = ExecutionEngine(risk)
+    t0 = datetime(2025, 11, 17, 15, 0, tzinfo=timezone.utc)
+    placed = ex.place_order(_mk_setup_news_fade_short(), _risk_alloc(), current_time=t0)
+    assert placed["success"]
+    tid = placed["trade_id"]
+    tr = ex.open_trades[tid]
+    assert tr.initial_stop_loss == 100.5
+    assert abs(tr.entry_price - tr.initial_stop_loss) > 1e-6
+    ex.update_open_trades({"SPY": 99.5}, current_time=t0 + timedelta(minutes=1))
+    assert tr.breakeven_moved
+    assert tr.stop_loss == 100.0
+    assert tr.initial_stop_loss == 100.5
+    ex.close_trade(tid, "session_end", close_price=99.4, current_time=t0 + timedelta(minutes=2))
+    closed = ex.closed_trades[-1]
+    assert closed.initial_stop_loss == 100.5
+    assert abs(closed.entry_price - closed.initial_stop_loss) > 1e-6
+    assert abs(closed.r_multiple - 1.2) < 1e-9
+
+
+def test_news_fade_rejects_zero_risk_at_open():
+    risk = RiskEngine(initial_capital=10_000.0)
+    ex = ExecutionEngine(risk)
+    t0 = datetime(2025, 11, 17, 15, 0, tzinfo=timezone.utc)
+    bad = _mk_setup_news_fade_short()
+    bad.entry_price = 100.0
+    bad.stop_loss = 100.0
+    bad.take_profit_1 = 100.0
+    with pytest.raises(ValueError, match="News_Fade"):
+        ex.place_order(bad, _risk_alloc(), current_time=t0)
 
 
 def test_legacy_playbook_breakeven_still_0_5r():
