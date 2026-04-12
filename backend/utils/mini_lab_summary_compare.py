@@ -28,6 +28,30 @@ def _to_float_capital(v: Any) -> Optional[float]:
         return None
 
 
+def _expectancy_r_from_summary(s: Dict[str, Any]) -> Optional[float]:
+    m = s.get("trade_metrics_parquet")
+    if isinstance(m, dict):
+        v = m.get("expectancy_r")
+        if v is None:
+            v = m.get("mean_r_multiple")
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _sum_pnl_from_summary(s: Dict[str, Any]) -> Optional[float]:
+    m = s.get("trade_metrics_parquet")
+    if isinstance(m, dict) and m.get("sum_pnl_dollars") is not None:
+        try:
+            return float(m["sum_pnl_dollars"])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def compare_mini_lab_summaries(
     a: Dict[str, Any], b: Dict[str, Any], *, path_a: str = "", path_b: str = ""
 ) -> Dict[str, Any]:
@@ -61,6 +85,19 @@ def compare_mini_lab_summaries(
     fc_b = _to_float_capital(b.get("final_capital"))
     fc_delta = (fc_b - fc_a) if fc_a is not None and fc_b is not None else None
 
+    ex_a = _expectancy_r_from_summary(a)
+    ex_b = _expectancy_r_from_summary(b)
+    ex_d = (ex_b - ex_a) if ex_a is not None and ex_b is not None else None
+    ex_note = (
+        "depuis trade_metrics_parquet.expectancy_r (moyenne r_multiple)"
+        if ex_a is not None or ex_b is not None
+        else "absent — lancer un mini-lab récent ou fournir parquet trades"
+    )
+
+    pnl_a = _sum_pnl_from_summary(a)
+    pnl_b = _sum_pnl_from_summary(b)
+    pnl_d = (pnl_b - pnl_a) if pnl_a is not None and pnl_b is not None else None
+
     return {
         "schema_version": "MiniLabSummaryCompareV0",
         "path_a": path_a or None,
@@ -72,12 +109,8 @@ def compare_mini_lab_summaries(
         },
         "total_trades": {"a": tt_a, "b": tt_b, "delta": tt_d},
         "final_capital": {"a": fc_a, "b": fc_b, "delta": fc_delta},
-        "expectancy_r": {
-            "a": None,
-            "b": None,
-            "delta": None,
-            "note": "non présent dans mini_lab_summary RunSummaryV0 — utiliser parquet trades / analyzers",
-        },
+        "sum_pnl_dollars_parquet": {"a": pnl_a, "b": pnl_b, "delta": pnl_d},
+        "expectancy_r": {"a": ex_a, "b": ex_b, "delta": ex_d, "note": ex_note},
         "funnel_by_playbook": per_pb,
     }
 

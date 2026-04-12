@@ -11,6 +11,8 @@ Compatible avec : `run_mini_lab_week.py`, `run_mini_lab_multiweek.py`, `backtest
 | `run_manifest.json` → `data_coverage` | Preuve couverture parquet vs `[start,end]` + warmup (même logique que preflight) | ≥ micro-lab ; **obligatoire** avant ≥ 1 mois si `--strict-manifest-coverage` |
 | `scripts/compare_mini_lab_summaries.py` | Diff JSON entre deux `mini_lab_summary_*.json` (funnel, `total_trades`, `final_capital`) | Tous niveaux après deux runs |
 | `scripts/walk_forward_light.py` | 2 splits OOS + train expanding (calendrier seul) | ≥ lab 1 mois / validation 3–24 mois |
+| `scripts/run_walk_forward_mini_lab.py` | Enchaîne `run_mini_lab_week` par fenêtre (sous-processus) + `walk_forward_campaign.json` | ≥ lab 1 mois |
+| `mini_lab_summary.trade_metrics_parquet` | `expectancy_r` / `sum_pnl_dollars` depuis parquet trades post-run | Tous niveaux (compare exploitable) |
 | `scripts/backtest_leakage_audit.py` | Trades `entry<=exit`, OHLCV monotone, option coverage fenêtre | ≥ validation 3 mois (batch CI / manuel) |
 
 ## Niveaux

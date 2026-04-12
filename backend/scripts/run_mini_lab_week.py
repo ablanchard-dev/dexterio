@@ -34,6 +34,7 @@ from utils.backtest_data_coverage import check_backtest_data_coverage
 from utils.lab_environment_snapshot import build_lab_environment_for_manifest
 from utils.mini_lab_artifacts import trades_parquet_path
 from utils.mini_lab_funnel_playbooks import MINI_LAB_FUNNEL_PLAYBOOKS
+from utils.mini_lab_trade_metrics_parquet import summarize_trades_parquet
 from utils.path_resolver import historical_data_path, results_path
 
 
@@ -221,6 +222,9 @@ def main() -> int:
         result = engine.run()
         counts = getattr(engine, "debug_counts", {}) or {}
 
+        tp_path = trades_parquet_path(out, run_id, config.trading_mode, config.trade_types)
+        trade_metrics = summarize_trades_parquet(tp_path)
+
         summary: Dict[str, Any] = {
             "protocol": "MINI_LAB_WEEK",
             "runner": "run_mini_lab_week.py",
@@ -243,6 +247,8 @@ def main() -> int:
             "playbooks_registered_count": counts.get("playbooks_registered_count"),
             "funnel": {name: _funnel_excerpt(counts, name) for name in MINI_LAB_FUNNEL_PLAYBOOKS},
         }
+        if trade_metrics:
+            summary["trade_metrics_parquet"] = trade_metrics
         summary_path = out / f"mini_lab_summary_{args.label}.json"
         summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
         manifest: Dict[str, Any] = {
