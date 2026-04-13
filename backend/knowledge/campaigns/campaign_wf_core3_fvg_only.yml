@@ -1,0 +1,66 @@
+# Variante campagne WF — FVG_Fill_Scalp seul (isolation vs baseline core-3).
+# Base : campaign_wf_core3_jun_nov2025.yml ; NY et Session retirés.
+
+- playbook_name: "FVG_Fill_Scalp"
+  category: "SCALP"
+  description: "Scalp sur remplissage partiel d'un FVG M1/M5"
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  timefilters:
+    session: "ANY"
+    time_range: ["09:30", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "range"]
+    structure_htf: ["uptrend", "downtrend", "range"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families:
+      - "doji"
+      - "spinning_top"
+      - "pin_bar"
+    direction: "trend_continuation"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"
+    confirmation_tf: "1m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "fvg_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: 2.0
+    breakeven_at_rr: 0.5
+
+  max_duration_minutes: 30
+
+  scoring:
+    weights:
+      fvg_quality: 0.45
+      pattern_quality: 0.30
+      trend_alignment: 0.25
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.70
+      B: 0.60

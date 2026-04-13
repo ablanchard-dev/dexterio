@@ -55,6 +55,21 @@ La **roadmap unique** opérationnelle pour DexterioBOT aujourd’hui est :
 
 ---
 
+## Synthèse campagnes WF `core-3` (données SPY/QQQ 1m, enveloppe 2025-06-03 → 2025-11-27, 2 plis OOS test)
+
+Référence baseline : `results/labs/mini_week/wf_core3_oos_jun_nov2025/` + `results/campaigns/wf_core3_oos_jun_nov2025/POSTMORTEM_QUANT.json`.
+
+| Variante YAML | Dossier lab | Fait mesurable clé |
+|---------------|-------------|-------------------|
+| Trio NY+FVG+Session | `wf_core3_oos_jun_nov2025` | E[R] pondéré ≈ **-0,027** ; **~2780** trades ; SL domine en ΣR. |
+| `grade_thresholds` resserrés | `wf_core3_tune_stricter_grades` | **Aucun delta** funnel / nombre de trades (levier abandonné). |
+| Sans FVG (NY+Session) | `wf_core3_no_fvg` | **-42 %** trades, **E[R] global ≈ -0,030** (pire) ; **s1** beaucoup mieux, **s0** pire ; moins de SL en **nombre**, ΣR SL plus négatif. |
+| FVG seul | `wf_core3_fvg_only` | **~1686** trades, E[R] pondéré ≈ **-0,039** ; **s0** et **s1** tous deux négatifs (pas de compensation type no-FVG sur s1). |
+
+**Décision provisoire produit** : ne pas remplacer le trio par « NY+Session seul » sur l’agrégat sans critère de régime/split ; poursuivre le tuning par **YAML dérivés** + même chaîne gate/rollup/postmortem, pas par nouveaux runners.
+
+---
+
 ## NEXT STEP
 
 1. **Gate campagne (process)** : pour chaque run visant une **promotion** sur l’échelle `BACKTEST_CAMPAIGN_LADDER.md`, exécuter `backend/scripts/campaign_gate_verdict.py` avec les options du niveau (voir la table « Contrat opérationnel » dans ce ladder). Sans `mini_lab_summary` encore disponible : `--manifest-only path/run_manifest.json`. Avec summary : `summary.json --manifest path/run_manifest.json` et, si le niveau l’exige, `--require-manifest-coverage` / `--require-trade-metrics`.
