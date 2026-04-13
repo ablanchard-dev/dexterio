@@ -22,7 +22,6 @@ def test_playbook_evaluator_nf_passes_basic_when_day_type_and_vol_ok():
     nf = loader.get_playbook_by_name("News_Fade")
     assert nf is not None
     ev = PlaybookEvaluator(loader)
-    ev.reset_news_fade_basic_instrumentation()
     ms = {
         "bias": "neutral",
         "current_session": "ny",
@@ -79,7 +78,6 @@ def test_playbook_evaluator_nf_rejects_volatility_insufficient():
 def test_evaluate_all_playbooks_instruments_news_fade_rejects():
     loader = get_playbook_loader()
     ev = PlaybookEvaluator(loader)
-    ev.reset_news_fade_basic_instrumentation()
     ms_bad = {
         "bias": "neutral",
         "current_session": "ny",
@@ -90,7 +88,7 @@ def test_evaluate_all_playbooks_instruments_news_fade_rejects():
         "day_type": "trend",
         "volatility": 2.0,
     }
-    ev.evaluate_all_playbooks(
+    matches = ev.evaluate_all_playbooks(
         symbol="SPY",
         market_state=ms_bad,
         ict_patterns=[],
@@ -98,9 +96,8 @@ def test_evaluate_all_playbooks_instruments_news_fade_rejects():
         current_time=_ny(10, 0),
         trading_mode="AGGRESSIVE",
     )
-    inst = ev.get_news_fade_basic_instrumentation()
-    assert inst["reject_by_reason"].get("news_events_day_type_mismatch", 0) >= 1
-    assert inst["pass_basic_filters"] == 0
+    nf = [m for m in matches if m.get("playbook_name") == "News_Fade"]
+    assert len(nf) == 0
 
 
 def test_generate_setups_market_context_contains_day_type_and_volatility():
@@ -144,20 +141,10 @@ def test_generate_setups_market_context_contains_day_type_and_volatility():
     assert captured.get("volatility") == 1.2
 
 
-def test_compute_ny_rth_session_range_vol_pct():
-    from backtest.engine import BacktestEngine
-    from models.backtest import BacktestConfig
-    from utils.path_resolver import historical_data_path
+def test_volatility_on_synthetic_intraday_candles():
+    """Remplace l’ancien test sur une méthode moteur supprimée : score 1m sur série synthétique."""
+    from utils.volatility import volatility_score_from_1m
 
-    cfg = BacktestConfig(
-        run_name="phase2_unit",
-        symbols=["SPY"],
-        data_paths=[str(historical_data_path("1m", "SPY.parquet"))],
-        start_date="2025-11-01",
-        end_date="2025-11-05",
-        output_dir=".",
-    )
-    eng = BacktestEngine(cfg)
     base = datetime(2025, 11, 5, 14, 30, tzinfo=timezone.utc)
     candles = []
     for i in range(30):
@@ -170,7 +157,71 @@ def test_compute_ny_rth_session_range_vol_pct():
         candles.append(
             Candle(symbol="SPY", timeframe="1m", timestamp=t, open=o, high=h, low=l, close=c, volume=1)
         )
-    ct = base.replace(hour=19, minute=45)
-    v = eng._compute_ny_rth_session_range_vol_pct(candles, ct)
-    assert v is not None
+    v = volatility_score_from_1m(candles, window=30)
     assert v > 0
+
+
+def test_news_fade_yaml_stop_option_a_sl_distance_entry_percent_half():
+    """OPTION A : le YAML NF documente le stop ±0,5 % (vérité moteur actuelle)."""
+    from pathlib import Path
+
+    from engines.playbook_loader import PLAYBOOKS_PATH, PlaybookLoader
+
+    loader = PlaybookLoader(playbooks_path=Path(PLAYBOOKS_PATH))
+    nf = loader.get_playbook_by_name("News_Fade")
+    assert nf is not None
+    assert nf.sl_distance == "entry_percent_0.5"
+
+
+def test_news_fade_yaml_phase_c_tp1_min_rr_one_r():
+    """PHASE C : candidat paper provisoire — TP1 et min_rr alignés à 1.0R dans le YAML canonique."""
+    from pathlib import Path
+
+    from engines.playbook_loader import PLAYBOOKS_PATH, PlaybookLoader
+
+    loader = PlaybookLoader(playbooks_path=Path(PLAYBOOKS_PATH))
+    nf = loader.get_playbook_by_name("News_Fade")
+    assert nf is not None
+    assert nf.tp1_rr == 1.0
+    assert nf.min_rr == 1.0
+
+
+def test_news_fade_stop_executed_as_half_percent_via_setup_engine_v2_path():
+    """NF emprunte le même _calculate_price_levels que les autres CORE : ±0,5 % depuis last_price."""
+    from engines.setup_engine_v2 import SetupEngineV2
+
+    eng = SetupEngineV2()
+    t = datetime(2025, 11, 5, 10, 0, tzinfo=timezone.utc)
+    bear = CandlestickPattern(
+        family="engulfing",
+        name="Bear",
+        direction="bearish",
+        timeframe="1m",
+        timestamp=t,
+        strength=0.8,
+        body_size=0.5,
+        confirmation=True,
+    )
+    bull = CandlestickPattern(
+        family="engulfing",
+        name="Bull",
+        direction="bullish",
+        timeframe="1m",
+        timestamp=t,
+        strength=0.8,
+        body_size=0.5,
+        confirmation=True,
+    )
+    ep = 600.0
+    short = eng._calculate_price_levels(
+        "QQQ", "SHORT", [bear], [], [], 3.0, 3.0, 5.0, last_price=ep
+    )
+    assert short[0] is not None
+    assert short[0] == ep
+    assert abs((short[1] - ep) / ep - 0.005) < 1e-12
+
+    long_lv = eng._calculate_price_levels(
+        "QQQ", "LONG", [bull], [], [], 3.0, 3.0, 5.0, last_price=ep
+    )
+    assert long_lv[0] == ep
+    assert abs((ep - long_lv[1]) / ep - 0.005) < 1e-12

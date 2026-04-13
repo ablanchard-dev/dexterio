@@ -141,7 +141,11 @@ class TradeJournal:
             position_size=trade.position_size,
             
             entry_price=trade.entry_price,
-            stop_loss_initial=trade.stop_loss,
+            stop_loss_initial=(
+                trade.initial_stop_loss
+                if getattr(trade, "initial_stop_loss", None) is not None
+                else trade.stop_loss
+            ),
             stop_loss_final=trade.stop_loss,
             take_profit_1=trade.take_profit_1,
             take_profit_2=trade.take_profit_2,

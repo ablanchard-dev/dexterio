@@ -9,70 +9,55 @@
 
 ## 1. Executive summary
 
-- **27** playbooks enregistrés dans le moteur (`playbooks_registered_count`). Sur Nov 2025, **3** ont des setups après filtre risk : **NY_Open_Reversal**, **Liquidity_Sweep_Scalp** (bypass quarantaine sur ce lab), **News_Fade** (1 setup).
-- **2** playbooks ouvrent des trades (`trades_opened_by_playbook`) : NY (162), LSS (8) → **170** trades. **News_Fade** : 1 setup post-risk, **0** trade → goulot **après** risk (sélection `max(final_score)` par barre, caps minute, cooldown, etc.).
-- **Raisons du peu de playbooks tradés :**
-  1. `AGGRESSIVE_ALLOWLIST` = **6** noms → ~**576** setups filtrés (`setups_rejected_by_mode`).
-  2. **Denylist + quarantaine YAML** (MTR, LSS sans bypass, etc.).
-  3. **Funnel setup** : **Session_Open_Scalp** (622 matches) et **FVG_Fill_Scalp** (96 matches) → **0** `setups_created`.
-  4. **SAFE** : `SAFE_ALLOWLIST` vide sur ce run + `SAFE_POLICY_DENYLIST` (ex. Session_Open).
+- **13** playbooks enregistrés (`playbooks_registered_count`). Chiffres ci-dessous = **lecture stricte** de `debug_counts_labfull_202511.json` (Nov 2025, SPY+QQQ, AGGRESSIVE) — voir aussi `PHASE_4_D27_FUNNEL_labfull_202511.md`.
+- **6** playbooks ont **SR > 0** (`setups_after_risk_filter_by_playbook`) : Morning_Trap_Reversal, Liquidity_Sweep_Scalp, Session_Open_Scalp, Trend_Continuation_FVG_Retest, NY_Open_Reversal, FVG_Fill_Scalp.
+- **6** playbooks ont **T > 0** (`trades_opened_by_playbook`) : mêmes noms sauf conversion complète là où SR=T (Session_Open : 39/39). Total trades run : **1634** (`trades_opened_total`).
+- **756** setups rejetés par mode (`setups_rejected_by_mode`) — surtout **DENYLIST** sur London, BOS, DAY_Aplus, SCALP_Aplus (voir `setups_rejected_by_mode_by_playbook` + exemples JSON).
+- **News_Fade**, **Power_Hour_Expansion**, **Lunch_Range_Scalp** : **M = 0** sur cette fenêtre (absents de `matches_by_playbook`) → **DEAD** pour nov 2025, pas « 1 setup » (ancienne ligne obsolète corrigée).
+- **SAFE_ALLOWLIST** : longueur **0** sur ce run (`risk_allowlist_snapshot.safe.len`).
 
-**Implication SAFE / FULL :** SAFE ne peut pas être « 4–5 élites » uniquement à partir de ce lab sans autres jobs stats ; FULL s’étend par **allowlist ciblée + lab**, pas par activation des 27 d’un coup.
+**Implication SAFE / FULL :** SAFE ne se déduit pas proprement de ce seul lab si `SAFE_ALLOWLIST` est vide ; FULL reste **allowlist + lab** progressif.
 
 ---
 
-## 2. Table D27 (M / S / SR / T)
+## 2. Table D27 (M / S / SR / T) — **13 enregistrés uniquement**
 
-Légende : **M** = matches (`matches_by_playbook`), **S** = setups créés, **SR** = après risk, **T** = trades ouverts — issus de `debug_counts_labfull_202511.json`.
+Légende : **M** = `matches_by_playbook`, **S** = `setups_created_by_playbook`, **SR** = `setups_after_risk_filter_by_playbook`, **T** = `trades_opened_by_playbook`. Clé absente ⇒ **0**.
 
-| playbook | M | S | SR | T | Statut principal | Blocage principal | Effort | Destination |
-|----------|--:|--:|--:|--:|------------------|-------------------|--------|-------------|
-| NY_Open_Reversal | 229 | 167 | 167 | 162 | TRADED | Sélection S→T (score / minute) | LOW | SAFE + FULL |
-| Liquidity_Sweep_Scalp | 1544 | 8 | 8 | 8 | TRADED | Quarantaine + conversion M→S | MEDIUM | FULL (+ 3B) |
-| News_Fade | 430 | 1 | 1 | 0 | SETUP_ONLY | Trade path post-risk | MEDIUM | SAFE / WAVE2 |
-| FVG_Fill_Scalp | 96 | 0 | 0 | 0 | MATCH_ONLY | Funnel setup | MEDIUM | FULL / WAVE2 |
-| Session_Open_Scalp | 622 | 0 | 0 | 0 | MATCH_ONLY | Funnel setup ; SAFE_POLICY_DENYLIST | MEDIUM | LAB |
-| Morning_Trap_Reversal | 1934 | 498 | 0 | 0 | QUARANTINED + POLICY | Deny/quarantaine | HIGH | QUARANTINE |
-| London_Sweep_NY_Continuation | 242 | 49 | 0 | 0 | BLOCKED_BY_POLICY | AGGRESSIVE_DENYLIST | HIGH | KILL |
-| Trend_Continuation_FVG_Retest | 182 | 43 | 0 | 0 | BLOCKED_BY_POLICY | Denylist + quarantaine | HIGH | KILL |
-| DAY_Aplus_1_Liquidity_Sweep_OB_Retest | 1967 | 53 | 0 | 0 | BLOCKED_BY_POLICY | Denylist | HIGH | KILL |
-| SCALP_Aplus_1_Mini_FVG_Retest_NY_Open | 2256 | 7 | 0 | 0 | BLOCKED_BY_POLICY | Denylist + quarantaine | HIGH | KILL |
-| BOS_Momentum_Scalp | 84 | 1 | 0 | 0 | BLOCKED_BY_POLICY | Denylist | HIGH | KILL |
-| Power_Hour_Expansion | 92 | 3 | 0 | 0 | BLOCKED_BY_POLICY | Denylist | HIGH | KILL |
-| Lunch_Range_Scalp | — | — | — | 0 | TECHNICALLY_DEAD (fenêtre) | 0 match dans `matches_by_playbook` | HIGH | KILL / UNDECIDED |
-| NY_Lunch_Breakout_Reprice | 1767 | 49 | 0 | 0 | BLOCKED_BY_POLICY | Hors allowlist + quarantaine | HIGH | QUARANTINE |
-| Opening_Range_Breakout_NY | 242 | 49 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL (panier) |
-| London_Reversal_Into_NY | 1683 | 49 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
-| PM_Trend_Continuation_2PM | 242 | 49 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
-| VWAP_Reclaim_Trend_Day | 135 | 30 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
-| Micro_Pullback_Scalp_M1 | 182 | 4 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | WAVE2 |
-| IFVG_Flip_Scalp | 1544 | 5 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | WAVE2 |
-| SMT_Divergence_Scalp | 1640 | 5 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | WAVE2 |
-| Close_Reversion_Scalp | 1683 | 6 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
-| News_Reclaim_Scalp | 142 | 4 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
-| Opening_Drive_Continuation_SAFE | 206 | 48 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
-| VWAP_Failure_Reversal_SAFE | 1683 | 49 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
-| Midday_Compression_Break_SAFE | 1767 | 6 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
-| PowerHour_Pullback_SAFE | 211 | 5 | 0 | 0 | BLOCKED_BY_MODE | Hors allowlist | MEDIUM | FULL |
+| playbook | M | S | SR | T | Classif. | Goulot |
+|----------|--:|--:|--:|--:|----------|--------|
+| NY_Open_Reversal | 579 | 436 | 436 | 43 | TRADED | SR→T (393) sélection / caps |
+| Liquidity_Sweep_Scalp | 1500 | 1085 | 1085 | 863 | TRADED | SR→T (222) |
+| Morning_Trap_Reversal | 1924 | 1417 | 1417 | 369 | TRADED | SR→T (1048) |
+| Trend_Continuation_FVG_Retest | 440 | 440 | 440 | 249 | TRADED | SR→T (191) |
+| FVG_Fill_Scalp | 236 | 236 | 236 | 71 | TRADED | SR→T (165) ; M→S (507) |
+| Session_Open_Scalp | 61 | 39 | 39 | 39 | TRADED | — (SR=T) |
+| London_Sweep_NY_Continuation | 580 | 580 | 0 | 0 | BLOCKED_BY_POLICY | 100% `setups_rejected_by_mode` (DENYLIST) |
+| BOS_Momentum_Scalp | 196 | 196 | 0 | 0 | BLOCKED_BY_POLICY | idem |
+| DAY_Aplus_1_Liquidity_Sweep_OB_Retest | 1957 | 1373 | 0 | 0 | BLOCKED_BY_POLICY | idem |
+| SCALP_Aplus_1_Mini_FVG_Retest_NY_Open | 2226 | 1561 | 0 | 0 | BLOCKED_BY_POLICY | idem |
+| News_Fade | 0 | 0 | 0 | 0 | DEAD (fenêtre) | Aucun match (news/contexte nov) |
+| Power_Hour_Expansion | 0 | 0 | 0 | 0 | DEAD (fenêtre) | Aucun match |
+| Lunch_Range_Scalp | 0 | 0 | 0 | 0 | DEAD (fenêtre) | Aucun match |
 
-**Note :** `lab_playbook_comparison_labfull_202511.json` est un sous-ensemble orienté policy ; les chiffres pipeline ci-dessus viennent de `debug_counts`.
+**Note :** Les playbooks hors des **13** enregistrés (ex. ORB, VWAP…) **ne figurent pas** dans ce `debug_counts` — les traiter dans un run où ils sont chargés (`labfull_202510` / YAML étendu).
 
 ---
 
 ## 3. SAFE / FULL / Wave 2 (rappel décisionnel)
 
-- **SAFE (4–5) :** **NY_Open_Reversal** (preuve lab) ; **News_Fade** seulement après preuve **trade** post-3B ; **FVG_Fill** seulement si funnel setup réparé. **LSS** : pas SAFE tant que quarantaine + perf négative lab.
-- **FULL panier 15–20 :** noyau allowlist 6 + extension allowlist progressive (ORB, London reversal, VWAP, SAFE-daytrade, etc.) — **un par vague lab**, pas tout d’un coup.
-- **Wave 2 prioritaire :** **FVG_Fill_Scalp**, **Session_Open_Scalp**, **News_Fade** (trade path) — plan détaillé : `WAVE2_PLAN_FVG_SESSIONOPEN_NEWSFADE.md`.
+- **SAFE :** sur **ce seul mois**, le parquet trades montre **NY_Open_Reversal ΣR ≈ −1.04** et **aucun** playbook avec profil « sniper elite » stable — voir **`PHASE_5_SAFE_MODE_PARQUET_PROOF.md`**. **News_Fade** : **0** match nov 2025. La shortlist SAFE produit reste **à valider multi-fenêtres**.
+- **FULL :** **LSS** 863 trades mais **ΣR ≈ −27** sur nov 2025 ; expansion = **vagues + labs** (`PHASE_6_FULL_MODE.md`), pas activation massive.
+- **Wave 2 :** **FVG_Fill_Scalp**, **Session_Open_Scalp**, **News_Fade** — `WAVE2_PLAN_FVG_SESSIONOPEN_NEWSFADE.md`.
 
 ---
 
-## 4. Blocker categories
+## 4. Blocker categories (aligné `debug_counts_labfull_202511`)
 
-- **Policy :** denylist + quarantaine (MTR, LSS sans bypass, TC, A+, BOS, …).
-- **Mode :** hors `AGGRESSIVE_ALLOWLIST` → `filter_setups_by_mode` / risk.
-- **Funnel match→setup :** Session_Open, FVG_Fill (0 S) ; Lunch (0 M).
-- **Funnel setup→trade :** News_Fade (SR sans T) ; `max(final_score)` par symbole/barre ; cap 1 trade/symbole/minute.
+- **Policy / DENYLIST :** London_Sweep_NY_Continuation, BOS_Momentum_Scalp, DAY_Aplus_*, SCALP_Aplus_* — setups créés puis **tous** rejetés par mode (`setups_rejected_by_mode_by_playbook`).
+- **Funnel match→setup :** ex. LSS **1500→1085**, MTR **1924→1417**, FVG **236→236** (pas de « 0 S » pour FVG/Session sur ce run).
+- **Funnel SR→trade :** NY / LSS / MTR / TC-FVG / FVG — écart SR−T dû à sélection par barre, caps, cooldown (détail dans `risk_engine` + moteur d’exécution).
+- **DEAD (0 match) :** News_Fade, Power_Hour_Expansion, Lunch_Range_Scalp sur **nov 2025** uniquement.
 
 ---
 

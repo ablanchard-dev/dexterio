@@ -97,6 +97,11 @@ class Trade(BaseModel):
     match_grade: Optional[str] = None  # Grade renvoyé par playbook_loader
     grade_thresholds: Optional[Dict[str, float]] = None  # Seuils A_plus/A/B pour ce playbook
     score_scale_hint: Optional[str] = None  # P0: Hint pour l'échelle du score
+    # Phase 3B: paramètres d'exécution spécifiques par playbook (optionnels)
+    breakeven_trigger_rr: Optional[float] = None
+    breakeven_moved: bool = False
+    session_window_end_utc: Optional[datetime] = None
+    max_hold_minutes: Optional[float] = None
     
     # P1: Master Candle info (Sprint 2)
     mc_high: Optional[float] = None
@@ -115,7 +120,8 @@ class Trade(BaseModel):
     
     # Exécution
     entry_price: float
-    stop_loss: float
+    stop_loss: float  # Stop courant (peut passer au breakeven = entry)
+    initial_stop_loss: Optional[float] = None  # Stop à l'ouverture (pour R et exports)
     take_profit_1: float
     take_profit_2: Optional[float] = None
     exit_price: float

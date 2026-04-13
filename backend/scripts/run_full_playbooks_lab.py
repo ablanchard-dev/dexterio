@@ -95,12 +95,26 @@ def _run_window(window: Dict[str, str], output_dir: Path, symbols: List[str]) ->
     engine.trade_journal._save = lambda: None  # type: ignore[attr-defined]
     engine.load_data()
     result = engine.run()
+    debug_counts = getattr(engine, "debug_counts", {}) or {}
+    risk_snapshot = debug_counts.get("risk_allowlist_snapshot", {}) if isinstance(debug_counts, dict) else {}
+    try:
+        git_sha = (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(backend_dir), text=True)
+            .strip()
+        )
+    except Exception:
+        git_sha = "unknown"
     meta = {
+        "runner": "run_full_playbooks_lab.py",
+        "protocol": "CANONICAL_LAB",
+        "git_sha": git_sha,
         "run_name": run_name,
         "start": window["start"],
         "end": window["end"],
         "total_trades": str(result.total_trades),
         "final_capital": str(result.final_capital),
+        "playbooks_registered_count": str(debug_counts.get("playbooks_registered_count", "")),
+        "risk_allowlist_snapshot": risk_snapshot,
         "playbook_stats_file": str(output_dir / f"playbook_stats_{run_name}.json"),
         "summary_file": str(output_dir / f"summary_{run_name}_{config.trading_mode}_DAILY_SCALP.json"),
     }
@@ -191,6 +205,17 @@ def main() -> None:
         "--no-isolate-windows",
         action="store_true",
         help="Désactive l'isolation: tout dans le même processus (plus rapide, risque de blocage)",
+    )
+    parser.add_argument(
+        "--expected-playbooks-registered",
+        type=int,
+        default=None,
+        help="Gate optionnel: nombre de playbooks enregistrés attendu (ex: 27).",
+    )
+    parser.add_argument(
+        "--strict-gates",
+        action="store_true",
+        help="Fail fast si un gate de comparabilité échoue.",
     )
     parser.add_argument(
         "--child-window",
@@ -286,6 +311,29 @@ def main() -> None:
     with index_file.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
     print(f"[gate3] index écrit: {index_file}")
+
+    # Gate de comparabilité optionnel: cohérence du nombre de playbooks enregistrés.
+    if args.expected_playbooks_registered is not None:
+        mismatches: List[Dict[str, str]] = []
+        for m in run_index:
+            got_raw = str(m.get("playbooks_registered_count", "")).strip()
+            try:
+                got = int(got_raw)
+            except Exception:
+                got = -1
+            if got != int(args.expected_playbooks_registered):
+                mismatches.append(
+                    {
+                        "run_name": str(m.get("run_name", "")),
+                        "expected": str(args.expected_playbooks_registered),
+                        "got": got_raw,
+                    }
+                )
+
+        if mismatches:
+            print(f"[gate3] PLAYBOOK_COUNT_MISMATCH: {mismatches}", flush=True)
+            if args.strict_gates:
+                raise SystemExit(3)
 
 
 if __name__ == "__main__":

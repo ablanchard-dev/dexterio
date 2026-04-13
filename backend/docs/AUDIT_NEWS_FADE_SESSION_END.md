@@ -120,7 +120,7 @@ def test_session_end_news_fade_closes_after_window_end():
 ## ANALYSE
 
 1. **Acceptable métier (lecture « fade news dans la fenêtre »)** : forcer la sortie à la fin de la fenêtre YAML correspond à une règle de **discipline de risque** (« on ne porte pas le fade au-delà du créneau prévu »). Ce n’est pas un bug de données ; c’est **aligné** avec Phase 3B et le YAML.
-2. **« Trop mécanique » ?** Partiellement **oui** côté **P&L attendu** : avec **TP à 3R** et des fenêtres **courtes**, beaucoup de trades se résolvent en **scratch / micro-R** au lieu de TP ou SL — sur **NY**, **`session_end` reste avant TP** ; sur **News_Fade** (code actuel), TP est testé **avant** `session_end`, donc les sorties quasi tout `session_end` observées sur des runs historiques reflètent surtout **prix loin de 3R dans la fenêtre** (ou runs antérieurs au patch NF), pas l’absence de priorité TP côté NF.
+2. **« Trop mécanique » ?** Partiellement **oui** côté **P&L attendu** : avec **TP à 3R** et des fenêtres **courtes**, beaucoup de trades se résolvent en **scratch / micro-R** au lieu de TP ou SL — sur **NY**, `**session_end` reste avant TP** ; sur **News_Fade** (code actuel), TP est testé **avant** `session_end`, donc les sorties quasi tout `session_end` observées sur des runs historiques reflètent surtout **prix loin de 3R dans la fenêtre** (ou runs antérieurs au patch NF), pas l’absence de priorité TP côté NF.
 3. **Contre-exemple** : **w03** montre **1 SL** — le stop peut toujours précéder `session_end` (ordre SL en premier).
 4. **NY_Open_Reversal** : toute modification d’ordre **global** DAILY (TP avant `session_end`) **impacterait aussi NY** ; il faut donc rester sur des garde-fous **spécifiques NF** si on patch.
 
@@ -139,8 +139,8 @@ def test_session_end_news_fade_closes_after_window_end():
 
 **Ajustements minimaux candidats** :
 
-1. ~~**TP avant `session_end` pour `News_Fade` uniquement**~~ — **fait** dans `paper_trading.py` (tests `test_news_fade_tp_evaluated_before_session_end_*` / NY inchangé `test_ny_open_reversal_session_end_still_before_tp_*`). Re-lancer nov2025 si besoin de mesurer l’effet sur les parquets vs baseline documentée ici.
-2. **`tp1_rr` NF plus bas (ex. 2.0–2.5)** dans `playbooks.yml` : plus de chances d’atteindre TP1 dans la fenêtre **sans** toucher au moteur ; **PHASE B** (`run_mini_lab_phase_b_nf_tp1_sweep.py`) peut servir de cadre.
+1. ~~**TP avant `session_end` pour `News_Fade` uniquement**~~ — **fait** dans `paper_trading.py` (tests `test_news_fade_tp_evaluated_before_session_end_`* / NY inchangé `test_ny_open_reversal_session_end_still_before_tp_*`). Re-lancer nov2025 si besoin de mesurer l’effet sur les parquets vs baseline documentée ici.
+2. `**tp1_rr` NF plus bas (ex. 2.0–2.5)** dans `playbooks.yml` : plus de chances d’atteindre TP1 dans la fenêtre **sans** toucher au moteur ; **PHASE B** (`run_mini_lab_phase_b_nf_tp1_sweep.py`) peut servir de cadre.
 3. **(Plus intrusif)** : buffer minutes sur la borne de sortie — à documenter avec précaution.
 
 **Commandes de suivi** : `run_mini_lab_multiweek.py --preset nov2025` après tweak YAML ou campagne PHASE B ; conserver `MULTI_WEEK_VALIDATION_NOV2025.md` + parquets comme preuves RUN.
