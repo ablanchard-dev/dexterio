@@ -72,7 +72,9 @@ class SetupEngineV2:
             'daily_structure': market_state.daily_structure,
             'h4_structure': market_state.h4_structure,
             'h1_structure': market_state.h1_structure,
-            'session_profile': market_state.session_profile
+            'session_profile': market_state.session_profile,
+            'day_type': market_state.day_type,
+            'volatility': market_state.volatility,
         }
         
         # P0 ÉTAPE 3: Compter évaluation playbooks (via attribut externe si disponible)

@@ -3,6 +3,7 @@ Backtest Engine - Phase 2.3 OPTIMIZED
 Rejoue bougie par bougie avec agrégation incrémentale et caching
 """
 import logging
+import os
 import pandas as pd
 import numpy as np
 import pytz
@@ -33,6 +34,7 @@ from engines.timeframe_aggregator import TimeframeAggregator
 from engines.market_state_cache import MarketStateCache
 from engines.master_candle import calculate_master_candle, get_ny_rth_session_date, get_session_labels
 from utils.timeframes import get_session_info, is_in_kill_zone
+from utils.volatility import volatility_score_from_1m
 
 logger = logging.getLogger(__name__)
 
@@ -803,10 +805,14 @@ class BacktestEngine:
                         f"O={candle_1m.open} H={candle_1m.high} L={candle_1m.low} C={candle_1m.close}"
                     )
                 
-                # P0 DEBUG - Étape 3: Forcer un setup artificiel (preuve absolue)
-                if self.debug_counts["bars_processed"] == 100:
+                # Garde debug explicite: ne jamais injecter de "fake setup" en run normal.
+                if (
+                    os.environ.get("BACKTEST_ENABLE_FAKE_SETUP_TRIGGER", "false").strip().lower()
+                    in {"1", "true", "yes", "on"}
+                    and self.debug_counts["bars_processed"] == 100
+                ):
                     self.debug_counts["setups_detected_total"] += 1
-                    logger.error("🔥 DEBUG: FAKE SETUP TRIGGERED AT BAR 100")
+                    logger.error("DEBUG: FAKE SETUP TRIGGERED AT BAR 100 (opt-in)")
                 
                 # P1: Mettre à jour le tracking inter-session (logging only)
                 try:
@@ -983,13 +989,14 @@ class BacktestEngine:
                 "1d": candles_1d[-30:]   # P2-2.B: Increased to support detect_structure (>= 20)
             }
             
+            vol_score = volatility_score_from_1m(candles_1m, window=30)
             market_state = self.market_state_engine.create_market_state(
                 symbol,
                 multi_tf_data,
                 {
                     "session": current_session,
                     "current_time": current_time,
-                    "volatility": 0.0  # Placeholder
+                    "volatility": vol_score,
                 }
             )
             
@@ -1009,13 +1016,14 @@ class BacktestEngine:
                     "1d": candles_1d[-30:]   # P2-2.B
                 }
                 
+                vol_score_fb = volatility_score_from_1m(candles_1m, window=30)
                 market_state = self.market_state_engine.create_market_state(
                     symbol,
                     multi_tf_data,
                     {
                         "session": current_session,
                         "current_time": current_time,
-                        "volatility": 0.0
+                        "volatility": vol_score_fb,
                     }
                 )
                 self.market_state_cache.put(cache_key, market_state)
@@ -1344,10 +1352,16 @@ class BacktestEngine:
             "4h": candles_4h,
             "1d": candles_1d,
         }
+        vol_score = volatility_score_from_1m(candles_1m, window=30)
         market_state = self.market_state_engine.create_market_state(
             symbol,
             multi_tf_data,
-            {"current_session": session_info.get("name", "ny"), "session_levels": {}},
+            {
+                "session": session_info.get("name", "ny"),
+                "current_time": current_time,
+                "session_levels": {},
+                "volatility": vol_score,
+            },
         )
 
         # Dernier prix réel pour le symbole à current_time (close M1)
@@ -2330,7 +2344,11 @@ class BacktestEngine:
                 quality=trade.get_quality(),  # TASK 2: Utiliser get_quality() pour fallback UNKNOWN
                 entry_price=trade.entry_price,
                 exit_price=trade.exit_price,
-                stop_loss=trade.stop_loss,
+                stop_loss=(
+                    trade.initial_stop_loss
+                    if getattr(trade, "initial_stop_loss", None) is not None
+                    else trade.stop_loss
+                ),
                 take_profit_1=trade.take_profit_1,
                 position_size=trade.position_size,
                 risk_pct=trade.risk_pct,

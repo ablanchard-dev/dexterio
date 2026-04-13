@@ -9,11 +9,13 @@
 
 ## 1. Synthèse par playbook
 
-| Playbook | Symptôme labfull_202511 | Blocage exact (repo) |
-|----------|-------------------------|----------------------|
-| **FVG_Fill_Scalp** | M=96, S=0 | Aucun setup créé après match playbook : rejets dans `generate_setups` / `_determine_direction` / edge filters / `_calculate_price_levels` / absence FVG dans `ict_patterns` sur la plupart des minutes (ICT alimenté surtout aux clôtures 5m/15m — voir `engine.py` ~1076–1093). |
-| **Session_Open_Scalp** | M=622, S=0 | Idem funnel setup ; playbook **continuation** : `_determine_direction` exige bias + faible indécision ; `_rebalance_grade_if_needed` pénalise fortement sans sweep/BOS (`setup_engine_v2.py` ~465+). |
-| **News_Fade** | SR=1, T=0 | Setup passe risk mais **aucun** trade : après risk, un seul setup par symbole/barre = `max(filtered_setups, key=final_score)` ; puis `_execute_setup` peut échouer (cooldown, session cap, daily cap, `can_take_setup`, `place_order`). |
+
+| Playbook               | Symptôme labfull_202511 | Blocage exact (repo)                                                                                                                                                                                                                                                             |
+| ---------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **FVG_Fill_Scalp**     | M=96, S=0               | Aucun setup créé après match playbook : rejets dans `generate_setups` / `_determine_direction` / edge filters / `_calculate_price_levels` / absence FVG dans `ict_patterns` sur la plupart des minutes (ICT alimenté surtout aux clôtures 5m/15m — voir `engine.py` ~1076–1093). |
+| **Session_Open_Scalp** | M=622, S=0              | Idem funnel setup ; playbook **continuation** : `_determine_direction` exige bias + faible indécision ; `_rebalance_grade_if_needed` pénalise fortement sans sweep/BOS (`setup_engine_v2.py` ~465+).                                                                             |
+| **News_Fade**          | SR=1, T=0               | Setup passe risk mais **aucun** trade : après risk, un seul setup par symbole/barre = `max(filtered_setups, key=final_score)` ; puis `_execute_setup` peut échouer (cooldown, session cap, daily cap, `can_take_setup`, `place_order`).                                          |
+
 
 ---
 
@@ -21,7 +23,7 @@
 
 ### 2.1 FVG_Fill_Scalp
 
-- **Diagnostic d’abord :** instrumenter ou lire `setup_engine_reject_reasons` / logs sur un run court avec `RISK_EVAL_*` si besoin ; vérifier présence de `pattern_type == "fvg"` dans `ict_patterns` aux minutes où match FVG_Fill compte.
+- **Diagnostic d’abord :** instrumenter ou lire `setup_engine_reject_reasons` / logs sur un run court avec `RISK_EVAL`_* si besoin ; vérifier présence de `pattern_type == "fvg"` dans `ict_patterns` aux minutes où match FVG_Fill compte.
 - **Patch cible minimal :** une seule levier à la fois, par exemple :
   - assouplir **un** filtre documenté (ex. RR structurel edge si `< 1.2` pour ce nom uniquement avec garde `playbook_name == "FVG_Fill_Scalp"`), **ou**
   - enrichir détection FVG sur 1m **uniquement** pour ce playbook (scope étroit — à valider perf).
@@ -44,7 +46,7 @@
   - `news_fade_post_risk_lost_final_selection_count` : NF est dans le pool mais **un autre** playbook gagne le `max(final_score)`.
   - `news_fade_post_risk_lost_final_selection_by_winner` : décompte par nom du playbook gagnant (ex. `NY_Open_Reversal`).
 - **Lecture produit :** part de perte au tirage final =  
-  `news_fade_post_risk_lost_final_selection_count / news_fade_post_risk_final_pool_count` (si le dénominateur > 0). Comparer avec `setups_after_risk_filter_by_playbook["News_Fade"]` (agrégat par setup, pas par barre) pour le contexte amont.
+`news_fade_post_risk_lost_final_selection_count / news_fade_post_risk_final_pool_count` (si le dénominateur > 0). Comparer avec `setups_after_risk_filter_by_playbook["News_Fade"]` (agrégat par setup, pas par barre) pour le contexte amont.
 - **Patch minimal (choix à trancher) :**
   - **A)** Tie-break ou priorité **documentée** pour NF dans un sous-ensemble de minutes (ex. fenêtres `time_windows` du YAML) — **garde stricte** sur le nom.
   - **B)** Compteurs `trades_attempted_by_playbook` vs `trades_opened_by_playbook` pour NF **après** constat sur les compteurs ci-dessus.
@@ -54,11 +56,13 @@
 
 ## 3. Test court
 
-| Playbook | Test minimal suggéré |
-|----------|----------------------|
-| FVG_Fill | Run backtest **1 journée** + symbole unique + assert `setups_created_by_playbook["FVG_Fill_Scalp"] > 0` après patch ; ou test unitaire sur `generate_setups` avec `ict_patterns` synthétiques contenant FVG. |
-| Session_Open | Idem avec patterns / bias forcés pour satisfaire continuation + reweight. |
-| News_Fade | Run court ou test d’intégration : 1 setup NF après risk → `place_order` success **ou** compteur de refus explicite (cooldown vs score). |
+
+| Playbook     | Test minimal suggéré                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| FVG_Fill     | Run backtest **1 journée** + symbole unique + assert `setups_created_by_playbook["FVG_Fill_Scalp"] > 0` après patch ; ou test unitaire sur `generate_setups` avec `ict_patterns` synthétiques contenant FVG. |
+| Session_Open | Idem avec patterns / bias forcés pour satisfaire continuation + reweight.                                                                                                                                    |
+| News_Fade    | Run court ou test d’intégration : 1 setup NF après risk → `place_order` success **ou** compteur de refus explicite (cooldown vs score).                                                                      |
+
 
 **Commande type (manuel) :**
 
@@ -81,17 +85,19 @@ python -m pytest tests/... -q
 
 ## 5. Risque sur Wave 1 / NY
 
-| Risque | Mitigation |
-|--------|------------|
-| Changer `max(filtered_setups)` ou ordre DAILY/SCALP affecte NY | Toute priorité NF doit être **bornée** (fenêtre horaire NF uniquement) ou derrière flag env. |
-| Assouplir filtres edge pour Session/FVG augmente volume global | Patch **par playbook** + lab 1 mois avant merge. |
-| Cooldown partagé | Vérifier clé `(symbol, playbook)` — un assouplissement NF ne doit pas ouvrir flood sur NY sans revue. |
+
+| Risque                                                         | Mitigation                                                                                            |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Changer `max(filtered_setups)` ou ordre DAILY/SCALP affecte NY | Toute priorité NF doit être **bornée** (fenêtre horaire NF uniquement) ou derrière flag env.          |
+| Assouplir filtres edge pour Session/FVG augmente volume global | Patch **par playbook** + lab 1 mois avant merge.                                                      |
+| Cooldown partagé                                               | Vérifier clé `(symbol, playbook)` — un assouplissement NF ne doit pas ouvrir flood sur NY sans revue. |
+
 
 ---
 
 ## 6. Parallèle avec validation post-3B
 
-- **3B :** re-lab + `PHASE_3B_COMPARABILITY` / métriques exit — **indépendant** des patches Wave 2 ci-dessus. Les compteurs `news_fade_post_risk_*` sont inclus dans le même `debug_counts` exporté par le lab : les consommer **sur le run post-3B** pour baseline comparable.
+- **3B :** re-lab + `PHASE_3B_COMPARABILITY` / métriques exit — **indépendant** des patches Wave 2 ci-dessus. Les compteurs `news_fade_post_risk`_* sont inclus dans le même `debug_counts` exporté par le lab : les consommer **sur le run post-3B** pour baseline comparable.
 - **Ordre conseillé :** finaliser la validation 3B (exit_reason + ces compteurs NF) ; puis patches FVG/SOS / éventuelle priorité NF sur **commits séparés** après constat chiffré.
 
 ---

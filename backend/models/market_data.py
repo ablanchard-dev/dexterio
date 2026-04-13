@@ -66,6 +66,9 @@ class MarketState(BaseModel):
     
     # Day type (P1: trend/manipulation_reversal/range)
     day_type: str = 'unknown'  # New field for playbook filtering
+
+    # Volatilité courte (1m) — score pour filtres YAML (volatility_min / News_Fade)
+    volatility: Optional[float] = None
     
     # Niveaux HTF importants
     pdh: Optional[float] = None  # Previous Day High

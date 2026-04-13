@@ -289,6 +289,12 @@ class MarketStateEngine:
         
         # 5. Finalize state
         t0 = time.perf_counter()
+        sess = session_info.get("session") or session_info.get("current_session")
+        if sess is not None:
+            sess_str = str(sess).lower()
+        else:
+            sess_str = "unknown"
+
         market_state = MarketState(
             symbol=symbol,
             bias=bias_analysis['bias'],
@@ -299,6 +305,8 @@ class MarketStateEngine:
             h4_structure=structures.get('h4_structure', 'unknown'),
             h1_structure=structures.get('h1_structure', 'unknown'),
             day_type=day_type,  # Inject calculated day_type
+            current_session=sess_str,
+            volatility=session_info.get("volatility"),
             pdh=htf_levels.get('pdh'),
             pdl=htf_levels.get('pdl'),
             asia_high=htf_levels.get('asia_high'),
