@@ -82,8 +82,10 @@ Toujours :
 
 **P0** — ~~Clore gate tp1 News_Fade~~ **CLOS (2026-04-14)** — UNRESOLVED. 94-100% session_end, tp1 inopérant sur aug/sep/oct 2025. E[R] négatif dans les deux bras. Voir `ROADMAP_DEXTERIO_TRUTH.md` § Gate NF tp1.
 
-**P1** ← **ACTIF** — Campagne NY_Open_Reversal isolé
-Run NY-only, fenêtre max disponible, gate verdict. Dériver `campaign_wf_core3_ny_only.yml`.
+**P1** — NY_Open_Reversal isolé — **verdict NOT_READY (2026-04-14)**
+WF 2 plis (aug30-nov27) : E[R] pondéré **-0.030** (1521 trades). Problème root cause = **fréquence aberrante** (44 trades/j, max 148/j). Pas de cap fréquence dans le YAML. Signal latent possible sur oct/nov (E[R]≈-0.001, PF 1.004) mais noyé. **Next** : `campaign_wf_ny_only_capped.yml` avec `max_setups_per_session: 1`.
+
+**P1b** ← **ACTIF** — NY capped : dériver `campaign_wf_ny_only_capped.yml` + `max_setups_per_session: 1`, re-run, gate.
 
 **P2** — Explorer IFVG 5m (Aplus_01/03)
 Lire `engines/patterns/ifvg.py`, vérifier support multi-tf, prototype YAML, smoke 1 jour.
