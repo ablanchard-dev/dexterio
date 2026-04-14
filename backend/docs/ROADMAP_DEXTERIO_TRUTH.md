@@ -28,7 +28,7 @@ Les autres documents sont **des preuves ou des plans historiques** ; en cas de c
 | ZIP8 → prod A–E | `ROADMAP_COMPLETE.md` | Vision A–E ; **Phase B coûts à jour** | **Partiellement obsolète** (surtout C–E tant non implémentés) | UI/paper/VPS non câblés comme dans le plan | **Coûts** = code + section Phase B du fichier racine ; **campagnes** = ladder + ce fichier |
 | Phases 0–8 audit / portfolio | `PHASES_4_8_POINTER.md` + `PHASE_*` | Jalons **faits** ; gates **ouverts** | **Actif** (interprétation) | SAFE « elite » non prouvé sur longue plage ; FULL expansion | Enchaîner **campagnes ladder** + OOS, pas reparcourir les phases en boucle |
 | SAFE / FULL / CORE_PAPER | `ROADMAP_SAFE_FULL_PORTFOLIO.md` + `CORE_PAPER_NOW_LAUNCH.md` | **Actif** | **Actif** | NF tp1 arbitrage ; FVG stabilité multi-fenêtre | Sweeps documentés ; paper **limité** seulement si gate |
-| Roadmap NF (stop / tp1) | `PHASE_A_NF_STOP_DECISION.md`, `PHASE_B_*`, docs arbitration | A **clos** ; B/C **gates** | **Actif** (décision) | `REOPEN_1R_VS_1P5R` etc. | **Hors scope backtest** sauf campagne YAML dérivée déjà supportée |
+| Roadmap NF (stop / tp1) | `PHASE_A_NF_STOP_DECISION.md`, `PHASE_B_*`, docs arbitration | A **clos** ; B **clos UNRESOLVED** (2026-04-14) | **Actif** (décision) | Gate `REOPEN_1R_VS_1P5R` **fermé UNRESOLVED** : les deux bras négatifs E[R]≈-0.05, 94-100% sess_end → tp1 jamais atteint → question 1.0R vs 1.5R **inopérante sur aug/sep/oct 2025**. NF nécessite une campagne dédiée fenêtre favorable (ex. nov 2025). | Ne pas relancer sweep tp1 — relancer si campagne NF sur fenêtre positive détectée (p.ex. nov 2025 standalone) |
 | Wave 2 (FVG W2-1, Session_Open) | `WAVE2_*` docs | **Actif** recherche | **Actif** | Stabilité > 1 semaine si exigé | Labs dédiés ; **ne pas** mélanger avec validation longue « noyau » sans décision |
 | Backtest crédible & campagnes | `BACKTEST_CAMPAIGN_LADDER.md` + `backtest_data_preflight` + manifests | **Actif** ; outillage **récent** | **Actif** | Données 1–2 ans complètes ; OOS systématique | Preflight strict ; WF ; compare ; `campaign_gate_verdict` |
 | Contrats / paper preflight | `contracts/`, `paper_preflight`, `paper_supervised_precheck`, `TradeRowV0` | **Actif** | **Actif** | — | Utiliser en **amont** paper limité |
@@ -67,6 +67,31 @@ Référence baseline : `results/labs/mini_week/wf_core3_oos_jun_nov2025/` + `res
 | FVG seul | `wf_core3_fvg_only` | **~1686** trades, E[R] pondéré ≈ **-0,039** ; **s0** et **s1** tous deux négatifs (pas de compensation type no-FVG sur s1). |
 
 **Décision provisoire produit** : ne pas remplacer le trio par « NY+Session seul » sur l’agrégat sans critère de régime/split ; poursuivre le tuning par **YAML dérivés** + même chaîne gate/rollup/postmortem, pas par nouveaux runners.
+
+---
+
+## Gate NF tp1 — verdict final (2026-04-14)
+
+**Gate fermé : `KEEP_BOTH_UNRESOLVED_PENDING_MORE_DATA`**
+
+Artefacts : `results/labs/mini_week/_nf_tp1_arbitration_aggregate.json` + `docs/PHASE_NF_TP1_ARBITRATION_TABLE.md`
+
+| bras | NF trades | ΣR | E[R] |
+|------|----------:|---------:|---------:|
+| tp1 = 1.0R | 85 | -4.128 | **-0.0486** |
+| tp1 = 1.5R | 85 | -3.439 | **-0.0405** |
+| ΔE[R] | — | +0.069 | **+0.0081** |
+
+Seuil d'équivalence ε = 0.015R. `|ΔE[R]| = 0.0081R < ε` → UNRESOLVED.
+
+**Diagnostic réel** : le tp1 n'est pas le problème. Sur 12 fenêtres aug/sep/oct 2025, 94–100% des trades NF sortent par `session_end` avant d'atteindre tout TP. La question 1.0R vs 1.5R est **inopérante** sur cette période. E[R] négatif dans les deux bras.
+
+**Ce que cela signifie** :
+- NF a généré ~+90R sur la fenêtre PHASE B (nov 2025) — edge potentiellement présent mais régime-dépendant
+- aug/sep/oct 2025 = pas d'edge NF, pas de TP atteint, session_end dominant
+- Sweep tp1 à **ne pas relancer** sur les mêmes fenêtres
+
+**Prochaine action NF** : campagne dédiée NF fenêtre favorable (nov 2025 standalone) pour confirmer si l'edge PHASE B est réel et reproductible. Pas avant P1 (NY isolé).
 
 ---
 
