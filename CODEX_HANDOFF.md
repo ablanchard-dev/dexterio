@@ -1,0 +1,319 @@
+# CODEX_HANDOFF.md
+# DexterioBOT — Handoff pour Codex / nouvelle session
+# Dernière mise à jour : 2026-04-14
+
+---
+
+## 1. État exact du repo
+
+- Branche : `main`
+- Dernier commit : `c3eb1d6` — "P1 diagnostic complet — liquidity_sweep_score=0 toujours, P2 IFVG 5m actif"
+- **Fichiers modifiés non commités pour la passe perf IFVG 5m :**
+  - `backend/backtest/engine.py`
+  - `backend/knowledge/campaigns/campaign_ifvg_5m_oos_jun_nov2025.yml`
+  - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025/walk_forward_campaign.json`
+  - `CODEX_HANDOFF.md`
+- **Contexte de worktree :** il reste beaucoup de dirty files historiques hors scope dans le repo. Ne pas les nettoyer ni les revert sans demande explicite.
+- **Artefacts de validation récents :**
+  - `backend/results/labs/mini_week/ifvg_probe_sep29_oct02/`
+  - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025/`
+  - `backend/results/labs/mini_week/smoke_ifvg_5m/`
+
+---
+
+## 2. Ce qui a été fini récemment (passe 2026-04-14)
+
+### P1b — Fix sweep scoring (plomberie)
+
+**Deux bugs code corrigés :**
+
+1. `engines/patterns/custom_detectors.py` : `detect_custom_patterns` n'appelait pas
+   `detect_liquidity_sweep` → la clé `"liquidity_sweep"` manquait dans le dict
+   `ict_patterns` → `liquidity_sweep_score = 0.0` sur 100% des trades, toujours.
+
+2. `engines/playbook_loader.py` + 3 autres fichiers : `has_sweep` vérifiait
+   `== 'sweep'` alors que `ICTPatternEngine` émet `pattern_type='liquidity_sweep'`.
+
+**Autres corrections moteur dans la même passe :**
+- `playbook_loader.py` : `is_backtest_aggressive` lisait `settings.TRADING_MODE`
+  global (SAFE) au lieu du `trading_mode` du run → propagation du mode du run ajoutée
+- `backtest/engine.py` : guard `None` sur `self.config.run_name` (crash si non défini)
+
+**Résultat P1b :** Bug code corrigé. Sur Aug 4-8 SPY, 0 sweeps détectés (fait de
+marché, pas un bug). Détecteur vérifié actif : 42 jours avec sweeps sur Aug-Sep 2025.
+
+### P2 — IFVG 5m smoke (pipeline actif)
+
+**3 blocages moteur résolus :**
+
+1. `engines/setup_engine_v2.py` — `_determine_direction` retournait `None` pour
+   les playbooks IFVG quand `bias='neutral'` → setups tous droppés. Fix : branch IFVG
+   en tête du code, direction déduite du nom (`BULL`→LONG, `BEAR`→SHORT).
+
+2. `engines/playbook_loader.py` — raw IFVG strength ≈ 0.001 (détecteur utilise
+   `displacement * 10`, SPY = ~0.001) → `fvg_alignment` et `ifvg_quality` donnaient
+   un score ≈ 0.001. Fix : plancher 0.65 si IFVG détecté (présence = signal validé).
+
+3. `knowledge/campaigns/campaign_smoke_ifvg_5m.yml` — `pattern_quality: 0.30`
+   toujours nul (IFVG playbooks ont `required_families: []`). Remplacé par
+   `ifvg_quality: 0.80`.
+
+**Résultat smoke AGGRESSIVE SCALP SPY Aug 4-8 :**
+```
+Trades : 10 (5 Bull, 5 Bear) | WR 50% | E[R] -0.069 | PF 0.24
+Grades : A 3, B 7 | Exit : time_stop 6, SL 4
+```
+Pipeline fonctionnel. Pas un edge validé (10 trades = bruit statistique pur).
+
+### P3 — Blocage moteur / perf IFVG 5m jun-nov 2025
+
+**Symptôme reproduit :**
+- Freeze reproductible autour de `BAR 33800`
+- Timestamp observé : `2025-09-30 12:01:00+00:00`
+- Process vivant, CPU ~100%, log immobile pendant ~35 min
+- Le walk-forward a été tué car le moteur semblait bloqué dans une boucle coûteuse ou quasi-infinie
+- Le blocage apparaissait même sur des runs resserrés et en `SPY` only
+
+**Cause racine :**
+- Dans `backend/backtest/engine.py`, `_process_bar_optimized` recalculait le master candle 1m en rescannant l'historique complet des `candles_1m` à chaque barre / setup.
+- Comme la série s'allonge à chaque itération, le coût devenait quadratique (`O(n²)`), avec un effet apparent de blocage sur la fenêtre longue.
+- Correction appliquée : `_ingest_master_candle_1m` alimente un cache sessionnel en `O(1)` et `_get_master_candle_cached` calcule le master candle uniquement à partir du buffer de session courant.
+
+**Fichiers touchés pour ce fix :**
+- `backend/backtest/engine.py`
+- `backend/knowledge/campaigns/campaign_ifvg_5m_oos_jun_nov2025.yml`
+- `backend/results/labs/mini_week/ifvg_oos_jun_nov2025/walk_forward_campaign.json`
+
+**Validation ciblée :**
+- Repro minimale SPY-only autour de la fenêtre problématique terminée avec succès
+- Campagne OOS IFVG 5m relancée sur les données disponibles
+- Rollup final sur la campagne OOS : `total_trades=352`, `expectancy_r_weighted_by_trades=-0.04822238609801143`
+- Verdict fonctionnel : le blocage moteur est levé, mais la couverture strict du dernier split reste bornée par la fin des données au `2025-11-28 21:59 UTC`
+
+---
+
+## 3. Derniers commits importants
+
+```
+c3eb1d6  P1 diagnostic complet — liquidity_sweep_score=0 toujours, P2 IFVG 5m actif
+cf04d4b  P1 verdict NOT_READY — NY fréquence aberrante (44 trades/j), P1b NY capped actif
+5b40ab1  P0 clos — gate REOPEN_1R_VS_1P5R UNRESOLVED
+84d6af9  chore(sync): checkpoint all local workspace changes before push
+d5e4b24  chore(campaigns): WF core3 NY-only + compares vs baseline and no-FVG
+9716e2d  chore(campaigns): WF core3 FVG-only + truth table; proof artifacts
+b8ac81f  chore(campaigns): WF core3 NY+Session without FVG + proof artifacts
+99a5780  chore(results): WF core3 stricter_grades run + rollup audit postmortem compare
+```
+
+**Les fixes P1b/P2 de cette passe ne sont pas encore commités.**
+
+---
+
+## 4. Vérité du projet Dexterio aujourd'hui
+
+Direction unique :
+```
+backtest crédible → campagnes comparables → portefeuille discipliné → paper limité honnête
+```
+
+Toutes les campagnes core-3 OOS (jun–nov 2025, SPY+QQQ) sont **négatives** :
+- Trio NY+FVG+Session : E[R] de -0.027 à -0.039 selon variante
+- Stricter grades : quasi aucun delta vs baseline
+- No-FVG : moins de trades, pas meilleur globalement
+- FVG-only : pire
+- NY-only : intéressant sur un split (oct/nov E[R]≈-0.001) mais non validé globalement
+
+**Aucun playbook n'a prouvé un edge positif sur l'enveloppe complète.**
+
+---
+
+## 5. Vérité sur le MASTER et les timeframes
+
+- MASTER = 71 transcripts YouTube ICT/smart money dans `/home/dexter/Documents/MASTER_FINAL.txt`
+- Framework réel du MASTER : **biais D/4H → setup 15m/5m → entrée/confirmation 1m**
+- Les playbooks actuels compriment des concepts 5m en 1m → bruit et fréquence excessive
+- Le 1m n'est **pas** le timeframe conceptuel principal sauf cas très spécifiques (News_Fade)
+- IFVG 5m = application directe du MASTER (Aplus_01/03) → plus aligné conceptuellement
+- HTF + 15m BOS (Aplus_04) = autre application directe non encore testée
+
+---
+
+## 6. Vérité sur le portefeuille playbooks
+
+Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DENYLIST)
+
+| Playbook | Statut code | Verdict campagne |
+|----------|-------------|-----------------|
+| `NY_Open_Reversal` | ALLOWLIST | NOT_READY — fréquence aberrante 44/j, E[R] -0.030 sur WF |
+| `News_Fade` | ALLOWLIST | Gate REOPEN UNRESOLVED — E[R]≈-0.05, 94-100% session_end |
+| `FVG_Fill_Scalp` | ALLOWLIST | functional_but_limited — E[R] négatif OOS |
+| `Session_Open_Scalp` | ALLOWLIST | LAB ONLY — bloqué runtime edge |
+| `Morning_Trap_Reversal` | ALLOWLIST / quarantine YAML | -12R lab 24m |
+| `Liquidity_Sweep_Scalp` | ALLOWLIST / quarantine YAML | -9.8R |
+| `London_Sweep_NY_Continuation` | DENYLIST | -326R |
+| `Trend_Continuation_FVG_Retest` | DENYLIST | -22R |
+| `BOS_Momentum_Scalp` | DENYLIST | -142R |
+| `Power_Hour_Expansion` | DENYLIST | -31R |
+| `Lunch_Range_Scalp` | DISABLED | Toxique |
+| `DAY_Aplus_1_*` | DENYLIST | 0 trades (détection défaillante) |
+| `SCALP_Aplus_1_*` | DENYLIST | 6 trades, 0 win, -1.4R |
+| `IFVG_Flip_5m_Bull/Bear` | NON BRANCHÉ (research) | Smoke actif, aucune campagne OOS |
+| A+ transcripts | Non chargé | research_only |
+
+**Résumé :** 0 playbook promu. 0 edge validé. Tout est en phase backtest crédible.
+
+---
+
+## 7. Ce qui est DEFERRED / PAUSED (ne pas réactiver sans preuve)
+
+- **NF arbitration / tp1** : gate REOPEN_1R_VS_1P5R fermé UNRESOLVED. Relancer
+  uniquement si campagne NF dédiée sur fenêtre favorable détectée (nov 2025 standalone).
+- **Wave 2 (FVG W2-1, Session_Open)** : research actif, ne pas mélanger avec validation
+  noyau sans décision explicite.
+- **NY capped (variante max_setups_per_session: 1)** : bloquée historiquement par sweep
+  scoring nul. La plomberie est corrigée. Pas encore re-testée sur campagne longue.
+- **A+ transcripts branchement** : `playbooks_Aplus_from_transcripts.yaml` non chargé
+  volontairement. Research only.
+- **Data longue (> 6 mois 2025)** : non encore disponible / validée.
+- **UI / paper live / IBKR** : hors scope immédiat.
+
+---
+
+## 8. Ce qui ne doit surtout pas être touché
+
+- `NY_Open_Reversal` YAML : ne pas modifier sans justification forte et campagne dédiée
+- `paper_trading.py` : ne pas modifier sans raison explicite de cohérence moteur
+- DENYLIST dans `risk_engine.py` : ne pas promouvoir sans preuve campagne
+- La hiérarchie sources de vérité (voir `CLAUDE.md`) : ne pas court-circuiter
+
+---
+
+## 9. Prochaine tâche unique recommandée
+
+**Statut actuel : campagne OOS IFVG 5m relancée et terminée sur les données disponibles.**
+
+Si on reprend plus tard, la suite logique n'est pas de refaire la même campagne à l'identique, mais de traiter la limite de couverture du split final ou d'ouvrir une nouvelle fenêtre de données. Le pipeline IFVG 5m reste actif et non validé comme edge.
+
+---
+
+## 10. Commandes exactes pour reprendre
+
+```bash
+cd /home/dexter/dexterio1-main/backend
+
+# Repro minimale du blocage, fenêtre resserrée autour de BAR 33800
+.venv/bin/python scripts/run_mini_lab_week.py \
+  --start 2025-09-29 --end 2025-10-02 \
+  --symbols SPY \
+  --playbooks-yaml knowledge/campaigns/campaign_smoke_ifvg_5m.yml \
+  --output-parent ifvg_probe_sep29_oct02 \
+  --label ifvg_sep29_oct02
+
+# Dry-run du walk-forward IFVG OOS avant la campagne longue
+.venv/bin/python scripts/run_walk_forward_mini_lab.py \
+  --start 2025-06-01 --end 2025-11-28 \
+  --output-parent ifvg_oos_jun_nov2025 \
+  --playbooks-yaml knowledge/campaigns/campaign_ifvg_5m_oos_jun_nov2025.yml \
+  --dry-run
+
+# Exécution OOS réelle sur les splits disponibles
+.venv/bin/python scripts/run_mini_lab_week.py \
+  --start 2025-08-30 --end 2025-10-13 \
+  --label wf_s0_test \
+  --output-parent ifvg_oos_jun_nov2025 \
+  --playbooks-yaml knowledge/campaigns/campaign_ifvg_5m_oos_jun_nov2025.yml
+.venv/bin/python scripts/run_mini_lab_week.py \
+  --start 2025-10-14 --end 2025-11-28 \
+  --label wf_s1_test \
+  --output-parent ifvg_oos_jun_nov2025 \
+  --playbooks-yaml knowledge/campaigns/campaign_ifvg_5m_oos_jun_nov2025.yml
+```
+
+---
+
+## 11. Tests à lancer
+
+```bash
+# Validation minimale autour de la fenêtre problématique
+cd /home/dexter/dexterio1-main/backend && .venv/bin/python scripts/run_mini_lab_week.py \
+  --start 2025-09-29 --end 2025-10-02 \
+  --symbols SPY \
+  --playbooks-yaml knowledge/campaigns/campaign_smoke_ifvg_5m.yml \
+  --output-parent ifvg_probe_sep29_oct02 \
+  --label ifvg_sep29_oct02
+
+# Validation campagne OOS IFVG 5m
+cd /home/dexter/dexterio1-main/backend && .venv/bin/python scripts/run_mini_lab_week.py \
+  --start 2025-10-14 --end 2025-11-28 \
+  --label wf_s1_test \
+  --output-parent ifvg_oos_jun_nov2025 \
+  --playbooks-yaml knowledge/campaigns/campaign_ifvg_5m_oos_jun_nov2025.yml
+
+# Audit et rollup de la campagne
+cd /home/dexter/dexterio1-main/backend && .venv/bin/python scripts/audit_campaign_output_parent.py \
+  --output-parent ifvg_oos_jun_nov2025
+cd /home/dexter/dexterio1-main/backend && .venv/bin/python scripts/rollup_campaign_summaries.py \
+  --path results/labs/mini_week/ifvg_oos_jun_nov2025
+```
+
+---
+
+## 12. Risques / bugs connus
+
+| Risque | Niveau | Note |
+|--------|--------|------|
+| Data source s'arrête au 2025-11-28 21:59 UTC | Moyen | Le split final du WF OOS reste non strictement couvert, ce n'est pas un bug moteur. |
+| IFVG strength floor 0.65 = arbitraire | Moyen | Valeur choisie pragmatiquement. À calibrer si une campagne plus longue est disponible. |
+| `_determine_direction` IFVG : nommage strict | Bas | Fonctionne si playbook_name contient BULL/BEAR. Fragile si renommage. |
+| time_stop dominant P2 (6/10) | À surveiller | Setups n'atteignent pas TP sur cette fenêtre. Peut indiquer TP trop loin ou zone trop courte. |
+| Sweep détecteur 1m très sélectif | Bas | Design voulu (stop-hunt strict). Aug 4-8 = 0 sweeps = normal. |
+| `aplus_playbooks` chargés même avec loader IFVG | Bas | PlaybookLoader charge toujours aplus_path par défaut. Pas bloquant mais pollue les évaluations. |
+| engine.py `run_name None` | Corrigé | Guard ajouté. |
+| NY_Open_Reversal fréquence aberrante | Haut | 44 trades/jour max 148/j. Root cause non résolue. Variante capped non validée. |
+| Toutes campagnes core-3 négatives | Structurel | Aucun edge prouvé. Direction = continuer exploration 5m/IFVG/HTF avant promotion. |
+
+---
+
+## 13. PROMPT POUR CODEX
+
+```
+Tu reprends DexterioBOT — algo trading SP500/NQ — dans /home/dexter/dexterio1-main.
+
+ÉTAT : passe P1b/P2 terminée, fixes non commités. Committer d'abord (voir
+section 10 de CODEX_HANDOFF.md).
+
+DIRECTION UNIQUE :
+  backtest crédible → campagnes comparables → portefeuille discipliné → paper limité
+
+VÉRITÉ ACTUELLE :
+- Aucun playbook n'a prouvé un edge positif. Tout est en backtest lab.
+- Core-3 OOS jun-nov 2025 : toutes variantes négatives (E[R] -0.027 à -0.039).
+- Le MASTER (71 transcripts ICT) est D/4H → 15m/5m setup → 1m exécution.
+  Les playbooks 1m natifs compressent trop. IFVG 5m est plus aligné.
+- IFVG 5m pipeline : actif (smoke 10 trades B/A). Pas d'edge validé.
+
+PROCHAINE TÂCHE UNIQUE :
+  Campagne OOS IFVG 5m sur enveloppe complète jun-nov 2025 (SPY+QQQ).
+  Utiliser la chaîne campagne : preflight → campaign YAML → run WF → compare →
+  gate verdict. Rester sur fenêtre NY 09:30-11:30 uniquement.
+
+NE PAS :
+- Toucher NY_Open_Reversal YAML sans campagne dédiée
+- Toucher paper_trading.py sans raison explicite
+- Promouvoir un playbook sans preuve campagne
+- Partir sur NF / Wave2 / UI / IBKR / refonte moteur
+
+FICHIERS CLÉS :
+  CLAUDE.md                                  ← règles absolues repo
+  backend/docs/ROADMAP_DEXTERIO_TRUTH.md     ← vérité état projet
+  backend/docs/BACKTEST_CAMPAIGN_LADDER.md   ← procédure campagnes
+  backend/engines/risk_engine.py             ← ALLOWLIST / DENYLIST
+  backend/knowledge/campaigns/               ← YAMLs campagnes
+  backend/engines/playbook_loader.py         ← scoring + évaluation
+  backend/engines/setup_engine_v2.py         ← génération setups
+
+COMMANDES :
+  source .venv/bin/activate && cd backend
+  python3 run_p2_ifvg_smoke.py               ← vérifier pipeline IFVG
+  python3 scripts/backtest_data_preflight.py --start 2025-06-01 --end 2025-11-30
+```

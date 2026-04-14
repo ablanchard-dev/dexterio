@@ -133,6 +133,10 @@ class BacktestEngine:
         self._session_ranges_history: Dict[str, List[float]] = {}  # {symbol: [ranges]}
         self._last_session_label: Dict[str, Optional[str]] = {}  # {symbol: last_session_label}
 
+        # PERF: cache incrémental pour Master Candle (évite un rescan O(n) des candles_1m par barre)
+        # Structure: {symbol: {"session_date": str, "candles": [dict], "computed_len": int|None, "computed_window": int|None, "mc": MasterCandle|None}}
+        self._master_candle_cache: Dict[str, Dict[str, Any]] = {}
+
         # DIAGNOSTIC: Compteurs d'instrumentation
         self.debug_counts = {
             "candles_loaded_1m": 0,
@@ -454,7 +458,7 @@ class BacktestEngine:
             self.htf_warmup_data = {}
         
         # Filtrer par période si spécifié dans run_name (ex: rolling_2025-06)
-        if 'rolling_' in self.config.run_name and '-' in self.config.run_name:
+        if self.config.run_name and 'rolling_' in self.config.run_name and '-' in self.config.run_name:
             try:
                 month_str = self.config.run_name.split('rolling_')[-1]  # 2025-06
                 year, month = month_str.split('-')
@@ -654,6 +658,74 @@ class BacktestEngine:
 
         return converted
 
+    def _ingest_master_candle_1m(self, symbol: str, candle_1m: Candle) -> None:
+        """
+        Incrémente le cache de candles utilisé pour la Master Candle.
+
+        On regroupe par `session_date` (voir `get_ny_rth_session_date`) qui définit une
+        session NY RTH glissante (09:30 -> lendemain 09:29). Cela permet de garder un
+        buffer borné (~1 journée) au lieu de rescanner tout l'historique du run.
+        """
+        ts = candle_1m.timestamp
+        session_date = get_ny_rth_session_date(ts)
+        st = self._master_candle_cache.get(symbol)
+        if (st is None) or (st.get("session_date") != session_date):
+            st = {
+                "session_date": session_date,
+                "candles": [],
+                "computed_len": None,
+                "computed_window": None,
+                "mc": None,
+            }
+            self._master_candle_cache[symbol] = st
+
+        st["candles"].append(
+            {
+                "timestamp": ts,
+                "high": candle_1m.high,
+                "low": candle_1m.low,
+                "close": candle_1m.close,
+            }
+        )
+        # Invalider le cache de compute (liste modifiée).
+        st["computed_len"] = None
+
+        # Garde-fou: ne pas laisser grossir indéfiniment (pré/post market inclus).
+        if len(st["candles"]) > 2000:
+            st["candles"] = st["candles"][-2000:]
+            st["computed_len"] = None
+
+    def _get_master_candle_cached(
+        self, symbol: str, current_time: datetime, *, window_minutes: int
+    ) -> Optional[Any]:
+        """
+        Retourne une Master Candle calculée sur le buffer courant de session.
+
+        Pour préserver le comportement historique, on ne calcule que si la session
+        a au moins `window_minutes` candles (sinon le moteur précédent ne calculait pas).
+        """
+        session_date = get_ny_rth_session_date(current_time)
+        st = self._master_candle_cache.get(symbol)
+        if (not st) or (st.get("session_date") != session_date):
+            return None
+
+        candles = st.get("candles") or []
+        if len(candles) < int(window_minutes):
+            return None
+
+        if st.get("computed_len") == len(candles) and st.get("computed_window") == int(window_minutes):
+            return st.get("mc")
+
+        mc = calculate_master_candle(
+            candles,
+            window_minutes=int(window_minutes),
+            session_date=session_date,
+        )
+        st["computed_len"] = len(candles)
+        st["computed_window"] = int(window_minutes)
+        st["mc"] = mc
+        return mc
+
     def run(self) -> BacktestResult:
         """Exécute le backtest complet (boucle minute par minute)."""
         logger.info("=" * 80)
@@ -795,6 +867,12 @@ class BacktestEngine:
                 candle_1m = self.candles_1m_by_timestamp.get(symbol, {}).get(current_time)
                 if candle_1m is None:
                     continue
+
+                # PERF: ingérer la candle 1m dans le cache Master Candle (O(1), pas de compute ici)
+                try:
+                    self._ingest_master_candle_1m(symbol, candle_1m)
+                except Exception:
+                    pass  # Ne pas faire crasher le backtest sur instrumentation/perf cache
                 
                 # P0 DEBUG - Étape 1: Vérifier que la boucle de traitement des bougies tourne
                 self.debug_counts["bars_processed"] = self.debug_counts.get("bars_processed", 0) + 1
@@ -1075,49 +1153,6 @@ class BacktestEngine:
             logger.error(f"[P0] No last_price available for {symbol} at {current_time}, skipping setup generation")
             return None
         
-        # P1: Calculer Master Candle pour cette session (Sprint 2)
-        mc = None
-        mc_window_minutes = 15  # Configurable, défaut 15 minutes
-        try:
-            # Récupérer les candles 1m pour la session actuelle
-            session_date = get_ny_rth_session_date(current_time)
-            
-            # Construire liste de candles pour calcul MC (fenêtre 09:30 + window_minutes)
-            # P0 Fix #3: Limiter strictement à candles <= current_time (no lookahead)
-            mc_candles = []
-            for candle in candles_1m:
-                if candle.timestamp.tzinfo is None:
-                    candle_ts = candle.timestamp.replace(tzinfo=timezone.utc)
-                else:
-                    candle_ts = candle.timestamp
-                
-                # P0 Fix #3: Pas de lookahead - ignorer candles futures
-                if candle_ts > current_time:
-                    continue
-                
-                # Convertir en NY pour vérifier session
-                ny_ts = candle_ts.astimezone(ZoneInfo("America/New_York"))
-                candle_session_date = get_ny_rth_session_date(ny_ts)
-                
-                # Si même session, inclure dans le calcul MC
-                if candle_session_date == session_date:
-                    mc_candles.append({
-                        'timestamp': candle_ts,
-                        'high': candle.high,
-                        'low': candle.low,
-                        'close': candle.close,
-                    })
-            
-            # Calculer MC si on a assez de candles
-            if len(mc_candles) >= mc_window_minutes:
-                mc = calculate_master_candle(
-                    mc_candles,
-                    window_minutes=mc_window_minutes,
-                    session_date=session_date
-                )
-        except Exception as e:
-            logger.warning(f"Failed to calculate Master Candle for {symbol} at {current_time}: {e}")
-        
         # Générer setup via SetupEngine
         setups = self.setup_engine.generate_setups(
             symbol=symbol,
@@ -1166,14 +1201,21 @@ class BacktestEngine:
                 self.debug_counts["setups_detected_by_playbook"][playbook_name] += 1
         
         # P1: Ajouter champs Master Candle aux setups (Sprint 2)
-        if setups and mc:
-            for setup in setups:
-                setup.mc_high = mc.mc_high
-                setup.mc_low = mc.mc_low
-                setup.mc_range = mc.mc_range
-                setup.mc_breakout_dir = mc.mc_breakout_dir
-                setup.mc_window_minutes = mc.mc_window_minutes
-                setup.mc_session_date = mc.session_date
+        # PERF: ne pas calculer la MC si aucun setup n'existe sur cette barre.
+        if setups:
+            try:
+                mc_window_minutes = 15  # Configurable, défaut 15 minutes
+                mc = self._get_master_candle_cached(symbol, current_time, window_minutes=mc_window_minutes)
+                if mc:
+                    for setup in setups:
+                        setup.mc_high = mc.mc_high
+                        setup.mc_low = mc.mc_low
+                        setup.mc_range = mc.mc_range
+                        setup.mc_breakout_dir = mc.mc_breakout_dir
+                        setup.mc_window_minutes = mc.mc_window_minutes
+                        setup.mc_session_date = mc.session_date
+            except Exception as e:
+                logger.warning(f"Failed to calculate Master Candle for {symbol} at {current_time}: {e}")
         
         # Collecter tous les setups générés (pour funnel)
         if setups:
