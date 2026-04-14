@@ -85,9 +85,9 @@ Toujours :
 **P1** — NY_Open_Reversal isolé — **verdict NOT_READY (2026-04-14)**
 WF 2 plis (aug30-nov27) : E[R] pondéré **-0.030** (1521 trades). Problème root cause = **fréquence aberrante** (44 trades/j, max 148/j). Pas de cap fréquence dans le YAML. Signal latent possible sur oct/nov (E[R]≈-0.001, PF 1.004) mais noyé. **Next** : `campaign_wf_ny_only_capped.yml` avec `max_setups_per_session: 1`.
 
-**P1b** ← **ACTIF** — NY capped : dériver `campaign_wf_ny_only_capped.yml` + `max_setups_per_session: 1`, re-run, gate.
+**P1b** — ~~NY capped~~ **ANNULÉ** : scoring problem — `liquidity_sweep_score=0.0` sur 100% trades, max score 0.50 vs seuil B=0.65 → zéro trades A/B. Une variante capped = 0 trades. Problème dans `setup_engine_v2.py` scoring sweep. Hors scope immédiat.
 
-**P2** — Explorer IFVG 5m (Aplus_01/03)
+**P2** ← **ACTIF** — Explorer IFVG 5m (Aplus_01/03)
 Lire `engines/patterns/ifvg.py`, vérifier support multi-tf, prototype YAML, smoke 1 jour.
 
 ---

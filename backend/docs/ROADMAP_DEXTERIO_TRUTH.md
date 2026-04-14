@@ -119,7 +119,9 @@ Seuil d'équivalence ε = 0.015R. `|ΔE[R]| = 0.0081R < ε` → UNRESOLVED.
 
 **Ce que cela signifie** : NY_Open_Reversal a peut-être un signal latent sur certains régimes, mais il est noyé dans 10× trop de trades. Sans cap fréquence (`max_setups_per_session: 1` ou `max_trades_per_day: 2`), les résultats sont inexploitables.
 
-**Prochaine action P1** : dériver `campaign_wf_ny_only_capped.yml` avec cap fréquence et re-run sur la même fenêtre pour mesurer le signal proprement. Hors scope immédiat — voir priorités.
+**Diagnostic scoring** : `liquidity_sweep_score = 0.0` sur 100% des trades. Le composant de scoring le plus pesant (poids 0.30) ne contribue jamais → score max observé 0.50 vs seuil B=0.65. La détection du London sweep (`london_sweep_required: true`) passe le gate binaire mais son scoring de qualité est toujours nul. C'est une anomalie engine, pas un problème de fréquence ou de cap.
+
+**Conclusion** : une variante "capped" ne changera rien — zéro trades atteignent grade B. Le problème est dans la détection/scoring du liquidity sweep dans `setup_engine_v2.py`. Hors scope immédiat. NY_Open_Reversal reste `functional_now` dans le sens "seul survivant relatif OOS", mais son scoring est structurellement plafond.
 
 ---
 
