@@ -12,6 +12,8 @@
 - **Artefacts de validation "postfix" (preuves sur `git_sha=4e7246a`) :**
   - `backend/results/labs/mini_week/ifvg_probe_sep29_oct02_postfix/`
   - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix/`
+- **Artefacts "covfix" (preuves sur `git_sha=c56d26d`) :**
+  - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix_covfix/`
 - **Artefacts historiques (pré-fix / hors preuve HEAD courant) :**
   - `backend/results/labs/mini_week/ifvg_probe_sep29_oct02/`
   - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025/`
@@ -113,6 +115,21 @@ Pipeline fonctionnel. Pas un edge validé (10 trades = bruit statistique pur).
 - Artefact probe :
   - `backend/results/labs/mini_week/data_coverage_contract_probe/coverage_enddate_probe/run_manifest.json`
   - `data_coverage.coverage_ok=true` avec `max_utc=2025-11-28T21:59:00+00:00` et `end_exclusive_utc=2025-11-29T00:00:00+00:00`
+
+### P5 — Régénération campagne OOS IFVG "postfix covfix" (artefacts cohérents sur HEAD courant)
+
+**Objectif :** obtenir des artefacts OOS IFVG postfix auditablement cohérents sur le HEAD courant,
+sans faux négatif `data_coverage_ok`.
+
+**Run minimal relancé :**
+- `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix_covfix/wf_s1_test/`
+  - `git_sha=c56d26d...`
+  - `data_coverage.coverage_ok=true` malgré `max_utc=2025-11-28T21:59:00+00:00` (RTH-only)
+
+**Audit/Rollup :**
+- `scripts/audit_campaign_output_parent.py --output-parent ifvg_oos_jun_nov2025_postfix_covfix` → `overall_ok=true`
+- `scripts/rollup_campaign_summaries.py --path results/labs/mini_week/ifvg_oos_jun_nov2025_postfix_covfix`
+  - `expectancy_r_weighted_by_trades=-0.03884116266438337` (1 run, 219 trades)
 
 ---
 
