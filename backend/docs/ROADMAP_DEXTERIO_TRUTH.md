@@ -95,6 +95,34 @@ Seuil d'équivalence ε = 0.015R. `|ΔE[R]| = 0.0081R < ε` → UNRESOLVED.
 
 ---
 
+## P1 NY_Open_Reversal isolé — verdict (2026-04-14)
+
+**Campagne existante** : `results/labs/mini_week/wf_core3_ny_only/` — run 2026-04-13, WF 2 plis OOS
+
+| Pli | Fenêtre | Trades | E[R] | WR% | Exit dominant |
+|-----|---------|-------:|------:|-----:|---------------|
+| s0 | aug30–oct12 | **1121** | **-0.040** | 8.9% | SL 69%, sess_end 24%, TP1 7% |
+| s1 | oct13–nov27 | 400 | **-0.001** | 30.3% | SL 57%, TP1 22%, sess_end 18% |
+| **pondéré** | — | **1521** | **-0.030** | — | — |
+
+**Verdict : NOT_READY** — mais diagnostic critique révélé.
+
+**Problème principal : fréquence absurde**
+- s0 : 44 trades/jour en moyenne, max **148 trades/jour** sur 2 instruments
+- s1 : 33 trades/jour en moyenne, max 73 trades/jour
+- NY_Open_Reversal **n'a aucun cap fréquence** — le moteur tire sur chaque bougie détectée sans sélectivité
+- Une vraie stratégie NY reversal = **1–2 trades/jour max** par instrument
+
+**Asymétrie régime** :
+- s0 (aug/sep 2025) = regime haute volatilité post-choc → WR 8.9%, SL dominant → -0.040
+- s1 (oct/nov 2025) = régime plus calme → WR 30.3%, PF 1.004, E[R] quasi-0
+
+**Ce que cela signifie** : NY_Open_Reversal a peut-être un signal latent sur certains régimes, mais il est noyé dans 10× trop de trades. Sans cap fréquence (`max_setups_per_session: 1` ou `max_trades_per_day: 2`), les résultats sont inexploitables.
+
+**Prochaine action P1** : dériver `campaign_wf_ny_only_capped.yml` avec cap fréquence et re-run sur la même fenêtre pour mesurer le signal proprement. Hors scope immédiat — voir priorités.
+
+---
+
 ## NEXT STEP
 
 1. **Gate campagne (process)** : pour chaque run visant une **promotion** sur l’échelle `BACKTEST_CAMPAIGN_LADDER.md`, exécuter `backend/scripts/campaign_gate_verdict.py` avec les options du niveau (voir la table « Contrat opérationnel » dans ce ladder). Sans `mini_lab_summary` encore disponible : `--manifest-only path/run_manifest.json`. Avec summary : `summary.json --manifest path/run_manifest.json` et, si le niveau l’exige, `--require-manifest-coverage` / `--require-trade-metrics`.
