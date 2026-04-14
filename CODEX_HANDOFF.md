@@ -1,20 +1,18 @@
 # CODEX_HANDOFF.md
 # DexterioBOT — Handoff pour Codex / nouvelle session
-# Dernière mise à jour : 2026-04-14
+# Dernière mise à jour : 2026-04-15
 
 ---
 
 ## 1. État exact du repo
 
 - Branche : `main`
-- Dernier commit : `c3eb1d6` — "P1 diagnostic complet — liquidity_sweep_score=0 toujours, P2 IFVG 5m actif"
-- **Fichiers modifiés non commités pour la passe perf IFVG 5m :**
-  - `backend/backtest/engine.py`
-  - `backend/knowledge/campaigns/campaign_ifvg_5m_oos_jun_nov2025.yml`
-  - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025/walk_forward_campaign.json`
-  - `CODEX_HANDOFF.md`
-- **Contexte de worktree :** il reste beaucoup de dirty files historiques hors scope dans le repo. Ne pas les nettoyer ni les revert sans demande explicite.
-- **Artefacts de validation récents :**
+- HEAD actuel : `4e7246a` — `fix(backtest): cache IFVG master candle scans`
+- **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
+- **Artefacts de validation "postfix" (preuves sur `git_sha=4e7246a`) :**
+  - `backend/results/labs/mini_week/ifvg_probe_sep29_oct02_postfix/`
+  - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix/`
+- **Artefacts historiques (pré-fix / hors preuve HEAD courant) :**
   - `backend/results/labs/mini_week/ifvg_probe_sep29_oct02/`
   - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025/`
   - `backend/results/labs/mini_week/smoke_ifvg_5m/`
@@ -79,16 +77,42 @@ Pipeline fonctionnel. Pas un edge validé (10 trades = bruit statistique pur).
 - Comme la série s'allonge à chaque itération, le coût devenait quadratique (`O(n²)`), avec un effet apparent de blocage sur la fenêtre longue.
 - Correction appliquée : `_ingest_master_candle_1m` alimente un cache sessionnel en `O(1)` et `_get_master_candle_cached` calcule le master candle uniquement à partir du buffer de session courant.
 
-**Fichiers touchés pour ce fix :**
-- `backend/backtest/engine.py`
-- `backend/knowledge/campaigns/campaign_ifvg_5m_oos_jun_nov2025.yml`
-- `backend/results/labs/mini_week/ifvg_oos_jun_nov2025/walk_forward_campaign.json`
+**Patch appliqué (commité) :**
+- Commit `4e7246a` sur `main`
+- Fichier principal : `backend/backtest/engine.py` (cache Master Candle 1m)
 
-**Validation ciblée :**
-- Repro minimale SPY-only autour de la fenêtre problématique terminée avec succès
-- Campagne OOS IFVG 5m relancée sur les données disponibles
-- Rollup final sur la campagne OOS : `total_trades=352`, `expectancy_r_weighted_by_trades=-0.04822238609801143`
-- Verdict fonctionnel : le blocage moteur est levé, mais la couverture strict du dernier split reste bornée par la fin des données au `2025-11-28 21:59 UTC`
+**Validation ciblée post-fix (preuves `git_sha=4e7246a`) :**
+- Repro minimale SPY-only terminée : `ifvg_probe_sep29_oct02_postfix/ifvg_sep29_oct02_postfix` (`total_trades=6`, `data_coverage_ok=true`)
+- Campagne OOS IFVG 5m relancée et terminée (2 splits) : `ifvg_oos_jun_nov2025_postfix/{wf_s0_test,wf_s1_test}`
+- Preuve d'absence de freeze : le run `wf_s0_test` passe par `BAR 33800` à `2025-09-30 12:01:00+00:00` sans blocage
+- Audit/rollup : `overall_ok=false` (car `wf_s1_test` a `data_coverage_ok=false`), `total_trades_sum=352`, `expectancy_r_weighted_by_trades=-0.04822238609801143`
+- Limite restante : `wf_s1_test` couverture data incomplète, à traiter comme **limite data** (pas bug moteur)
+
+### P4 — Contrat `data_coverage_ok` (date-only `--end`, faux négatif RTH/UTC)
+
+**Symptôme :**
+- `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix/wf_s1_test/run_manifest.json` :
+  `data_coverage.coverage_ok=false` avec erreurs du type :
+  `max datetime 2025-11-28 21:59:00+00:00 < fin de fenêtre attendue (2025-11-29 00:00:00+00:00 exclus)`.
+- Ça bloquait `audit_campaign_output_parent` / `rollup` via le gate "coverage", alors que les données contiennent bien la journée `2025-11-28`.
+
+**Cause racine (bug de contrat de coverage, pas trading) :**
+- `backend/utils/backtest_data_coverage.py` exigeait implicitement une barre proche de `23:59 UTC` sur `end_date`
+  (comparaison sur `end_exclusive_utc`), ce qui produit un faux négatif sur des datasets equities RTH-only
+  (pas de barres overnight jusqu'à 23:59 UTC).
+
+**Patch minimal :**
+- Si `end_date` est fourni en format `YYYY-MM-DD` (date-only), la couverture exige désormais seulement
+  que `tmax` soit sur le **jour** `end_date` (i.e. `tmax.date() >= end_date`), au lieu d'exiger `tmax >= end_exclusive_utc - 1s`.
+- Fichiers :
+  - `backend/utils/backtest_data_coverage.py`
+  - `backend/tests/test_backtest_data_coverage.py` (test RTH)
+
+**Preuves post-patch (HEAD=4e7246a, logique revalidée) :**
+- `scripts/backtest_data_preflight.py --start 2025-10-14 --end 2025-11-28 --symbols SPY,QQQ --ignore-warmup-check` → `ok=True`
+- Artefact probe :
+  - `backend/results/labs/mini_week/data_coverage_contract_probe/coverage_enddate_probe/run_manifest.json`
+  - `data_coverage.coverage_ok=true` avec `max_utc=2025-11-28T21:59:00+00:00` et `end_exclusive_utc=2025-11-29T00:00:00+00:00`
 
 ---
 
@@ -190,7 +214,7 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 
 ## 9. Prochaine tâche unique recommandée
 
-**Statut actuel : campagne OOS IFVG 5m relancée et terminée sur les données disponibles.**
+**Statut actuel : fix perf moteur revalidé sur HEAD courant ; campagne OOS IFVG 5m relancée et auditable.**
 
 Si on reprend plus tard, la suite logique n'est pas de refaire la même campagne à l'identique, mais de traiter la limite de couverture du split final ou d'ouvrir une nouvelle fenêtre de données. Le pipeline IFVG 5m reste actif et non validé comme edge.
 

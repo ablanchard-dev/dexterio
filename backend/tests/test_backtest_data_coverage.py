@@ -20,6 +20,12 @@ def _write_1m_parquet(path: Path, start: str, end: str, freq: str = "1min") -> N
     df = pd.DataFrame({"datetime": idx})
     df.to_parquet(path, index=False)
 
+def _write_datetimes_parquet(path: Path, datetimes_utc: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    idx = pd.to_datetime(datetimes_utc, utc=True)
+    df = pd.DataFrame({"datetime": idx})
+    df.to_parquet(path, index=False)
+
 
 def test_parquet_datetime_bounds(tmp_path: Path) -> None:
     p = tmp_path / "SPY.parquet"
@@ -57,6 +63,27 @@ def test_coverage_fails_short_data(tmp_path: Path) -> None:
     )
     assert r["ok"] is False
     assert any("trop courtes" in e for e in r["errors"])
+
+def test_coverage_ok_when_last_bar_on_end_date_even_if_not_2359_utc(tmp_path: Path) -> None:
+    """Equities RTH-only: pas de barres overnight jusqu'à 23:59 UTC, mais la journée de fin est couverte."""
+    p = tmp_path / "SPY.parquet"
+    _write_datetimes_parquet(
+        p,
+        [
+            "2024-12-31 23:59:00+00:00",
+            "2025-01-31 21:59:00+00:00",
+        ],
+    )
+    r = check_backtest_data_coverage(
+        data_paths=[str(p)],
+        symbols=["SPY"],
+        start_date="2025-01-01",
+        end_date="2025-01-31",
+        htf_warmup_days=0,
+        max_gap_warn_minutes=None,
+    )
+    assert r["ok"] is True
+    assert r["errors"] == []
 
 
 def test_max_gap_detects_hole() -> None:
