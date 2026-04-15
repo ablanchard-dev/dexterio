@@ -7,8 +7,12 @@
 ## 1. État exact du repo
 
 - Branche : `main`
-- HEAD actuel : `4e7246a` — `fix(backtest): cache IFVG master candle scans`
+- HEAD actuel : `fbf19ac` — `chore(full): add repo-driven FULL portfolio map`
 - **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
+- **Cartographie FULL (repo-driven, versionnée) :**
+  - JSON canonique : `backend/results/full_portfolio_map/full_portfolio_map.json`
+  - Vue lisible : `backend/docs/FULL_PORTFOLIO_MAP.md`
+  - Génération : `backend/scripts/generate_full_portfolio_map.py`
 - **Artefacts de validation "postfix" (preuves sur `git_sha=4e7246a`) :**
   - `backend/results/labs/mini_week/ifvg_probe_sep29_oct02_postfix/`
   - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix/`
@@ -148,7 +152,7 @@ b8ac81f  chore(campaigns): WF core3 NY+Session without FVG + proof artifacts
 99a5780  chore(results): WF core3 stricter_grades run + rollup audit postmortem compare
 ```
 
-**Les fixes P1b/P2 de cette passe ne sont pas encore commités.**
+**Note :** les passes P1b/P2/P3/P4/P5 ont été intégrées et commitées sur `main` (voir `git log`).
 
 ---
 
@@ -238,6 +242,26 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 Si on reprend plus tard, la suite logique n'est pas de refaire la même campagne à l'identique, mais de traiter la limite de couverture du split final ou d'ouvrir une nouvelle fenêtre de données. Le pipeline IFVG 5m reste actif et non validé comme edge.
 
 ---
+
+## 10. FULL baseline comparable (campagne courte, protocole standard)
+
+**Objectif :** obtenir une baseline labo FULL *comparable* (fenêtre fixe, protocole fixe, portefeuille explicite), sans SAFE/paper/live.
+
+**Règle unique de sélection (depuis la cartographie FULL) :**
+- `source=CORE` ∩ `policy_runtime=allowlist (AGGRESSIVE)` ∩ `not quarantined`
+
+**YAML baseline (verbatim depuis knowledge/playbooks.yml) :**
+- `backend/knowledge/campaigns/campaign_full_baseline_allow_core_no_quarantine.yml`
+  - Playbooks : `NY_Open_Reversal`, `News_Fade`, `FVG_Fill_Scalp`, `Session_Open_Scalp`
+
+**Run baseline (SPY only) :**
+- Output-parent : `backend/results/labs/mini_week/full_baseline_allow_core_no_quarantine_sep08_sep26_2025/`
+  - Label : `baseline_full_sep08_sep26_2025`
+  - Fenêtre : `2025-09-08 → 2025-09-26`
+  - Preuve `git_sha` (run_manifest) : `fbf19ac...`
+  - Audit : `campaign_audit.json` → `overall_ok=true`, `data_coverage_ok=true`, `total_trades=2690`
+  - Rollup : `campaign_rollup.json` → `total_trades_sum=2690`, `expectancy_r_weighted_by_trades=-0.0183097`
+
 
 ## 10. Commandes exactes pour reprendre
 
