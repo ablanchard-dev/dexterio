@@ -7,7 +7,7 @@
 ## 1. État exact du repo
 
 - Branche : `main`
-- HEAD actuel : `1688cd1` — `chore(handoff): add FULL baseline SPY+QQQ comparison`
+- HEAD actuel : `80573ee` — `chore(full): add baseline SPY+QQQ window2 artifacts`
 - **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
 - **Cartographie FULL (repo-driven, versionnée) :**
   - JSON canonique : `backend/results/full_portfolio_map/full_portfolio_map.json`
@@ -305,6 +305,29 @@ Si on reprend plus tard, la suite logique n'est pas de refaire la même campagne
 **Comparaison inter-fenêtres (SPY+QQQ, même YAML, fenêtres adjacentes) :**
 - WIN1 `2025-09-08 → 2025-09-26` : `overall_ok=true`, `data_coverage_ok=true`, `total_trades_sum=3139`, `E[R]=-0.0147993`, `PF=0.2072468`, `final_capital=-798.7882`
 - WIN2 `2025-09-29 → 2025-10-17` : `overall_ok=true`, `data_coverage_ok=true`, `total_trades_sum=571`, `E[R]=-0.0701702`, `PF=0.0124196`, `final_capital=-7144.2440`
+
+**Run baseline (SPY+QQQ) — fenêtre 3 adjacente :**
+- Output-parent : `backend/results/labs/mini_week/full_baseline_allow_core_no_quarantine_oct20_nov07_2025_spy_qqq/`
+  - Label : `baseline_full_oct20_nov07_2025_spy_qqq`
+  - Fenêtre : `2025-10-20 → 2025-11-07`
+  - Commande exacte :
+    ```bash
+    cd /home/dexter/dexterio1-main/backend
+    .venv/bin/python scripts/run_mini_lab_week.py \
+      --start 2025-10-20 --end 2025-11-07 \
+      --symbols SPY,QQQ \
+      --playbooks-yaml knowledge/campaigns/campaign_full_baseline_allow_core_no_quarantine.yml \
+      --output-parent full_baseline_allow_core_no_quarantine_oct20_nov07_2025_spy_qqq \
+      --label baseline_full_oct20_nov07_2025_spy_qqq
+    ```
+  - Preuve `git_sha` (run_manifest) : `80573ee...`
+  - Audit : `campaign_audit.json` → `overall_ok=true`, `data_coverage_ok=true`, `total_trades=3119`
+  - Rollup : `campaign_rollup.json` → `total_trades_sum=3119`, `expectancy_r_weighted_by_trades=-0.0184387`, `profit_factor=0.5006682`, `final_capital=-9548.7720`
+
+**Comparaison inter-fenêtres (SPY+QQQ, même YAML) — WIN1 vs WIN2 vs WIN3 :**
+- WIN1 `2025-09-08 → 2025-09-26` : `overall_ok=true`, `data_coverage_ok=true`, `total_trades_sum=3139`, `E[R]=-0.0147993`, `PF=0.2072468`, `final_capital=-798.7882`
+- WIN2 `2025-09-29 → 2025-10-17` : `overall_ok=true`, `data_coverage_ok=true`, `total_trades_sum=571`, `E[R]=-0.0701702`, `PF=0.0124196`, `final_capital=-7144.2440`
+- WIN3 `2025-10-20 → 2025-11-07` : `overall_ok=true`, `data_coverage_ok=true`, `total_trades_sum=3119`, `E[R]=-0.0184387`, `PF=0.5006682`, `final_capital=-9548.7720`
 
 
 ## 10. Commandes exactes pour reprendre
