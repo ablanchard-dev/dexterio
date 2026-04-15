@@ -9,7 +9,7 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 from concurrent.futures import ProcessPoolExecutor
 from pydantic import BaseModel
 
@@ -51,6 +51,7 @@ def shutdown_executor():
 
 class BacktestJobRequest(BaseModel):
     """Request to run a backtest"""
+    protocol: Literal["JOB", "MINI_LAB_WEEK"] = "JOB"
     symbols: List[str]
     start_date: str  # YYYY-MM-DD
     end_date: str
@@ -290,6 +291,14 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             import sys
             print(f"[LOG ERROR] Failed to write log: {log_err}", file=sys.stderr)
             print(f"[LOG] {msg}", file=sys.stderr)
+
+    _risk_env_keys = [
+        "RISK_EVAL_ALLOW_ALL_PLAYBOOKS",
+        "RISK_EVAL_RELAX_CAPS",
+        "RISK_EVAL_DISABLE_KILL_SWITCH",
+        "RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY",
+    ]
+    _old_env: Optional[Dict[str, Optional[str]]] = None
     
     try:
         run_started_at_utc = datetime.now(timezone.utc).isoformat()
@@ -298,17 +307,48 @@ def run_backtest_worker(job_id: str, request_dict: dict):
         
         # Build config
         request = BacktestJobRequest(**request_dict)
+
+        protocol = request.protocol
+
+        # Protocol env: apply per-run, then restore (ProcessPoolExecutor workers can be reused)
+        _old_env = {k: os.environ.get(k) for k in _risk_env_keys}
+        if protocol == "MINI_LAB_WEEK":
+            # Align with scripts/run_mini_lab_week.py defaults (respect allowlists + relax caps + disable kill-switch)
+            os.environ["RISK_EVAL_ALLOW_ALL_PLAYBOOKS"] = "false"
+            os.environ["RISK_EVAL_RELAX_CAPS"] = "true"
+            os.environ["RISK_EVAL_DISABLE_KILL_SWITCH"] = "true"
+            os.environ["RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY"] = "true"
+
+        effective_trading_mode = request.trading_mode
+        effective_trade_types = list(request.trade_types)
+        effective_htf_warmup_days = int(request.htf_warmup_days)
+        protocol_overrides: Dict[str, Any] = {}
+
+        if protocol == "MINI_LAB_WEEK":
+            # Mini-lab week is an AGGRESSIVE protocol (same as scripts/run_mini_lab_week.py).
+            if effective_trading_mode != "AGGRESSIVE":
+                raise ValueError("protocol=MINI_LAB_WEEK requires trading_mode=AGGRESSIVE")
+
+            # Mini-lab week runs both DAILY + SCALP.
+            if sorted({x.strip().upper() for x in effective_trade_types}) != ["DAILY", "SCALP"]:
+                raise ValueError("protocol=MINI_LAB_WEEK requires trade_types=['DAILY','SCALP']")
+
+            # Mini-lab default warmup in manifests is 30 days.
+            effective_htf_warmup_days = 30
+            protocol_overrides["htf_warmup_days"] = 30
         
         # Log full config (JSON compact)
         import json
         config_dict = request.dict()
         log(f"Config received: {json.dumps(config_dict, separators=(',', ':'))}")
+
+        log(f"Protocol: {protocol}")
         
         log(f"Symbols: {request.symbols}")
         log(f"Period: {request.start_date} -> {request.end_date}")
-        log(f"Mode: {request.trading_mode}")
-        log(f"HTF Warmup: {request.htf_warmup_days} days")
-        log(f"Trade Types: {request.trade_types}")
+        log(f"Mode: {effective_trading_mode}")
+        log(f"HTF Warmup: {effective_htf_warmup_days} days")
+        log(f"Trade Types: {effective_trade_types}")
         
         # Write job_config.json
         job_dir = get_job_dir(job_id)
@@ -332,7 +372,7 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             symbols=list(request.symbols),
             start_date=request.start_date,
             end_date=request.end_date,
-            htf_warmup_days=int(request.htf_warmup_days),
+            htf_warmup_days=int(effective_htf_warmup_days),
             max_gap_warn_minutes=None,
             ignore_warmup_check=False,
         )
@@ -356,9 +396,9 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             data_paths=data_paths,
             start_date=request.start_date,
             end_date=request.end_date,
-            trading_mode=request.trading_mode,
-            trade_types=request.trade_types,
-            htf_warmup_days=request.htf_warmup_days,
+            trading_mode=effective_trading_mode,
+            trade_types=effective_trade_types,
+            htf_warmup_days=effective_htf_warmup_days,
             initial_capital=request.initial_capital,
             commission_model=request.commission_model,
             enable_reg_fees=request.enable_reg_fees,
@@ -371,6 +411,15 @@ def run_backtest_worker(job_id: str, request_dict: dict):
         
         log("Running backtest...")
         engine = BacktestEngine(config)
+
+        if protocol == "MINI_LAB_WEEK":
+            # Align with mini-lab: avoid mutating the global trade journal outside this job directory.
+            try:
+                engine.trade_journal.journal_path = str(job_dir / f"trade_journal_{run_name}.parquet")
+                os.makedirs(os.path.dirname(engine.trade_journal.journal_path), exist_ok=True)
+                engine.trade_journal._save = lambda: None  # type: ignore[attr-defined]
+            except Exception:
+                pass  # instrumentation only; non-blocking
         engine.load_data()  # Load data first to populate debug_counts
         
         # DIAGNOSTIC: Log data shape after load
@@ -388,8 +437,8 @@ def run_backtest_worker(job_id: str, request_dict: dict):
         job_dir = get_job_dir(job_id)
         
         # Build expected artifact names
-        mode = request.trading_mode
-        types = "_".join(request.trade_types)
+        mode = effective_trading_mode
+        types = "_".join(effective_trade_types)
         
         summary_name = f"summary_{run_name}_{mode}_{types}.json"
         trades_name = f"trades_{run_name}_{mode}_{types}.parquet"
@@ -434,6 +483,7 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                 "contract_version": "RunSummaryV0",
                 "run_id": run_name,
                 "runner": "jobs/backtest_jobs.py",
+                "protocol": protocol,
                 "argv": [
                     "jobs/backtest_jobs.py",
                     "run_backtest_worker",
@@ -441,8 +491,8 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                     f"--start={request.start_date}",
                     f"--end={request.end_date}",
                     f"--symbols={','.join(request.symbols)}",
-                    f"--mode={request.trading_mode}",
-                    f"--trade-types={','.join(request.trade_types)}",
+                    f"--mode={effective_trading_mode}",
+                    f"--trade-types={','.join(effective_trade_types)}",
                 ],
                 "cwd": str(Path.cwd().resolve()),
                 "git_sha": git_sha,
@@ -469,13 +519,15 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                     "warmup_start_utc": dc_report.get("warmup_start_utc"),
                     "start_utc": dc_report.get("start_utc"),
                     "end_exclusive_utc": dc_report.get("end_exclusive_utc"),
-                    "htf_warmup_days": dc_report.get("htf_warmup_days", int(request.htf_warmup_days)),
+                    "htf_warmup_days": dc_report.get("htf_warmup_days", int(effective_htf_warmup_days)),
                     "ignore_warmup_check": False,
                     "errors": dc_report.get("errors") or [],
                     "warnings": dc_report.get("warnings") or [],
                     "by_path": dc_report.get("by_path") or [],
                 },
             }
+            if protocol_overrides:
+                manifest["protocol_overrides"] = protocol_overrides
             manifest_path = job_dir / "run_manifest.json"
             manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
             artifact_paths["run_manifest"] = "run_manifest.json"
@@ -487,12 +539,13 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             trade_metrics = summarize_trades_parquet(job_dir / "trades.parquet")
             # Align on mini-lab schema so existing audit/rollup tools can parse it.
             mini_lab_summary = {
-                "protocol": "BACKTEST_JOB",
+                "protocol": protocol,
                 "runner": "jobs/backtest_jobs.py",
                 "contract_version": "RunSummaryV0",
                 "run_started_at_utc": run_started_at_utc,
                 "git_sha": git_sha,
                 "run_id": run_name,
+                "job_id": job_id,
                 "start_date": request.start_date,
                 "end_date": request.end_date,
                 "symbols": list(request.symbols),
@@ -515,6 +568,8 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                 "expectancy_r": float(result.expectancy_r) if result.expectancy_r is not None else None,
                 "winrate": float(result.winrate) if result.winrate is not None else None,
             }
+            if protocol_overrides:
+                mini_lab_summary["protocol_overrides"] = protocol_overrides
             if trade_metrics:
                 mini_lab_summary["trade_metrics_parquet"] = trade_metrics
 
@@ -601,6 +656,17 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                     json.dump(job_data, f, indent=2, ensure_ascii=False)
         except:
             pass  # If we can't update, at least we tried
+
+        # Restore protocol env flags (worker processes can be reused across jobs).
+        try:
+            if _old_env is not None:
+                for k, v in _old_env.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+        except Exception:
+            pass
 
 
 def submit_job(request: BacktestJobRequest) -> str:

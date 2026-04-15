@@ -89,6 +89,20 @@ Artefacts canoniques (contrat utilisé par audit/rollup) :
 
 **Point clé** : aujourd’hui, l’API backtests utilise le **même moteur** (`BacktestEngine`) que les campagnes/lab.
 
+### Protocoles UI backtests (jobs)
+
+Les jobs UI exposent désormais un champ explicite `protocol` (dans `BacktestJobRequest`) :
+
+- `protocol="JOB"` (défaut) :
+  - policy/env “brute” (ne force pas `RISK_EVAL_RELAX_CAPS` / `RISK_EVAL_DISABLE_KILL_SWITCH`)
+  - conserve `htf_warmup_days` tel que demandé dans la requête
+- `protocol="MINI_LAB_WEEK"` :
+  - aligne le protocole sur `scripts/run_mini_lab_week.py` (flags risk structurants)
+  - force `htf_warmup_days=30` (écrit dans `protocol_overrides`)
+  - évite de muter le `trade_journal` global (journal local au job, save désactivé)
+
+Traçabilité : `protocol` est écrit dans `run_manifest.json` et dans `mini_lab_summary_*.json`.
+
 ### Serveur alternatif (ambigu / legacy)
 
 - `backend/server_extended.py` : deuxième app FastAPI qui instancie `DataFeedEngine`, `MarketStateEngine`, `LiquidityEngine` et expose des endpoints.
@@ -164,7 +178,10 @@ Condition d’unification cockpit (désormais **partiellement satisfaite**) :
   - ladder écrit `run_manifest.json` + `mini_lab_summary_*.json` sous `results/labs/mini_week/...`
   - jobs UI écrivent désormais aussi `run_manifest.json` + `mini_lab_summary_*.json` sous `results/jobs/<job_id>/` (layout “jobs”, pas “mini_week”)
 - Env flags / policy risk:
-  - `run_mini_lab_week.py` force des flags (`RISK_EVAL_RELAX_CAPS`, `RISK_EVAL_DISABLE_KILL_SWITCH`, …) qui ne sont pas explicitement forcés par `jobs/backtest_jobs.py`
+  - `run_mini_lab_week.py` force des flags (`RISK_EVAL_RELAX_CAPS`, `RISK_EVAL_DISABLE_KILL_SWITCH`, …).
+  - `jobs/backtest_jobs.py` :
+    - en `protocol="JOB"` : ne force pas ces flags (policy brute)
+    - en `protocol="MINI_LAB_WEEK"` : force ces flags (alignement mini-lab)
 - Setup engine:
   - BacktestEngine = `SetupEngineV2`
   - TradingPipeline = `SetupEngine` legacy
@@ -183,4 +200,7 @@ Condition d’unification cockpit (désormais **partiellement satisfaite**) :
 Limites restantes (volontairement non traitées ici) :
 
 - Le layout “jobs” reste distinct du layout `results/labs/mini_week/...` (ce n’est pas un `output_parent` mini_week).
-- `run_mini_lab_week.py` force des env flags risk (ex: relax caps / disable kill-switch) alors que les jobs UI ne les forcent pas : comparabilité = OK sur le moteur, mais pas nécessairement sur la **policy**.
+- Layout “jobs” ≠ layout `mini_week` : on peut auditer/rollup un job via `--path`, mais ce n’est pas une campagne `output_parent` mini_week par défaut.
+- La comparabilité “policy” dépend du protocole :
+  - `JOB` ≠ mini-lab (volontaire)
+  - `MINI_LAB_WEEK` vise l’alignement mini-lab
