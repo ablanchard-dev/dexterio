@@ -121,15 +121,17 @@ Pipeline fonctionnel. Pas un edge validé (10 trades = bruit statistique pur).
 **Objectif :** obtenir des artefacts OOS IFVG postfix auditablement cohérents sur le HEAD courant,
 sans faux négatif `data_coverage_ok`.
 
-**Run minimal relancé :**
+**Runs relancés (campagne 2 splits homogène) :**
+- `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix_covfix/wf_s0_test/`
 - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix_covfix/wf_s1_test/`
-  - `git_sha=c56d26d...`
-  - `data_coverage.coverage_ok=true` malgré `max_utc=2025-11-28T21:59:00+00:00` (RTH-only)
+  - `git_sha=ad8ba70...` sur les deux splits
+  - `data_coverage.coverage_ok=true` (inclut fin RTH-only `max_utc=2025-11-28T21:59:00+00:00`)
 
 **Audit/Rollup :**
 - `scripts/audit_campaign_output_parent.py --output-parent ifvg_oos_jun_nov2025_postfix_covfix` → `overall_ok=true`
 - `scripts/rollup_campaign_summaries.py --path results/labs/mini_week/ifvg_oos_jun_nov2025_postfix_covfix`
-  - `expectancy_r_weighted_by_trades=-0.03884116266438337` (1 run, 219 trades)
+  - `total_trades_sum=352`
+  - `expectancy_r_weighted_by_trades=-0.04822238609801143` (2 runs)
 
 ---
 
