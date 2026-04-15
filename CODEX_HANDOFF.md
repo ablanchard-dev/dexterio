@@ -8,7 +8,8 @@
 
 - Branche : `main`
 - HEAD actuel (source de vérité) : exécuter `git rev-parse --short HEAD`
-- Commit “code” de cette passe (UI jobs → ladder artefacts) : `7da796e`
+- UI jobs → artefacts ladder-min (manifest + mini_lab_summary) : commit `7da796e`
+- UI jobs → protocoles explicites (`JOB` vs `MINI_LAB_WEEK`) : voir les commits suivants (`git log -5 --oneline`)
 - **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
 - **Cartographie FULL (repo-driven, versionnée) :**
   - JSON canonique : `backend/results/full_portfolio_map/full_portfolio_map.json`
@@ -16,6 +17,9 @@
   - Génération : `backend/scripts/generate_full_portfolio_map.py`
 - **UI backtests (jobs) désormais ladder-min compatibles :**
   - Code : `backend/jobs/backtest_jobs.py`
+  - Protocoles :
+    - `protocol=JOB` (défaut) : policy/env brute
+    - `protocol=MINI_LAB_WEEK` : aligne flags risk mini-lab + `htf_warmup_days=30` (voir `protocol_overrides` dans le manifest)
   - Artefacts écrits dans `backend/results/jobs/<job_id>/` :
     - `run_manifest.json` (`CampaignManifestV0`)
     - `mini_lab_summary_job_<job_id>.json` (compatible `RunSummaryV0` pour audit/rollup)

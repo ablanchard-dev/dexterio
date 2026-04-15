@@ -70,6 +70,13 @@ async def run_backtest(request: BacktestJobRequest):
         if tt not in ["DAILY", "SCALP"]:
             raise HTTPException(400, f"Invalid trade_type: {tt}")
 
+    # Protocol contract: MINI_LAB_WEEK is an AGGRESSIVE ladder-aligned protocol.
+    if getattr(request, "protocol", "JOB") == "MINI_LAB_WEEK":
+        if request.trading_mode != "AGGRESSIVE":
+            raise HTTPException(400, "protocol=MINI_LAB_WEEK requires trading_mode=AGGRESSIVE")
+        if sorted({x.strip().upper() for x in request.trade_types}) != ["DAILY", "SCALP"]:
+            raise HTTPException(400, "protocol=MINI_LAB_WEEK requires trade_types=['DAILY','SCALP']")
+
     try:
         job_id = submit_job(request)
         logger.info(f"✅ Job submitted successfully: job_id={job_id}")
