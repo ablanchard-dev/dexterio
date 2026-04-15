@@ -7,7 +7,7 @@
 ## 1. État exact du repo
 
 - Branche : `main`
-- HEAD actuel : `fbf19ac` — `chore(full): add repo-driven FULL portfolio map`
+- HEAD actuel : `3057a58` — `chore(full): add baseline SPY+QQQ artifacts`
 - **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
 - **Cartographie FULL (repo-driven, versionnée) :**
   - JSON canonique : `backend/results/full_portfolio_map/full_portfolio_map.json`
@@ -260,7 +260,29 @@ Si on reprend plus tard, la suite logique n'est pas de refaire la même campagne
   - Fenêtre : `2025-09-08 → 2025-09-26`
   - Preuve `git_sha` (run_manifest) : `fbf19ac...`
   - Audit : `campaign_audit.json` → `overall_ok=true`, `data_coverage_ok=true`, `total_trades=2690`
-  - Rollup : `campaign_rollup.json` → `total_trades_sum=2690`, `expectancy_r_weighted_by_trades=-0.0183097`
+  - Rollup : `campaign_rollup.json` → `total_trades_sum=2690`, `expectancy_r_weighted_by_trades=-0.0183097`, `profit_factor=0.3643575`, `final_capital=341.6104`
+
+**Run baseline (SPY+QQQ) :**
+- Output-parent : `backend/results/labs/mini_week/full_baseline_allow_core_no_quarantine_sep08_sep26_2025_spy_qqq/`
+  - Label : `baseline_full_sep08_sep26_2025_spy_qqq`
+  - Fenêtre : `2025-09-08 → 2025-09-26` (identique)
+  - Commande exacte :
+    ```bash
+    cd /home/dexter/dexterio1-main/backend
+    .venv/bin/python scripts/run_mini_lab_week.py \
+      --start 2025-09-08 --end 2025-09-26 \
+      --symbols SPY,QQQ \
+      --playbooks-yaml knowledge/campaigns/campaign_full_baseline_allow_core_no_quarantine.yml \
+      --output-parent full_baseline_allow_core_no_quarantine_sep08_sep26_2025_spy_qqq \
+      --label baseline_full_sep08_sep26_2025_spy_qqq
+    ```
+  - Preuve `git_sha` (run_manifest) : `c008b42...`
+  - Audit : `campaign_audit.json` → `overall_ok=true`, `data_coverage_ok=true`, `total_trades=3139`
+  - Rollup : `campaign_rollup.json` → `total_trades_sum=3139`, `expectancy_r_weighted_by_trades=-0.0147993`, `profit_factor=0.2072468`, `final_capital=-798.7882`
+
+**Comparaison minimale (même YAML, même fenêtre) :**
+- SPY-only : `overall_ok=true`, `data_coverage_ok=true`, `total_trades_sum=2690`, `E[R]=-0.0183097`, `PF=0.3643575`, `final_capital=341.6104`
+- SPY+QQQ : `overall_ok=true`, `data_coverage_ok=true`, `total_trades_sum=3139`, `E[R]=-0.0147993`, `PF=0.2072468`, `final_capital=-798.7882`
 
 
 ## 10. Commandes exactes pour reprendre
