@@ -8,7 +8,7 @@ import uuid
 import logging
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ProcessPoolExecutor
 from pydantic import BaseModel
@@ -262,6 +262,7 @@ def run_backtest_worker(job_id: str, request_dict: dict):
     """
     import sys
     import traceback
+    import subprocess
     from pathlib import Path
     
     # Setup paths
@@ -271,6 +272,9 @@ def run_backtest_worker(job_id: str, request_dict: dict):
     
     from models.backtest import BacktestConfig
     from backtest.engine import BacktestEngine
+    from utils.backtest_data_coverage import check_backtest_data_coverage
+    from utils.lab_environment_snapshot import build_lab_environment_for_manifest
+    from utils.mini_lab_trade_metrics_parquet import summarize_trades_parquet
     from utils.path_resolver import historical_data_path, results_path
     
     log_file = get_job_log(job_id)
@@ -288,6 +292,7 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             print(f"[LOG] {msg}", file=sys.stderr)
     
     try:
+        run_started_at_utc = datetime.now(timezone.utc).isoformat()
         log("Starting backtest worker...")
         update_job_status(job_id, "running")
         
@@ -320,6 +325,28 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                 raise FileNotFoundError(f"Data file not found: {path}")
             data_paths.append(str(path))
             log(f"Data: {path}")
+
+        # Ladder-compatible: compute data coverage contract (does not block the run)
+        dc_report = check_backtest_data_coverage(
+            data_paths=list(data_paths),
+            symbols=list(request.symbols),
+            start_date=request.start_date,
+            end_date=request.end_date,
+            htf_warmup_days=int(request.htf_warmup_days),
+            max_gap_warn_minutes=None,
+            ignore_warmup_check=False,
+        )
+
+        def _git_sha() -> str:
+            try:
+                return (
+                    subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(backend_dir), text=True)
+                    .strip()
+                )
+            except Exception:
+                return "unknown"
+
+        git_sha = _git_sha()
         
         # Create config
         run_name = f"job_{job_id}"
@@ -399,6 +426,108 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             debug_counts_dst = job_dir / "debug_counts.json"
             debug_counts_dst.write_bytes(debug_counts_src.read_bytes())
             log(f"Debug counts: {debug_counts_dst}")
+
+        # Ladder-compatible artifacts (minimal): run_manifest.json + mini_lab_summary*.json
+        try:
+            manifest = {
+                "schema_version": "CampaignManifestV0",
+                "contract_version": "RunSummaryV0",
+                "run_id": run_name,
+                "runner": "jobs/backtest_jobs.py",
+                "argv": [
+                    "jobs/backtest_jobs.py",
+                    "run_backtest_worker",
+                    f"--job-id={job_id}",
+                    f"--start={request.start_date}",
+                    f"--end={request.end_date}",
+                    f"--symbols={','.join(request.symbols)}",
+                    f"--mode={request.trading_mode}",
+                    f"--trade-types={','.join(request.trade_types)}",
+                ],
+                "cwd": str(Path.cwd().resolve()),
+                "git_sha": git_sha,
+                "run_started_at_utc": run_started_at_utc,
+                "symbols": list(request.symbols),
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                # Keep fields for parity with mini-lab, but do not pretend we had a playbooks YAML override.
+                "label": run_name,
+                "output_parent": f"jobs/{job_id}",
+                "respect_allowlists": os.environ.get("RISK_EVAL_ALLOW_ALL_PLAYBOOKS", "false").strip().lower()
+                not in {"1", "true", "yes", "on"},
+                "bypass_lss_quarantine": os.environ.get("RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY", "false")
+                .strip()
+                .lower()
+                in {"1", "true", "yes", "on"},
+                "playbooks_yaml": None,
+                "nf_tp1_rr_meta": None,
+                "run_clock_mode": "BACKTEST",
+                "lab_environment": build_lab_environment_for_manifest(request.symbols),
+                "data_coverage": {
+                    "schema_version": "DataCoverageV0",
+                    "coverage_ok": bool(dc_report["ok"]),
+                    "warmup_start_utc": dc_report.get("warmup_start_utc"),
+                    "start_utc": dc_report.get("start_utc"),
+                    "end_exclusive_utc": dc_report.get("end_exclusive_utc"),
+                    "htf_warmup_days": dc_report.get("htf_warmup_days", int(request.htf_warmup_days)),
+                    "ignore_warmup_check": False,
+                    "errors": dc_report.get("errors") or [],
+                    "warnings": dc_report.get("warnings") or [],
+                    "by_path": dc_report.get("by_path") or [],
+                },
+            }
+            manifest_path = job_dir / "run_manifest.json"
+            manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+            artifact_paths["run_manifest"] = "run_manifest.json"
+            log(f"Run manifest: {manifest_path}")
+        except Exception as e:
+            log(f"WARNING: failed to write run_manifest.json: {e}")
+
+        try:
+            trade_metrics = summarize_trades_parquet(job_dir / "trades.parquet")
+            # Align on mini-lab schema so existing audit/rollup tools can parse it.
+            mini_lab_summary = {
+                "protocol": "BACKTEST_JOB",
+                "runner": "jobs/backtest_jobs.py",
+                "contract_version": "RunSummaryV0",
+                "run_started_at_utc": run_started_at_utc,
+                "git_sha": git_sha,
+                "run_id": run_name,
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                "symbols": list(request.symbols),
+                "respect_allowlists": os.environ.get("RISK_EVAL_ALLOW_ALL_PLAYBOOKS", "false")
+                .strip()
+                .lower()
+                not in {"1", "true", "yes", "on"},
+                "bypass_lss_quarantine": os.environ.get("RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY", "false")
+                .strip()
+                .lower()
+                in {"1", "true", "yes", "on"},
+                "output_parent": f"jobs/{job_id}",
+                "playbooks_yaml": None,
+                "nf_tp1_rr_meta": None,
+                "data_coverage_ok": bool(dc_report["ok"]),
+                "data_coverage_error_count": len(dc_report.get("errors") or []),
+                "total_trades": int(result.total_trades),
+                "final_capital": str(result.final_capital),
+                "profit_factor": float(result.profit_factor) if result.profit_factor is not None else None,
+                "expectancy_r": float(result.expectancy_r) if result.expectancy_r is not None else None,
+                "winrate": float(result.winrate) if result.winrate is not None else None,
+            }
+            if trade_metrics:
+                mini_lab_summary["trade_metrics_parquet"] = trade_metrics
+
+            summary_filename = f"mini_lab_summary_job_{job_id}.json"
+            summary_path = job_dir / summary_filename
+            summary_path.write_text(
+                json.dumps(mini_lab_summary, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            artifact_paths["mini_lab_summary"] = summary_filename
+            log(f"Mini-lab summary: {summary_path}")
+        except Exception as e:
+            log(f"WARNING: failed to write mini_lab_summary*.json: {e}")
         
         # Extract key metrics
         metrics = {
