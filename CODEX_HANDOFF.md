@@ -7,7 +7,7 @@
 ## 1. État exact du repo
 
 - Branche : `main`
-- HEAD actuel : `7da796e` — `chore(ui): make backtest jobs ladder-compatible`
+- HEAD actuel : `ca77646` — `docs(handoff): record UI jobs ladder artifacts`
 - **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
 - **Cartographie FULL (repo-driven, versionnée) :**
   - JSON canonique : `backend/results/full_portfolio_map/full_portfolio_map.json`
