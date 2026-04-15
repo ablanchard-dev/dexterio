@@ -7,7 +7,8 @@
 ## 1. État exact du repo
 
 - Branche : `main`
-- HEAD actuel : `ca77646` — `docs(handoff): record UI jobs ladder artifacts`
+- HEAD actuel (source de vérité) : exécuter `git rev-parse --short HEAD`
+- Commit “code” de cette passe (UI jobs → ladder artefacts) : `7da796e`
 - **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
 - **Cartographie FULL (repo-driven, versionnée) :**
   - JSON canonique : `backend/results/full_portfolio_map/full_portfolio_map.json`
