@@ -7,12 +7,21 @@
 ## 1. État exact du repo
 
 - Branche : `main`
-- HEAD actuel : `80573ee` — `chore(full): add baseline SPY+QQQ window2 artifacts`
+- HEAD actuel : `7da796e` — `chore(ui): make backtest jobs ladder-compatible`
 - **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
 - **Cartographie FULL (repo-driven, versionnée) :**
   - JSON canonique : `backend/results/full_portfolio_map/full_portfolio_map.json`
   - Vue lisible : `backend/docs/FULL_PORTFOLIO_MAP.md`
   - Génération : `backend/scripts/generate_full_portfolio_map.py`
+- **UI backtests (jobs) désormais ladder-min compatibles :**
+  - Code : `backend/jobs/backtest_jobs.py`
+  - Artefacts écrits dans `backend/results/jobs/<job_id>/` :
+    - `run_manifest.json` (`CampaignManifestV0`)
+    - `mini_lab_summary_job_<job_id>.json` (compatible `RunSummaryV0` pour audit/rollup)
+  - Validation rapide (sans serveur) :
+    - exécuter `run_backtest_worker` localement, puis :
+    - `cd backend && .venv/bin/python scripts/audit_campaign_output_parent.py --path results/jobs/<job_id>`
+    - `cd backend && .venv/bin/python scripts/rollup_campaign_summaries.py --path results/jobs/<job_id>`
 - **Artefacts de validation "postfix" (preuves sur `git_sha=4e7246a`) :**
   - `backend/results/labs/mini_week/ifvg_probe_sep29_oct02_postfix/`
   - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix/`
