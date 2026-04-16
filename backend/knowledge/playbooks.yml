@@ -833,3 +833,85 @@
       A_plus: 0.80
       A: 0.65
       B: 0.50
+
+# ============================================================================
+# PHASE 1B — HTF_Bias_15m_BOS (MASTER Aplus_04)
+# D/4H bias → 15m sweep + BOS → 5m/1m entry
+# Setup detection on 15m, entry confirmation on 1m
+# ============================================================================
+
+- playbook_name: "HTF_Bias_15m_BOS"
+  category: "DAYTRADE"
+  description: "MASTER Aplus_04 — HTF bias + 15m BOS after sweep, 1m entry on pullback to FVG/OB"
+  max_setups_per_session: 1
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  timefilters:
+    session: "NY"
+    time_range: ["09:30", "12:00"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "manipulation_reversal"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+
+  triggers:
+    - type: "ICT"
+      ict_pattern: "bos"
+      direction: "with_bias"
+      min_quality: 0.3
+
+  conditions:
+    require_sweep: true
+    require_bos: true
+    allow_fvg: true
+    require_fvg: false
+    pattern_confirmations: 2
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: true
+    require_bos: true
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "with_bias"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_retest"
+    confirmation_tf: "1m"
+  setup_tf: "15m"
+
+  stop_loss_logic:
+    type: "SWING"
+    distance: "recent_swing"
+    padding_ticks: 3
+
+  take_profit_logic:
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.5
+
+  scoring:
+    weights:
+      bos_strength: 0.30
+      liquidity_sweep: 0.25
+      fvg_quality: 0.20
+      pattern_quality: 0.10
+      context_strength: 0.15
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.65
+      B: 0.50

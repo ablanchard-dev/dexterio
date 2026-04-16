@@ -450,6 +450,7 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 | `Morning_Trap_Reversal` | ALLOWLIST | 2/session, setup_tf=5m | E[R] **-0.072**, 245 trades, WR 11%, PF 0.36 |
 | `Liquidity_Sweep_Scalp` | ALLOWLIST | 3/session, setup_tf=5m | E[R] **-0.052**, 375 trades, WR 29%, PF 0.27 |
 | `IFVG_5m_Sweep` | **ALLOWLIST (NEW)** | 2/session, setup_tf=5m | E[R] **-0.049**, 219 trades, WR 8%, PF 0.41 |
+| `HTF_Bias_15m_BOS` | **ALLOWLIST (NEW)** | 1/session, setup_tf=15m | **0 trades** — conditions 15m trop rares |
 | `London_Sweep_NY_Continuation` | DENYLIST | — | -326R |
 | `Trend_Continuation_FVG_Retest` | DENYLIST | — | -22R |
 | `BOS_Momentum_Scalp` | DENYLIST | — | -142R |
@@ -458,7 +459,7 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 | `DAY_Aplus_1_*` | DENYLIST | — | 0 trades |
 | `SCALP_Aplus_1_*` | DENYLIST | — | -1.4R |
 
-**Verdict Phase 1 (2026-04-16) :** Tous les 7 playbooks ALLOWLIST sont négatifs sur WF 6 mois (1396 trades, E[R] global -0.052, WR 20.9%). Aucun edge trouvé malgré fixes Phase 0 (scoring, caps, TF). IFVG 5m (MASTER-aligné) aussi négatif que les legacy.
+**Verdict Phase 1 (2026-04-16) :** 8 playbooks ALLOWLIST, tous négatifs sur WF 6 mois. HTF_Bias_15m_BOS = 0 trades (trop rare). 7 actifs = 1396 trades, E[R] global -0.052. **Seul signal positif : NY grade B (score 0.50-0.65) = E[R]+0.056, PF 1.89 sur 22 trades.** Scoring inversé confirmé (grade A/A+ performent pire que B).
 
 ---
 
@@ -569,15 +570,39 @@ NY quasi neutre avec caps — signal nettement meilleur. Scalps encore négatifs
 
 **Aucun playbook ne montre d'edge positif.** Les fixes Phase 0 (scoring graduel, caps fréquence, filtrage TF 5m) ont réduit le bruit mais n'ont pas révélé de signal. IFVG_5m_Sweep (MASTER Aplus_01/03, le candidat le plus prometteur) est aussi négatif que les legacy. Cela correspond au 30% de confiance du roadmap.
 
+### Phase 1B — HTF_Bias_15m_BOS + Ablation (2026-04-16)
+
+**HTF_Bias_15m_BOS (MASTER Aplus_04) :** D/4H bias → 15m sweep + BOS → 1m entry
+- `setup_tf: "15m"`, `max_setups_per_session: 1`, ajouté ALLOWLIST
+- Bug fix : `_calculate_price_levels` accepte maintenant les ICT patterns sans candle patterns
+- **Résultat : 0 trades sur 6 mois.** Les conditions 15m BOS + sweep sont trop rares pour le moteur actuel. Le playbook matche (23k matches) mais le setup ne se finalise pas car les ICT patterns 15m ne sont pas disponibles au moment du price level calc.
+
+**Ablation NY_Open_Reversal :** `scripts/ablation_ny_analysis.py`
+- **FINDING MAJEUR — Scoring inversé :**
+  - Grade B (score 0.50-0.65) : **E[R]+0.056, PF 1.89** (22 trades) — seul slice positif
+  - Grade A (score 0.65-0.80) : E[R]-0.059 (129 trades)
+  - Grade A+ (score >0.80) : E[R]-0.068 (21 trades)
+  - **Plus le score est haut, pire est la performance** → scoring contreproductif
+  - Grade B a le meilleur TP1 rate (18%) et le plus bas SL rate (32%)
+- Heure : 12h ET (midi) seul créneau quasi-neutre (E[R]+0.007)
+- Mois : août (+0.017) et novembre (+0.003) positifs, septembre et octobre négatifs
+- Direction : SHORT légèrement mieux que LONG (PF 0.55 vs 0.36)
+- IFVG_5m_Sweep : 90% SL, WR 8% → stops trop serrés
+
+**Script Polygon 18+ mois prêt :** `scripts/download_polygon_18m.sh`
+- Télécharge jan 2024 → mai 2025 via Polygon, fusionne avec données existantes
+- En attente de clé API Polygon (`export POLYGON_API_KEY=...`)
+
 ---
 
 ## 11. Prochaine tâche recommandée
 
-1. **Étendre data à 18+ mois** via Polygon provider (`scripts/providers/polygon_provider.py`) — 6 mois insuffisant pour significativité
-2. **Walk-forward 4+ folds** sur données étendues (jan 2024 — nov 2025)
-3. **Ablation systématique** sur NY_Open_Reversal (meilleur PF=0.46) : grade, heure, régime
-4. **Reconcevoir playbooks HTF** — le MASTER prescrit D/4H bias → 15m setup, pas seulement 5m
-5. **Si aucun edge après 18+ mois de data + playbooks HTF** → reconsidérer approche (autres instruments, ICT discrétionnaire vs systématique)
+1. **Inverser le filtre scoring NY** — ne garder que trades score [0.50-0.65] (grade B = seul positif). Test : campagne NY-only avec seuil A abaissé à 0.50 et A+ à 0.65
+2. **Obtenir clé Polygon + télécharger 18+ mois** → `bash scripts/download_polygon_18m.sh`
+3. **Walk-forward 4+ folds** sur données étendues (jan 2024 — nov 2025)
+4. **Élargir SL IFVG_5m_Sweep** — WR 8% avec 90% SL → SL trop serré (0.5% fixe)
+5. **Débloquer HTF_Bias_15m_BOS** — le problème est structural : les ICT patterns 15m doivent persister entre les barres 1m (actuellement recalculés à chaque eval)
+6. **Si aucun edge après scoring inversé + 18+ mois de data** → reconsidérer approche
 
 ---
 
