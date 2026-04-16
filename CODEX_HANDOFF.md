@@ -1,7 +1,7 @@
 # CODEX_HANDOFF.md
 # DexterioBOT — Handoff pour Codex / nouvelle session
 # Dernière mise à jour : 2026-04-16
-# HEAD (source de vérité) : 69af75f
+# HEAD (source de vérité) : exécuter `git rev-parse --short HEAD`
 # HEAD (stabilisation repo-driven, base avant shadow) : 8b1abee
 # Guard canonique pipeline (ALLOWLIST/DENYLIST) : 18fc973
 # Shadow comparator legacy vs V2 (TradingPipeline) : d509ad5
