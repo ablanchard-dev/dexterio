@@ -17,6 +17,11 @@ from models.backtest import BacktestConfig, BacktestResult, TradeResult
 from models.market_data import MarketState, Candle
 from models.setup import Setup, ICTPattern, CandlestickPattern, PatternDetection
 from backtest.costs import calculate_total_execution_costs  # PHASE B
+from backtest.metrics import (
+    expectancy_from_r_multiples,
+    max_drawdown_from_pnl_r_accounts,
+    profit_factor_from_r_multiples,
+)
 from engines.market_state import MarketStateEngine
 from engines.liquidity import LiquidityEngine
 from engines.patterns.candlesticks import CandlestickPatternEngine
@@ -2046,12 +2051,26 @@ class BacktestEngine:
         self._ingest_closed_trades(end_time)
     
     def _track_equity(self, current_time: datetime):
-        """Track equity curve"""
-        # Calculer equity totale
-        cumulative_r = sum(t.pnl_r for t in self.trades)
+        """Track equity curve.
+
+        equity_curve_r uses R-account units (pnl_$ / base_r_unit_$), consistent with
+        max_drawdown_r. This means 1R = base_r_unit_dollars (2% of initial capital),
+        regardless of per-trade risk tier. Previously this used pnl_net_R (pnl / risk_$
+        per trade), which diverged from max_drawdown_r for tier-2 trades.
+        """
+        base_r_unit = float(getattr(self.risk_engine.state, "base_r_unit_dollars", 0.0) or 0.0)
+        if base_r_unit > 0:
+            # R-account: pnl_$ / base_r_unit_$ — same denominator as max_drawdown_r
+            cumulative_r_account = sum(
+                float(getattr(t, "pnl_dollars", 0.0) or 0.0) / base_r_unit
+                for t in self.trades
+            )
+        else:
+            # Guard: base_r_unit not yet initialized (shouldn't happen in normal runs)
+            cumulative_r_account = sum(t.pnl_r for t in self.trades)
         current_capital = self.risk_engine.state.account_balance
-        
-        self.equity_curve_r.append(cumulative_r)
+
+        self.equity_curve_r.append(cumulative_r_account)
         self.equity_curve_dollars.append(current_capital)
         self.equity_timestamps.append(current_time)
     
@@ -2083,23 +2102,26 @@ class BacktestEngine:
         avg_win_r = sum(t.pnl_net_R for t in wins) / len(wins) if wins else 0.0
         avg_loss_r = sum(t.pnl_net_R for t in losses) / len(losses) if losses else 0.0
         
-        # Expectancy (net)
-        win_prob = winrate / 100
-        loss_prob = 1 - win_prob
-        expectancy_r = (win_prob * avg_win_r) + (loss_prob * avg_loss_r)
+        # KPI canonical (locked definitions; see backtest/metrics.py):
+        # - expectancy_r = mean(r_multiple) including breakevens (0R)
+        # - profit_factor = gross_profit_R / abs(gross_loss_R), BE excluded
+        r_multiples_net = [float(t.pnl_net_R) for t in self.trades]
+        expectancy_r = expectancy_from_r_multiples(r_multiples_net)
+        profit_factor_net = profit_factor_from_r_multiples(r_multiples_net)
         
-        # Profit factor (net)
-        gross_profit_net = sum(t.pnl_net_dollars for t in wins)
-        gross_loss_net = abs(sum(t.pnl_net_dollars for t in losses))
-        profit_factor_net = gross_profit_net / gross_loss_net if gross_loss_net > 0 else 0.0
-        
-        # Profit factor (gross for comparison)
+        # Profit factor (gross $ for comparison / debug only)
         gross_profit_gross = sum(t.pnl_gross_dollars for t in wins)
         gross_loss_gross = abs(sum(t.pnl_gross_dollars for t in losses))
         profit_factor_gross = gross_profit_gross / gross_loss_gross if gross_loss_gross > 0 else 0.0
         
-        # Drawdown
-        max_dd_r = self._calculate_max_drawdown(self.equity_curve_r)
+        # Drawdown (canonical): max drawdown on cumulative pnl_R_account (net $ / base_r_unit_$).
+        base_r_unit_dollars = float(getattr(self.risk_engine.state, "base_r_unit_dollars", 0.0) or 0.0)
+        pnl_r_accounts: List[float] = []
+        if base_r_unit_dollars > 0:
+            for t in self.trades:
+                pnl_dollars = float(getattr(t, "pnl_dollars", 0.0) or 0.0)  # legacy net
+                pnl_r_accounts.append(pnl_dollars / base_r_unit_dollars)
+        max_dd_r = max_drawdown_from_pnl_r_accounts(pnl_r_accounts)
         
         final_capital = self.risk_engine.state.account_balance
         total_pnl_dollars = final_capital - self.config.initial_capital
@@ -2166,7 +2188,7 @@ class BacktestEngine:
             avg_win_r=avg_win_r,
             avg_loss_r=avg_loss_r,
             expectancy_r=expectancy_r,
-            profit_factor=profit_factor_net,  # PHASE B: Use net
+            profit_factor=profit_factor_net,  # Canonical PF (R-based, locked defs)
             max_win_streak=max_win_streak,
             max_loss_streak=max_loss_streak,
             current_streak=0,

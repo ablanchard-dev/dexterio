@@ -22,16 +22,81 @@ DÉFINITIONS CLÉS (non négociables):
 
 4. MaxDD (Drawdown):
    - MaxDD_run = max(peak_equity_R - trough_equity_R) sur equity curve
-   - Calculé sur cumulative R (pas $)
+   - Calculé sur cumulative pnl_R_account (= pnl_$ / base_r_unit_$), pas sur r_multiple
 """
 import json
 import csv
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Sequence, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def gross_profit_loss_from_r_multiples(r_multiples: Sequence[float]) -> Tuple[float, float]:
+    """
+    Retourne (gross_profit_r, gross_loss_r) à partir des r_multiples.
+
+    - gross_profit_r = Σ r où r > 0
+    - gross_loss_r = Σ r où r < 0 (négatif)
+    - BE (0R) n'impacte ni l'un ni l'autre
+    """
+    gross_profit_r = float(sum(r for r in r_multiples if r > 0))
+    gross_loss_r = float(sum(r for r in r_multiples if r < 0))
+    return gross_profit_r, gross_loss_r
+
+
+def profit_factor_from_gross_profit_loss(gross_profit_r: float, gross_loss_r: float) -> float:
+    """
+    PF = gross_profit_R / abs(gross_loss_R), BE exclu.
+
+    Convention:
+    - si gross_loss_r < 0 : PF = gross_profit_r / abs(gross_loss_r)
+    - sinon : PF = +inf si gross_profit_r > 0, else 0.0
+    """
+    if gross_loss_r < 0:
+        return gross_profit_r / abs(gross_loss_r)
+    return float("inf") if gross_profit_r > 0 else 0.0
+
+
+def profit_factor_from_r_multiples(r_multiples: Sequence[float]) -> float:
+    """Profit Factor (PF) basé sur les r_multiples (définition verrouillée)."""
+    gross_profit_r, gross_loss_r = gross_profit_loss_from_r_multiples(r_multiples)
+    return profit_factor_from_gross_profit_loss(gross_profit_r, gross_loss_r)
+
+
+def expectancy_from_r_multiples(r_multiples: Sequence[float]) -> float:
+    """Expectancy_R = mean(r_multiple) incluant BE (définition verrouillée)."""
+    vals = list(r_multiples)
+    return float(sum(vals) / len(vals)) if vals else 0.0
+
+
+def max_drawdown_from_pnl_r_accounts(pnl_r_accounts: Sequence[float]) -> float:
+    """
+    MaxDD_run = max(peak_equity_R - trough_equity_R) sur l'equity curve (cumulative pnl_R_account).
+
+    NOTE: `pnl_R_account` = pnl_$ / base_r_unit_$ (impact compte). C'est la définition canonique
+    utilisée par le RiskEngine (circuit breakers) et par le ladder.
+    """
+    equity = 0.0
+    peak = 0.0
+    max_dd = 0.0
+
+    for pnl_r in pnl_r_accounts:
+        try:
+            equity += float(pnl_r)
+        except (TypeError, ValueError):
+            continue
+
+        if equity > peak:
+            peak = equity
+
+        drawdown = peak - equity
+        if drawdown > max_dd:
+            max_dd = drawdown
+
+    return float(max_dd)
 
 
 def calculate_metrics(trades: List[Dict[str, Any]], playbooks: List[str] = None) -> Dict[str, Any]:
@@ -78,17 +143,13 @@ def calculate_metrics(trades: List[Dict[str, Any]], playbooks: List[str] = None)
     winrate = (wins / total_trades * 100) if total_trades > 0 else 0.0
     
     # Gross profit/loss (en r_multiple, BE exclu)
-    gross_profit_r = sum(r for r in r_multiples if r > 0)
-    gross_loss_r = sum(r for r in r_multiples if r < 0)  # Négatif
+    gross_profit_r, gross_loss_r = gross_profit_loss_from_r_multiples(r_multiples)
     
     # PF = gross_profit / |gross_loss| (BE exclu)
-    if gross_loss_r < 0:
-        profit_factor = gross_profit_r / abs(gross_loss_r)
-    else:
-        profit_factor = float('inf') if gross_profit_r > 0 else 0.0
+    profit_factor = profit_factor_from_gross_profit_loss(gross_profit_r, gross_loss_r)
     
     # Expectancy = mean(r_multiple) incluant BE
-    expectancy_r = sum(r_multiples) / len(r_multiples) if r_multiples else 0.0
+    expectancy_r = expectancy_from_r_multiples(r_multiples)
     
     # MaxDD sur equity curve en R
     max_drawdown_r = _calculate_max_drawdown_r(trades)
@@ -136,23 +197,7 @@ def _calculate_max_drawdown_r(trades: List[Dict[str, Any]]) -> float:
     if not trades:
         return 0.0
     
-    # Construire equity curve
-    equity = 0.0
-    peak = 0.0
-    max_dd = 0.0
-    
-    for t in trades:
-        pnl_r = t.get("pnl_R_account", 0.0)
-        equity += pnl_r
-        
-        if equity > peak:
-            peak = equity
-        
-        drawdown = peak - equity
-        if drawdown > max_dd:
-            max_dd = drawdown
-    
-    return max_dd
+    return max_drawdown_from_pnl_r_accounts([t.get("pnl_R_account", 0.0) for t in trades])
 
 
 def _max_consecutive_losses(outcomes: List[str]) -> int:
