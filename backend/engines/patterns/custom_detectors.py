@@ -82,12 +82,14 @@ def detect_custom_patterns(candles: List[Candle], timeframe: str) -> Dict[str, L
     brkr_cfg = cfg.get("breaker_block") or {}
 
     ict_engine = _get_ict_engine()
-    # BOS and FVG detections via the core ICT engine
+    # BOS, FVG and liquidity sweep detections via the core ICT engine
     bos_list = ict_engine.detect_bos(candles, timeframe)
     fvg_list = ict_engine.detect_fvg(candles, timeframe)
+    sweep_list = ict_engine.detect_liquidity_sweep(candles, timeframe)
     return {
         "bos": bos_list,
         "fvg": fvg_list,
+        "liquidity_sweep": sweep_list,
         "ifvg": detect_ifvg(candles, timeframe, ifvg_cfg),
         "order_block": detect_order_blocks(candles, timeframe, ob_cfg),
         "equilibrium": detect_equilibrium(candles, timeframe, eq_cfg),

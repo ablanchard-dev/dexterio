@@ -382,7 +382,8 @@ class PlaybookEvaluator:
                 playbook,
                 market_state,
                 ict_patterns,
-                candle_patterns
+                candle_patterns,
+                trading_mode=trading_mode,
             )
             
             if score is None:
@@ -693,7 +694,8 @@ class PlaybookEvaluator:
         playbook: PlaybookDefinition,
         market_state: Dict,
         ict_patterns: List[ICTPattern],
-        candle_patterns: List[CandlestickPattern]
+        candle_patterns: List[CandlestickPattern],
+        trading_mode: str = None,
     ) -> tuple:
         """
         Évalue toutes les conditions du playbook
@@ -709,7 +711,8 @@ class PlaybookEvaluator:
         # CONDITION STRICTE: TRADING_MODE=='AGGRESSIVE' uniquement
         # Interdit en LIVE/PAPER (SAFE mode garde les checks stricts)
         from config.settings import settings
-        is_backtest_aggressive = (settings.TRADING_MODE == 'AGGRESSIVE')
+        effective_mode = (trading_mode or settings.TRADING_MODE or "SAFE").upper()
+        is_backtest_aggressive = (effective_mode == "AGGRESSIVE")
         
         bypasses_applied = []
         if is_backtest_aggressive:
@@ -792,7 +795,7 @@ class PlaybookEvaluator:
                 bypasses_applied.append(f'structure_htf_mismatch:{structure}_not_in_{playbook.structure_htf}')
         
         # 3. Vérifier ICT confluences (assoupli en mode labo AGGRESSIVE)
-        has_sweep = any(p.pattern_type == 'sweep' for p in ict_patterns)
+        has_sweep = any(p.pattern_type in ("sweep", "liquidity_sweep") for p in ict_patterns)
         has_fvg = any(p.pattern_type == 'fvg' for p in ict_patterns)
         has_bos = any(p.pattern_type == 'bos' for p in ict_patterns)
         has_smt = any(p.pattern_type == 'smt' for p in ict_patterns)

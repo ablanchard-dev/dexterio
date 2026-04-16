@@ -181,7 +181,7 @@ class MarketStateEngine:
         """
         # Count pattern types if available
         bos_count = len([p for p in ict_patterns if p.pattern_type == 'bos']) if ict_patterns else 0
-        sweep_count = len([p for p in ict_patterns if p.pattern_type == 'sweep']) if ict_patterns else 0
+        sweep_count = len([p for p in ict_patterns if p.pattern_type in ('sweep', 'liquidity_sweep')]) if ict_patterns else 0
         
         # Rule 1: Range structure → range day
         if daily_structure == 'range':
