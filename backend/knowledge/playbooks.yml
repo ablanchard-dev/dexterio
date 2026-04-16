@@ -9,11 +9,12 @@
 - playbook_name: "NY_Open_Reversal"
   category: "DAYTRADE"
   description: "Reversal à l'ouverture NY après sweep de liquidité London"
-  
+  max_setups_per_session: 2
+
   enabled_in_modes:
     - "SAFE"
     - "AGGRESSIVE"
-  
+
   instruments:
     - "SPY"
     - "QQQ"
@@ -48,29 +49,30 @@
     type: "LIMIT"
     zone: "pattern_close"
     confirmation_tf: "1m"
-  
+  setup_tf: "5m"
+
   stop_loss_logic:
     type: "SWING"
     distance: "recent_swing"
     padding_ticks: 1
-  
+
   take_profit_logic:
     min_rr: 3.0
     tp1_rr: 3.0
     tp2_rr: 5.0
     breakeven_at_rr: 1.0
-  
+
   scoring:
     weights:
-      liquidity_sweep: 0.30
-      pattern_quality: 0.25
-      fvg_alignment: 0.20
-      smt_divergence: 0.15
-      context_strength: 0.10
+      liquidity_sweep: 0.15
+      pattern_quality: 0.30
+      fvg_alignment: 0.25
+      bos_strength: 0.15
+      context_strength: 0.15
     grade_thresholds:
-      A_plus: 0.85
-      A: 0.75
-      B: 0.65
+      A_plus: 0.80
+      A: 0.65
+      B: 0.50
 
 # ----------------------------------------------------------------------------
 
@@ -197,20 +199,21 @@
   scoring:
     weights:
       fvg_quality: 0.35
-      pattern_quality: 0.25
+      pattern_quality: 0.30
       trend_strength: 0.25
-      smt_divergence: 0.15
+      context_strength: 0.10
     grade_thresholds:
-      A_plus: 0.85
-      A: 0.75
-      B: 0.65
+      A_plus: 0.80
+      A: 0.65
+      B: 0.50
 
 # ----------------------------------------------------------------------------
 
 - playbook_name: "Morning_Trap_Reversal"
   category: "DAYTRADE"
   description: "Reversal après faux breakout (trap) dans la première heure NY"
-  
+  max_setups_per_session: 2
+
   enabled_in_modes:
     - "SAFE"
     - "AGGRESSIVE"
@@ -250,7 +253,8 @@
     type: "LIMIT"
     zone: "pattern_close"
     confirmation_tf: "1m"
-  
+  setup_tf: "5m"
+
   stop_loss_logic:
     type: "SWING"
     distance: "trap_extreme"
@@ -264,14 +268,14 @@
   
   scoring:
     weights:
-      liquidity_sweep: 0.35
+      liquidity_sweep: 0.15
       pattern_quality: 0.30
-      rejection_strength: 0.25
-      context_strength: 0.10
+      rejection_strength: 0.30
+      context_strength: 0.25
     grade_thresholds:
-      A_plus: 0.85
-      A: 0.75
-      B: 0.65
+      A_plus: 0.80
+      A: 0.65
+      B: 0.50
 
 # ----------------------------------------------------------------------------
 
@@ -342,7 +346,8 @@
 - playbook_name: "News_Fade"
   category: "DAYTRADE"
   description: "Fade du spike post-news majeur (CPI, FOMC) - Fenêtres sélectives strictes"
-  
+  max_setups_per_session: 1
+
   enabled_in_modes:
     - "SAFE"
     - "AGGRESSIVE"
@@ -419,7 +424,8 @@
 - playbook_name: "Liquidity_Sweep_Scalp"
   category: "SCALP"
   description: "Scalp rapide après micro-sweep de liquidité locale M1"
-  
+  max_setups_per_session: 3
+
   enabled_in_modes:
     - "AGGRESSIVE"
   
@@ -457,7 +463,8 @@
     type: "LIMIT"
     zone: "pattern_close"
     confirmation_tf: "1m"
-  
+  setup_tf: "5m"
+
   stop_loss_logic:
     type: "FIXED"
     distance: "local_extreme"
@@ -473,20 +480,22 @@
   
   scoring:
     weights:
-      liquidity_sweep: 0.40
+      liquidity_sweep: 0.20
       pattern_quality: 0.35
       rejection_speed: 0.25
+      context_strength: 0.20
     grade_thresholds:
-      A_plus: 0.80
-      A: 0.70
-      B: 0.60
+      A_plus: 0.75
+      A: 0.60
+      B: 0.45
 
 # ----------------------------------------------------------------------------
 
 - playbook_name: "FVG_Fill_Scalp"
   category: "SCALP"
   description: "Scalp sur remplissage partiel d'un FVG M1/M5"
-  
+  max_setups_per_session: 3
+
   enabled_in_modes:
     - "AGGRESSIVE"
   
@@ -525,7 +534,8 @@
     type: "LIMIT"
     zone: "fvg_50"
     confirmation_tf: "1m"
-  
+  setup_tf: "5m"
+
   stop_loss_logic:
     type: "FIXED"
     distance: "fvg_extreme"
@@ -620,7 +630,8 @@
 - playbook_name: "Session_Open_Scalp"
   category: "SCALP"
   description: "Scalp sur la première réaction d'ouverture London/NY"
-  
+  max_setups_per_session: 2
+
   enabled_in_modes:
     - "AGGRESSIVE"
   
@@ -658,7 +669,8 @@
     type: "MARKET"
     zone: "range_break"
     confirmation_tf: "1m"
-  
+  setup_tf: "5m"
+
   stop_loss_logic:
     type: "FIXED"
     distance: "opening_range"
@@ -749,3 +761,75 @@
       A_plus: 0.75
       A: 0.65
       B: 0.55
+
+# ============================================================================
+# PLAYBOOKS MASTER-ALIGNED (Phase 1 — Edge Discovery)
+# ============================================================================
+
+- playbook_name: "IFVG_5m_Sweep"
+  category: "DAYTRADE"
+  description: "MASTER Aplus_01/03 — IFVG 5m après sweep de liquidité, entrée 1m dans zone IFVG"
+  max_setups_per_session: 2
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  timefilters:
+    session: "NY"
+    time_range: ["09:30", "15:00"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "manipulation_reversal"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families:
+      - "engulfing"
+      - "pin_bar"
+      - "hammer"
+      - "shooting_star"
+      - "marubozu"
+    direction: "contrarian"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "pattern_close"
+    confirmation_tf: "1m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "SWING"
+    distance: "recent_swing"
+    padding_ticks: 2
+
+  take_profit_logic:
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.5
+
+  scoring:
+    weights:
+      fvg_quality: 0.30
+      liquidity_sweep: 0.20
+      bos_strength: 0.20
+      pattern_quality: 0.15
+      context_strength: 0.15
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.65
+      B: 0.50

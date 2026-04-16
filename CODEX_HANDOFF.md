@@ -441,25 +441,24 @@ Toutes les campagnes core-3 OOS (jun–nov 2025, SPY+QQQ) sont **négatives** :
 
 Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DENYLIST)
 
-| Playbook | Statut code | Verdict campagne |
-|----------|-------------|-----------------|
-| `NY_Open_Reversal` | ALLOWLIST | NOT_READY — fréquence aberrante 44/j, E[R] -0.030 sur WF |
-| `News_Fade` | ALLOWLIST | Gate REOPEN UNRESOLVED — E[R]≈-0.05, 94-100% session_end |
-| `FVG_Fill_Scalp` | ALLOWLIST | functional_but_limited — E[R] négatif OOS |
-| `Session_Open_Scalp` | ALLOWLIST | LAB ONLY — bloqué runtime edge |
-| `Morning_Trap_Reversal` | ALLOWLIST / quarantine YAML | -12R lab 24m |
-| `Liquidity_Sweep_Scalp` | ALLOWLIST / quarantine YAML | -9.8R |
-| `London_Sweep_NY_Continuation` | DENYLIST | -326R |
-| `Trend_Continuation_FVG_Retest` | DENYLIST | -22R |
-| `BOS_Momentum_Scalp` | DENYLIST | -142R |
-| `Power_Hour_Expansion` | DENYLIST | -31R |
-| `Lunch_Range_Scalp` | DISABLED | Toxique |
-| `DAY_Aplus_1_*` | DENYLIST | 0 trades (détection défaillante) |
-| `SCALP_Aplus_1_*` | DENYLIST | 6 trades, 0 win, -1.4R |
-| `IFVG_Flip_5m_Bull/Bear` | NON BRANCHÉ (research) | Smoke actif, aucune campagne OOS |
-| A+ transcripts | Non chargé | research_only |
+| Playbook | Statut code | Caps | WF 6 mois (jun-nov 2025) |
+|----------|-------------|------|--------------------------|
+| `NY_Open_Reversal` | ALLOWLIST | 2/session, setup_tf=5m | E[R] **-0.049**, 232 trades, WR 23%, PF 0.46 |
+| `News_Fade` | ALLOWLIST | 1/session | E[R] **-0.058**, 25 trades, WR 20%, PF 0.18 |
+| `FVG_Fill_Scalp` | ALLOWLIST | 3/session, setup_tf=5m | E[R] **-0.030**, 205 trades, WR 26%, PF 0.27 |
+| `Session_Open_Scalp` | ALLOWLIST | 2/session, setup_tf=5m | E[R] **-0.056**, 95 trades, WR 27%, PF 0.33 |
+| `Morning_Trap_Reversal` | ALLOWLIST | 2/session, setup_tf=5m | E[R] **-0.072**, 245 trades, WR 11%, PF 0.36 |
+| `Liquidity_Sweep_Scalp` | ALLOWLIST | 3/session, setup_tf=5m | E[R] **-0.052**, 375 trades, WR 29%, PF 0.27 |
+| `IFVG_5m_Sweep` | **ALLOWLIST (NEW)** | 2/session, setup_tf=5m | E[R] **-0.049**, 219 trades, WR 8%, PF 0.41 |
+| `London_Sweep_NY_Continuation` | DENYLIST | — | -326R |
+| `Trend_Continuation_FVG_Retest` | DENYLIST | — | -22R |
+| `BOS_Momentum_Scalp` | DENYLIST | — | -142R |
+| `Power_Hour_Expansion` | DENYLIST | — | -31R |
+| `Lunch_Range_Scalp` | DISABLED | — | Toxique |
+| `DAY_Aplus_1_*` | DENYLIST | — | 0 trades |
+| `SCALP_Aplus_1_*` | DENYLIST | — | -1.4R |
 
-**Résumé :** 0 playbook promu. 0 edge validé. Tout est en phase backtest crédible.
+**Verdict Phase 1 (2026-04-16) :** Tous les 7 playbooks ALLOWLIST sont négatifs sur WF 6 mois (1396 trades, E[R] global -0.052, WR 20.9%). Aucun edge trouvé malgré fixes Phase 0 (scoring, caps, TF). IFVG 5m (MASTER-aligné) aussi négatif que les legacy.
 
 ---
 
@@ -487,11 +486,98 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 
 ---
 
-## 9. Prochaine tâche unique recommandée
+## 9. Phase 0 — Fondations corrigées (2026-04-16)
 
-**Statut actuel : fix perf moteur revalidé sur HEAD courant ; campagne OOS IFVG 5m relancée et auditable.**
+Trois bugs fondamentaux rendaient la découverte d'edge impossible. Tous corrigés.
 
-Si on reprend plus tard, la suite logique n'est pas de refaire la même campagne à l'identique, mais de traiter la limite de couverture du split final ou d'ouvrir une nouvelle fenêtre de données. Le pipeline IFVG 5m reste actif et non validé comme edge.
+### 0A — Scoring cassé (liquidity_sweep_score=0.0 sur 100% des trades)
+
+**Cause racine :** Deux problèmes complémentaires :
+1. `smt_divergence` (poids 0.15 dans NY) est désactivé dans le code (lignes 1456-1463 de `engine.py`) → 0.15 de poids mort
+2. `liquidity_sweep` (poids 0.30) rarement détecté (conditions strictes de pivot sur 5m) → binaire 0/1
+3. Score max atteignable sans sweep ni SMT = 0.50, seuil B = 0.65 → **zéro trade grade B+**
+
+**Fix appliqué :**
+- `playbooks.yml` : redistribution des poids (smt_divergence retiré, liquidity_sweep réduit de 0.30→0.15, ajout bos_strength, seuils abaissés). Appliqué à NY, Morning_Trap, Liquidity_Sweep_Scalp, Trend_Continuation
+- `playbook_loader.py` L848-856 : sweep scoring graduel au lieu de binaire (partial credit 0.3 si BOS/FVG présents, strength réelle si sweep détecté)
+
+**Résultat :** Distribution de grades A+:15, A:19, B:35, C:28 (avant : 100% C)
+
+### 0B — Fréquence aberrante (44 trades/jour NY, max 148)
+
+**Fix appliqué :**
+- `PlaybookDefinition` : nouveau champ `max_setups_per_session: Optional[int]`
+- `BacktestEngine.run()` : tracker `session_trades_by_playbook` + enforcement avant `_execute_setup`
+- `_get_playbook_definition()` : helper avec cache pour lookup rapide
+- YAML caps : NY=2, News_Fade=1, Morning_Trap=2, LSS=3, FVG=3, Session_Open=2
+
+**Résultat :** NY passe de ~220 trades/semaine à 10 (2/jour * 5 jours)
+
+### 0C — Mismatch timeframe (patterns ICT cherchés sur 1m au lieu de 5m)
+
+**Fix appliqué :**
+- `PlaybookDefinition` : nouveau champ `setup_tf: Optional[str]`
+- `playbook_loader.py` L805-820 : filtre `effective_ict` par hiérarchie TF (setup_tf et au-dessus)
+- Toutes les refs `ict_patterns` dans le scoring (L875, 905, 919) → `effective_ict`
+- YAML : `setup_tf: "5m"` sur NY, Morning_Trap, LSS, FVG_Fill, Session_Open
+
+**Résultat smoke (nov 3-9 2025) :**
+
+| Playbook | Trades | E[R] | WR |
+|----------|--------|------|-----|
+| NY_Open_Reversal | 10 | **-0.005** (vs -0.030 avant) | 40% |
+| Morning_Trap_Reversal | 51→cappé 2/j | +0.048 (1 semaine, non validé) | 29% |
+| News_Fade | 2 | +0.073 | 100% |
+| FVG_Fill_Scalp | 15 | -0.170 | 7% |
+| Liquidity_Sweep_Scalp | 15 | -0.222 | 20% |
+| Session_Open_Scalp | 4 | -0.169 | 25% |
+
+NY quasi neutre avec caps — signal nettement meilleur. Scalps encore négatifs.
+
+---
+
+## 10. Phase 1 — Edge Discovery (2026-04-16)
+
+### Playbook IFVG_5m_Sweep créé
+
+**Concept MASTER (Aplus_01/03) :** HTF bias → 5m sweep de level → 5m IFVG (inversion de FVG) → 1m entrée
+- Détecteur IFVG déjà branché dans `detect_custom_patterns()` (L93)
+- Playbook ajouté à `playbooks.yml` : `setup_tf: "5m"`, `max_setups_per_session: 2`
+- Ajouté à `AGGRESSIVE_ALLOWLIST` dans `risk_engine.py`
+- Scoring : `fvg_quality: 0.30, liquidity_sweep: 0.20, bos_strength: 0.20, pattern_quality: 0.15, context_strength: 0.15`
+
+### Walk-forward 2 folds — TERMINÉ (2026-04-16)
+
+- Fold 1 (Jun-Aug 2025) : 692 trades, E[R]=-0.050, PF=0.35, WR=21.8%
+- Fold 2 (Sep-Nov 2025) : 704 trades, E[R]=-0.053, PF=0.30, WR=20.0%
+- Artefacts : `results/labs/mini_week/phase1_wf_all/phase1_s{0,1}_{jun_aug,sep_nov}/`
+
+### Résultats par playbook (6 mois combinés)
+
+| Playbook | Trades | E[R] | WR | PF |
+|----------|--------|------|-----|-----|
+| FVG_Fill_Scalp | 205 | -0.030 | 26% | 0.27 |
+| IFVG_5m_Sweep | 219 | -0.049 | 8% | 0.41 |
+| Liquidity_Sweep_Scalp | 375 | -0.052 | 29% | 0.27 |
+| Morning_Trap_Reversal | 245 | -0.072 | 11% | 0.36 |
+| NY_Open_Reversal | 232 | -0.049 | 23% | 0.46 |
+| News_Fade | 25 | -0.058 | 20% | 0.18 |
+| Session_Open_Scalp | 95 | -0.056 | 27% | 0.33 |
+| **Global** | **1396** | **-0.052** | **20.9%** | — |
+
+### Verdict Phase 1
+
+**Aucun playbook ne montre d'edge positif.** Les fixes Phase 0 (scoring graduel, caps fréquence, filtrage TF 5m) ont réduit le bruit mais n'ont pas révélé de signal. IFVG_5m_Sweep (MASTER Aplus_01/03, le candidat le plus prometteur) est aussi négatif que les legacy. Cela correspond au 30% de confiance du roadmap.
+
+---
+
+## 11. Prochaine tâche recommandée
+
+1. **Étendre data à 18+ mois** via Polygon provider (`scripts/providers/polygon_provider.py`) — 6 mois insuffisant pour significativité
+2. **Walk-forward 4+ folds** sur données étendues (jan 2024 — nov 2025)
+3. **Ablation systématique** sur NY_Open_Reversal (meilleur PF=0.46) : grade, heure, régime
+4. **Reconcevoir playbooks HTF** — le MASTER prescrit D/4H bias → 15m setup, pas seulement 5m
+5. **Si aucun edge après 18+ mois de data + playbooks HTF** → reconsidérer approche (autres instruments, ICT discrétionnaire vs systématique)
 
 ---
 
