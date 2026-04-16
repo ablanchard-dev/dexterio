@@ -11,14 +11,15 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Callable, Iterable, Optional, Sequence
 
 from models.market_data import MarketState
-from models.setup import Setup, PlaybookMatch, PatternDetection, CandlestickPattern
+from models.setup import Setup, PlaybookMatch, PatternDetection, CandlestickPattern, ICTPattern
 from utils.path_resolver import results_path, repo_root
 
 
@@ -53,6 +54,54 @@ def _git_sha_short() -> Optional[str]:
         return None
 
 
+def _jsonable(obj: Any) -> Any:
+    """
+    Best-effort conversion to JSON-serializable Python objects.
+    Keeps this module dependency-light (no custom encoders).
+    """
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, datetime):
+        return obj.astimezone(timezone.utc).isoformat()
+    if isinstance(obj, Path):
+        return str(obj)
+    if hasattr(obj, "model_dump"):
+        try:
+            return obj.model_dump(mode="json")
+        except Exception:
+            # Fall back to a plain dict view if possible.
+            try:
+                return dict(obj)
+            except Exception:
+                return str(obj)
+    if isinstance(obj, dict):
+        return {str(k): _jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_jsonable(v) for v in obj]
+    return str(obj)
+
+
+def _strip_ids(obj: Any) -> Any:
+    """
+    Remove volatile ids from nested dicts/lists to build stable fingerprints.
+    """
+    if isinstance(obj, list):
+        return [_strip_ids(v) for v in obj]
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            if k == "id":
+                continue
+            out[str(k)] = _strip_ids(v)
+        return out
+    return obj
+
+
+def _sha256_canonical_json(obj: Any) -> str:
+    dumped = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(dumped.encode("utf-8")).hexdigest()
+
+
 def candlestick_patterns_from_legacy_detections(detections: Sequence[PatternDetection]) -> list[CandlestickPattern]:
     """
     Minimal adapter: TradingPipeline legacy candlestick engine returns PatternDetection,
@@ -84,6 +133,301 @@ def candlestick_patterns_from_legacy_detections(detections: Sequence[PatternDete
             )
         )
     return out
+
+
+def _dump_playbook_matches_raw(matches: Sequence[Any]) -> list[dict[str, Any]]:
+    """
+    Snapshot-friendly dumping for legacy PlaybookEngine matches.
+
+    Note: `models.setup.PlaybookMatch` currently only stores a small subset of fields
+    (playbook_name/confidence/matched_conditions). We dump the model as-is to stay
+    consistent with what `TradingPipeline` actually sees today.
+    """
+    out: list[dict[str, Any]] = []
+    for m in list(matches or []):
+        if hasattr(m, "model_dump"):
+            out.append(m.model_dump(mode="json"))
+        elif isinstance(m, dict):
+            out.append(_jsonable(m))
+        else:
+            out.append({"playbook_name": getattr(m, "playbook_name", None)})
+    return out
+
+
+def _dump_patterns_raw(patterns: Sequence[Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for p in list(patterns or []):
+        if hasattr(p, "model_dump"):
+            out.append(p.model_dump(mode="json"))
+        elif isinstance(p, dict):
+            out.append(_jsonable(p))
+        else:
+            out.append({"pattern_type": getattr(p, "pattern_type", None), "timeframe": getattr(p, "timeframe", None)})
+    return out
+
+
+def _dump_liquidity_levels_raw(levels: Sequence[Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for lvl in list(levels or []):
+        if hasattr(lvl, "model_dump"):
+            row = lvl.model_dump(mode="json")
+            # sweep_details may include non-JSONable types; sanitize defensively.
+            if isinstance(row, dict) and row.get("sweep_details") is not None:
+                row["sweep_details"] = _jsonable(row.get("sweep_details"))
+            out.append(row)
+        elif isinstance(lvl, dict):
+            out.append(_jsonable(lvl))
+        else:
+            out.append({"price": getattr(lvl, "price", None), "level_type": getattr(lvl, "level_type", None)})
+    return out
+
+
+def build_shadow_input_snapshot_payload(
+    *,
+    symbol: str,
+    analysis_time: datetime,
+    trading_mode: str,
+    risk_engine_mode: str,
+    current_price: float,
+    market_state: MarketState,
+    ict_patterns: Sequence[ICTPattern],
+    candlestick_patterns: Sequence[PatternDetection],
+    liquidity_levels: Sequence[Any],
+    swept_levels: Sequence[Any],
+    playbook_matches: Sequence[Any],
+    policy_context: dict[str, Any],
+) -> dict[str, Any]:
+    core = {
+        "symbol": symbol,
+        "analysis_time_utc": analysis_time.astimezone(timezone.utc).isoformat(),
+        "trading_mode": trading_mode,
+        "risk_engine_mode": risk_engine_mode,
+        "current_price": float(current_price),
+        "market_state": market_state.model_dump(mode="json"),
+        "ict_patterns": _dump_patterns_raw(ict_patterns),
+        "candlestick_patterns": _dump_patterns_raw(candlestick_patterns),
+        "liquidity_levels": _dump_liquidity_levels_raw(liquidity_levels),
+        "swept_levels": _dump_liquidity_levels_raw(swept_levels),
+        "playbook_matches": _dump_playbook_matches_raw(playbook_matches),
+        "policy_context": _jsonable(policy_context),
+    }
+    fingerprint = _sha256_canonical_json(_strip_ids(core))
+    return {
+        "schema_version": "ShadowInputSnapshotV0",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git_sha": _git_sha_short(),
+        "input_fingerprint_sha256": fingerprint,
+        "input": core,
+    }
+
+
+@dataclass(frozen=True)
+class ShadowSnapshotWriteResult:
+    path: Path
+    payload: dict[str, Any]
+
+
+def write_shadow_input_snapshot(
+    payload: dict[str, Any],
+    *,
+    symbol: str,
+    analysis_time: datetime,
+    label: Optional[str] = None,
+    base_dir: Optional[Path] = None,
+) -> ShadowSnapshotWriteResult:
+    safe_label = _safe_token("shadow_label", label)
+    ts = analysis_time.astimezone(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    suffix = safe_label or "auto"
+    filename = f"shadow_input_snapshot_{symbol}_{ts}_{suffix}.json"
+
+    out_dir = base_dir if base_dir is not None else results_path("debug", "shadow_compare")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / filename
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return ShadowSnapshotWriteResult(path=path, payload=payload)
+
+
+def _is_playbook_allowed_from_policy_context(
+    *,
+    playbook_name: str,
+    policy_context: dict[str, Any],
+    risk_engine_mode: str,
+) -> tuple[bool, str]:
+    if not playbook_name:
+        return True, "OK"
+    if bool(policy_context.get("eval_allow_all_playbooks")):
+        return True, "RISK_EVAL_ALLOW_ALL_PLAYBOOKS=true"
+
+    denylist = set(policy_context.get("denylist") or [])
+    if playbook_name in denylist:
+        return False, f"Playbook '{playbook_name}' is in DENYLIST (destructeur)"
+
+    paper_flag = bool(policy_context.get("paper_use_wave1_playbooks"))
+    paper_allow = list(policy_context.get("paper_wave1_allowlist") or [])
+    if paper_flag and paper_allow and playbook_name not in set(paper_allow):
+        return False, f"Playbook '{playbook_name}' not in PAPER Wave1 allowlist"
+
+    if str(risk_engine_mode).upper() == "SAFE":
+        allow = set(policy_context.get("safe_allowlist") or [])
+        if playbook_name not in allow:
+            return False, f"Playbook '{playbook_name}' not in SAFE allowlist"
+    else:
+        allow = set(policy_context.get("aggressive_allowlist") or [])
+        if playbook_name not in allow:
+            return False, f"Playbook '{playbook_name}' not in AGGRESSIVE allowlist"
+
+    return True, "OK"
+
+
+def replay_shadow_comparison_from_snapshot(
+    snapshot_payload: dict[str, Any],
+    *,
+    legacy_score_setup: Optional[Callable[..., Optional[Setup]]] = None,
+    v2_generate_setups: Optional[Callable[..., Sequence[Setup]]] = None,
+    snapshot_path: Optional[Path] = None,
+    label: Optional[str] = None,
+    base_dir: Optional[Path] = None,
+) -> ShadowWriteResult:
+    """
+    Recompute legacy vs V2 shadow comparison from a serialized input snapshot.
+
+    This function must never fetch live data; it only uses the snapshot contents.
+    """
+    if snapshot_payload.get("schema_version") != "ShadowInputSnapshotV0":
+        raise ValueError(f"Unsupported snapshot schema_version: {snapshot_payload.get('schema_version')!r}")
+
+    raw = snapshot_payload.get("input") or {}
+    symbol = raw["symbol"]
+    analysis_time = datetime.fromisoformat(raw["analysis_time_utc"].replace("Z", "+00:00"))
+    trading_mode = str(raw.get("trading_mode") or "")
+    risk_engine_mode = str(raw.get("risk_engine_mode") or trading_mode)
+    current_price = float(raw["current_price"])
+
+    policy_context = dict(raw.get("policy_context") or {})
+    is_playbook_allowed = lambda name: _is_playbook_allowed_from_policy_context(  # noqa: E731
+        playbook_name=name, policy_context=policy_context, risk_engine_mode=risk_engine_mode
+    )
+
+    # Rehydrate models (only what the engines consume).
+    market_state = MarketState.model_validate(raw["market_state"])
+    ict_patterns = [ICTPattern.model_validate(p) for p in list(raw.get("ict_patterns") or [])]
+    candlestick_patterns = [PatternDetection.model_validate(p) for p in list(raw.get("candlestick_patterns") or [])]
+    liquidity_levels = []
+    from models.market_data import LiquidityLevel  # local import to keep top-level minimal
+    for lvl in list(raw.get("liquidity_levels") or []):
+        liquidity_levels.append(LiquidityLevel.model_validate(lvl))
+    swept_levels = []
+    for lvl in list(raw.get("swept_levels") or []):
+        swept_levels.append(LiquidityLevel.model_validate(lvl))
+    playbook_matches = [PlaybookMatch.model_validate(m) for m in list(raw.get("playbook_matches") or [])]
+
+    # Engines: allow injection for tests; default to real engines for the script usage.
+    if legacy_score_setup is None:
+        from engines.setup_engine import SetupEngine  # local import (no pipeline dependency)
+        legacy_engine = SetupEngine()
+        legacy_score_setup = legacy_engine.score_setup
+
+    if v2_generate_setups is None:
+        from engines.setup_engine_v2 import SetupEngineV2  # local import (no pipeline dependency)
+        v2_engine = SetupEngineV2()
+        v2_generate_setups = v2_engine.generate_setups
+
+    legacy_raw = legacy_score_setup(
+        symbol,
+        market_state,
+        ict_patterns,
+        candlestick_patterns,
+        playbook_matches,
+        swept_levels,
+        current_price,
+    )
+
+    # Apply the same legacy filtering contract as TradingPipeline.
+    legacy_final: list[Setup] = []
+    if legacy_raw is not None:
+        if trading_mode.upper() == "SAFE":
+            from engines.setup_engine import filter_setups_safe_mode
+            legacy_final = filter_setups_safe_mode([legacy_raw])
+        else:
+            from engines.setup_engine import filter_setups_aggressive_mode
+            legacy_final = filter_setups_aggressive_mode([legacy_raw])
+
+        accepted: list[Setup] = []
+        for s in legacy_final:
+            rejected = False
+            for m in list(s.playbook_matches or []):
+                allowed, _reason = is_playbook_allowed(getattr(m, "playbook_name", "") or "")
+                if not allowed:
+                    rejected = True
+                    break
+            if not rejected:
+                accepted.append(s)
+        legacy_final = accepted
+
+    # V2 shadow (same adapter as pipeline).
+    v2_raw = list(
+        v2_generate_setups(
+            symbol=symbol,
+            market_state=market_state,
+            ict_patterns=ict_patterns,
+            candle_patterns=candlestick_patterns_from_legacy_detections(candlestick_patterns),
+            liquidity_levels=liquidity_levels,
+            current_time=analysis_time,
+            trading_mode=trading_mode,
+            last_price=current_price,
+        )
+        or []
+    )
+    v2_candle_patterns = candlestick_patterns_from_legacy_detections(candlestick_patterns)
+
+    if trading_mode.upper() == "SAFE":
+        from engines.setup_engine import filter_setups_safe_mode
+        v2_final = filter_setups_safe_mode(list(v2_raw))
+    else:
+        from engines.setup_engine import filter_setups_aggressive_mode
+        v2_final = filter_setups_aggressive_mode(list(v2_raw))
+
+    accepted_v2: list[Setup] = []
+    for s in list(v2_final):
+        rejected = False
+        for m in list(s.playbook_matches or []):
+            allowed, _reason = is_playbook_allowed(getattr(m, "playbook_name", "") or "")
+            if not allowed:
+                rejected = True
+                break
+        if not rejected:
+            accepted_v2.append(s)
+    v2_final = accepted_v2
+
+    payload = build_shadow_comparison_payload(
+        symbol=symbol,
+        analysis_time=analysis_time,
+        trading_mode=trading_mode,
+        market_state=market_state,
+        current_price=current_price,
+        legacy_raw=legacy_raw,
+        legacy_final=list(legacy_final),
+        v2_raw=list(v2_raw),
+        v2_final=list(v2_final),
+        v2_error=None,
+        counts={
+            "candlestick_patterns_legacy": len(candlestick_patterns),
+            "candlestick_patterns_v2": len(v2_candle_patterns),
+            "ict_patterns": len(ict_patterns),
+            "liquidity_levels": len(liquidity_levels),
+            "legacy_playbook_matches": len(playbook_matches),
+            "v2_raw_setups": len(v2_raw),
+            "v2_final_setups": len(v2_final),
+            "legacy_final_setups": len(legacy_final),
+        },
+        is_playbook_allowed=is_playbook_allowed,
+    )
+    payload["input_snapshot"] = {
+        "path": str(snapshot_path) if snapshot_path else None,
+        "fingerprint_sha256": snapshot_payload.get("input_fingerprint_sha256"),
+    }
+    wr = write_shadow_comparison(payload, symbol=symbol, analysis_time=analysis_time, label=label, base_dir=base_dir)
+    return wr
 
 
 def _summarize_playbook_matches(matches: Sequence[PlaybookMatch]) -> list[dict[str, Any]]:
