@@ -78,6 +78,7 @@ backend/results/labs/mini_week/smoke_ifvg_5m/
 backend/results/labs/mini_week/debug_*/
 backend/results/labs/mini_week/*_probe_*/
 backend/results/labs/mini_week/*_postfix*/
+backend/results/debug/
 
 # Archive files and large assets
 **/*.zip

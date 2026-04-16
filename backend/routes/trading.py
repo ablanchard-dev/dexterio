@@ -247,13 +247,19 @@ async def get_liquidity_levels():
 
 
 @router.get("/setups", response_model=List[SetupResponse])
-async def get_setups():
+async def get_setups(
+    use_v2_shadow: bool = Query(False),
+    v2_shadow_label: Optional[str] = Query(None),
+):
     """Get detected setups"""
     try:
         pipeline = get_pipeline()
         
         # Run analysis
-        results = pipeline.run_full_analysis()
+        results = pipeline.run_full_analysis(
+            use_v2_shadow=use_v2_shadow,
+            v2_shadow_label=v2_shadow_label,
+        )
         
         setups = []
         for symbol, setup_list in results.items():
