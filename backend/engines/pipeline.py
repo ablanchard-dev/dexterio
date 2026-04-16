@@ -19,6 +19,7 @@ from engines.patterns.custom_detectors import (
 )
 from engines.playbooks import PlaybookEngine
 from engines.setup_engine import SetupEngine, filter_setups_safe_mode, filter_setups_aggressive_mode
+from engines.setup_engine_v2 import SetupEngineV2
 from engines.risk_engine import RiskEngine
 from engines.execution.paper_trading import ExecutionEngine
 from engines.journal import TradeJournal, PerformanceStats
@@ -26,6 +27,11 @@ from models.setup import Setup, ICTPattern
 from models.trade import Trade
 from config.settings import settings
 from utils.timeframes import get_session_info
+from utils.shadow_comparator import (
+    build_shadow_comparison_payload,
+    candlestick_patterns_from_legacy_detections,
+    write_shadow_comparison,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +49,9 @@ class TradingPipeline:
         self.ict_engine = ICTPatternEngine()
         self.playbook_engine = PlaybookEngine()
         self.setup_engine = SetupEngine()
+        # Shadow-only: SetupEngineV2 is the canonical backtest setup engine.
+        # In TradingPipeline it must never replace legacy decisions (shadow comparator only).
+        self.setup_engine_v2 = SetupEngineV2()
         
         # Phase 1.3 engines
         self.risk_engine = RiskEngine(initial_capital=initial_capital)
@@ -52,7 +61,38 @@ class TradingPipeline:
         
         logger.info("TradingPipeline initialized (Phase 1.1 + 1.2 + 1.3)")
     
-    def run_full_analysis(self, symbols: List[str] = None) -> Dict[str, List[Setup]]:
+    def _apply_canonical_policy_guard(
+        self,
+        *,
+        symbol: str,
+        setups: List[Setup],
+        warn_on_block: bool,
+        log_prefix: str,
+    ) -> List[Setup]:
+        accepted: List[Setup] = []
+        for s in setups:
+            rejected = False
+            for m in s.playbook_matches:
+                allowed, reason = self.risk_engine.is_playbook_allowed(m.playbook_name)
+                if not allowed:
+                    if warn_on_block:
+                        logger.warning(
+                            f"{log_prefix} {symbol}: setup blocked by canonical policy "
+                            f"(playbook='{m.playbook_name}', reason='{reason}')"
+                        )
+                    rejected = True
+                    break
+            if not rejected:
+                accepted.append(s)
+        return accepted
+
+    def run_full_analysis(
+        self,
+        symbols: List[str] = None,
+        *,
+        use_v2_shadow: bool = False,
+        v2_shadow_label: Optional[str] = None,
+    ) -> Dict[str, List[Setup]]:
         """
         Exécute le pipeline complet pour plusieurs symboles
         
@@ -77,6 +117,7 @@ class TradingPipeline:
         for symbol in symbols:
             try:
                 logger.info(f"\n--- Processing {symbol} ---")
+                analysis_time = datetime.now(timezone.utc)
                 
                 # ========== PHASE 1.1 ==========
                 
@@ -86,7 +127,7 @@ class TradingPipeline:
                 
                 # 2. Market State
                 logger.info("[2/8] Market State...")
-                session_info = get_session_info(datetime.now(timezone.utc))
+                session_info = get_session_info(analysis_time)
                 market_state = self.market_state_engine.create_market_state(
                     symbol, multi_tf_data,
                     {'current_session': session_info.get('name', 'unknown'), 'session_levels': {}}
@@ -176,7 +217,7 @@ class TradingPipeline:
                     market_state,
                     self.liquidity_engine,
                     ict_patterns,
-                    datetime.now(timezone.utc)
+                    analysis_time
                 )
                 
                 logger.info(f"  Matched {len(playbook_matches)} playbooks")
@@ -190,56 +231,103 @@ class TradingPipeline:
                     logger.warning(f"Could not get current price for {symbol}, skipping")
                     results[symbol] = []
                     continue
-                
-                setup = self.setup_engine.score_setup(
+
+                legacy_setup = self.setup_engine.score_setup(
                     symbol,
                     market_state,
                     ict_patterns,
                     candlestick_patterns,
                     playbook_matches,
                     swept_levels,
-                    current_price
+                    current_price,
                 )
-                
-                if not setup:
-                    logger.info("  No valid setup detected")
-                    results[symbol] = []
-                    continue
-                
-                # 8. Filtering selon mode
+
+                # 8. Filtering selon mode (legacy output)
                 logger.info("[8/8] Filtering...")
+                legacy_final: List[Setup] = []
+                if legacy_setup is not None:
+                    if settings.TRADING_MODE == "SAFE":
+                        legacy_final = filter_setups_safe_mode([legacy_setup])
+                    else:
+                        legacy_final = filter_setups_aggressive_mode([legacy_setup])
 
-                if settings.TRADING_MODE == 'SAFE':
-                    filtered_setups = filter_setups_safe_mode([setup])
-                else:
-                    filtered_setups = filter_setups_aggressive_mode([setup])
+                    legacy_final = self._apply_canonical_policy_guard(
+                        symbol=symbol,
+                        setups=legacy_final,
+                        warn_on_block=True,
+                        log_prefix="[P0]",
+                    )
 
-                # [P0] Canonical ALLOWLIST/DENYLIST guard.
-                # Enforces runtime policy (risk_engine.is_playbook_allowed) on each
-                # playbook match from PlaybookEngine.  Mirrors the check already
-                # present in evaluate_multi_asset_trade (risk_engine.py lines 864-868).
-                # setup.playbook_name is NOT used here because SetupEngine.score_setup()
-                # never populates it (always '').  Setups with no playbook_matches
-                # are not constrained by this guard.
-                canonical_setups = []
-                for s in filtered_setups:
-                    rejected = False
-                    for m in s.playbook_matches:
-                        allowed, reason = self.risk_engine.is_playbook_allowed(m.playbook_name)
-                        if not allowed:
-                            logger.warning(
-                                f"[P0] {symbol}: setup blocked by canonical policy "
-                                f"(playbook='{m.playbook_name}', reason='{reason}')"
-                            )
-                            rejected = True
-                            break
-                    if not rejected:
-                        canonical_setups.append(s)
-                filtered_setups = canonical_setups
+                # Shadow comparator (SetupEngineV2), strictly non-blocking.
+                if use_v2_shadow:
+                    v2_raw: List[Setup] = []
+                    v2_final: List[Setup] = []
+                    v2_error: Optional[str] = None
+                    v2_candle_patterns = []
+                    try:
+                        v2_candle_patterns = candlestick_patterns_from_legacy_detections(candlestick_patterns)
+                        v2_raw = self.setup_engine_v2.generate_setups(
+                            symbol=symbol,
+                            market_state=market_state,
+                            ict_patterns=ict_patterns,
+                            candle_patterns=v2_candle_patterns,
+                            liquidity_levels=liquidity_levels,
+                            current_time=analysis_time,
+                            trading_mode=settings.TRADING_MODE,
+                            last_price=current_price,
+                        )
+                        if settings.TRADING_MODE == "SAFE":
+                            v2_final = filter_setups_safe_mode(list(v2_raw))
+                        else:
+                            v2_final = filter_setups_aggressive_mode(list(v2_raw))
+                        v2_final = self._apply_canonical_policy_guard(
+                            symbol=symbol,
+                            setups=v2_final,
+                            warn_on_block=False,
+                            log_prefix="[SHADOW_V2]",
+                        )
+                    except Exception as e:
+                        v2_error = f"{type(e).__name__}: {e}"
+                        v2_raw = []
+                        v2_final = []
 
-                results[symbol] = filtered_setups
-                
-                logger.info(f"✓ {symbol} complete: {len(filtered_setups)} tradable setups")
+                    try:
+                        payload = build_shadow_comparison_payload(
+                            symbol=symbol,
+                            analysis_time=analysis_time,
+                            trading_mode=settings.TRADING_MODE,
+                            market_state=market_state,
+                            current_price=current_price,
+                            legacy_raw=legacy_setup,
+                            legacy_final=list(legacy_final),
+                            v2_raw=list(v2_raw),
+                            v2_final=list(v2_final),
+                            v2_error=v2_error,
+                            counts={
+                                "candlestick_patterns_legacy": len(candlestick_patterns),
+                                "candlestick_patterns_v2": len(v2_candle_patterns),
+                                "ict_patterns": len(ict_patterns),
+                                "liquidity_levels": len(liquidity_levels),
+                                "legacy_playbook_matches": len(playbook_matches) if playbook_matches else 0,
+                                "v2_raw_setups": len(v2_raw),
+                                "v2_final_setups": len(v2_final),
+                                "legacy_final_setups": len(legacy_final),
+                            },
+                            is_playbook_allowed=self.risk_engine.is_playbook_allowed,
+                        )
+                        wr = write_shadow_comparison(
+                            payload,
+                            symbol=symbol,
+                            analysis_time=analysis_time,
+                            label=v2_shadow_label,
+                        )
+                        logger.info(f"[SHADOW_V2] wrote comparison artefact: {wr.path}")
+                    except Exception as e:
+                        logger.warning(f"[SHADOW_V2] failed to write comparison artefact: {e}")
+
+                results[symbol] = legacy_final
+
+                logger.info(f"✓ {symbol} complete: {len(legacy_final)} tradable setups")
                 
             except Exception as e:
                 logger.error(f"Error processing {symbol}: {e}", exc_info=True)
