@@ -163,6 +163,8 @@ class BacktestResult(BaseModel):
     total_pnl_r: float
     
     # Equity curves
+    # equity_curve_r: cumulative pnl in R-account units (pnl_$ / base_r_unit_$).
+    # 1R = base_r_unit_dollars (2% of initial capital). Consistent with max_drawdown_r.
     equity_curve_r: List[float] = []
     equity_curve_dollars: List[float] = []
     equity_timestamps: List[datetime] = []
