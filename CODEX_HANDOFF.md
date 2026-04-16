@@ -175,11 +175,26 @@ proposerait, **sans** remplacer la décision legacy (shadow-only).
 - Fichier : `shadow_compare_<SYMBOL>_<YYYYMMDD_HHMMSS>_<label|auto>.json`
 - Schéma : `ShadowComparatorV0` (inclut legacy raw/final, v2 raw/final, policy evaluation, raisons de divergence).
 
+**Snapshot d’entrée (reproductible) :**
+- Fichier : `shadow_input_snapshot_<SYMBOL>_<YYYYMMDD_HHMMSS>_<label|auto>.json`
+- Schéma : `ShadowInputSnapshotV0`
+- Contenu minimal figé (repo-driven) : `market_state`, `ict_patterns`, `candlestick_patterns` (legacy), `liquidity_levels`,
+  `swept_levels`, `playbook_matches`, `current_price`, `analysis_time_utc` + `policy_context` + `input_fingerprint_sha256`.
+- Le JSON de comparaison inclut `input_snapshot.path` + `input_snapshot.fingerprint_sha256`.
+
+**Replay (sans yfinance / sans live pull) :**
+- Script : `backend/scripts/replay_shadow_snapshot.py`
+- Commande :
+  - `cd backend && .venv/bin/python scripts/replay_shadow_snapshot.py --snapshot <path/to/shadow_input_snapshot_*.json>`
+  - Optionnel (preuve) : `--compare-with <path/to/shadow_compare_*.json>` (retourne `normalized_equal=true/false`)
+
 **Non-bloquant (contrat) :**
 - Si `SetupEngineV2` crash : legacy continue, `v2_shadow.error` est rempli, un artefact est quand même tenté.
 - Aucune mutation de la sortie legacy (tests dédiés).
 
-**Commit :** `d509ad5` — `feat(shadow): add legacy vs V2 setup comparator`
+**Commits :**
+- `d509ad5` — `feat(shadow): add legacy vs V2 setup comparator`
+- `1e684ea` — `feat(shadow): snapshot input + replay comparator`
 
 ---
 
