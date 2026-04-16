@@ -459,7 +459,7 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 | `DAY_Aplus_1_*` | DENYLIST | — | 0 trades |
 | `SCALP_Aplus_1_*` | DENYLIST | — | -1.4R |
 
-**Verdict Phase 1C (2026-04-16) :** Dynamic SL + pattern persistence + strict 15m TF. HTF_Bias_15m_BOS **seul positif** (E[R]+0.022, 22 trades fold s0). Phantom SL = breakeven stops (46%), pas un bug. Scoring zéro pouvoir prédictif (r=0.003). Global toujours négatif (E[R]-0.059, 416 trades s0). Fold s1 en cours.
+**Verdict Phase 1D (2026-04-16) :** Breakeven fix (0.5R→1.0R) = changement majeur. Smoke 1 sem : **E[R]+0.002** (était -0.059). HTF_Bias E[R]+0.26, IFVG E[R]+0.27. Phantom SL 46%→30%. WF complet nécessaire pour confirmer.
 
 ---
 
@@ -644,16 +644,41 @@ NY quasi neutre avec caps — signal nettement meilleur. Scalps encore négatifs
 
 Agent analysis: Pearson r=0.003 (p=0.96) entre score et performance. Aucun re-weighting ne peut corriger — les composants eux-mêmes ne mesurent pas la qualité de trade. Le scoring doit être reconstruit ou désactivé.
 
+### Phase 1D — Breakeven trigger fix (2026-04-16)
+
+**Root cause :** 46% des SL = breakeven stops au trigger 0.5R (trop agressif). Chaque breakeven = perte de coûts pure (~-0.07R net).
+
+**Fix :**
+1. `paper_trading.py` : tous les playbooks lisent `breakeven_at_rr` du YAML (plus seulement Phase3B)
+2. `playbooks.yml` : 6 playbooks SCALP relevés de 0.5R → 1.0R
+3. Fallback update loop : 0.5R → 1.0R
+
+**Smoke test 1 semaine (Sep 8-15, 2025) — 79 trades :**
+
+| Playbook | Trades | E[R] | WR |
+|----------|--------|------|-----|
+| **HTF_Bias_15m_BOS** | **4** | **+0.263** | **75%** |
+| **IFVG_5m_Sweep** | **12** | **+0.266** | **67%** |
+| Session_Open_Scalp | 8 | +0.018 | 25% |
+| FVG_Fill_Scalp | 13 | -0.036 | 46% |
+| Morning_Trap_Reversal | 12 | -0.068 | 33% |
+| Liquidity_Sweep_Scalp | 18 | -0.074 | 22% |
+| NY_Open_Reversal | 12 | -0.137 | 0% |
+| **Global** | **79** | **+0.002** | — |
+
+**E[R] global : -0.059 → +0.002. PF : 0.40 → 1.02.** IFVG et HTF_Bias passent de négatifs à fortement positifs. Phantom SL : 46% → 30%. C'est le fix le plus impactant du projet.
+
+⚠️ **Caveat :** 1 semaine, 79 trades = trop peu pour conclure. WF complet nécessaire.
+
 ---
 
 ## 11. Prochaine tâche recommandée
 
-1. **Valider HTF_Bias_15m_BOS fold s1** — résultats en cours, si positif = premier candidat edge
-2. **Augmenter breakeven trigger 0.5R → 1.0R** — réduit les 46% de phantom SL, impact positif net potentiel
-3. **Obtenir clé Polygon + télécharger 18+ mois** → `bash scripts/download_polygon_18m.sh`
-4. **Walk-forward 4+ folds** sur données étendues si HTF_Bias confirme
-5. **Désactiver ou reconstruire scoring** — zéro pouvoir prédictif confirmé
-6. **Si aucun edge après WF étendu** → reconsidérer approche (autres instruments ou discrétionnaire)
+1. **WF complet 2 folds avec breakeven fix** — valider que E[R]≥0 tient sur 6 mois
+2. **Obtenir clé Polygon + télécharger 18+ mois** → `bash scripts/download_polygon_18m.sh`
+3. **Walk-forward 4+ folds** sur données étendues (jan 2024 — nov 2025)
+4. **Désactiver scoring** — zéro pouvoir prédictif, phase 1D confirme que grade C > grade A+
+5. **Si E[R]≥0 sur WF 6 mois** → Passer à Phase 2 (DecisionKernel convergence)
 
 ---
 
