@@ -208,12 +208,35 @@ class TradingPipeline:
                 
                 # 8. Filtering selon mode
                 logger.info("[8/8] Filtering...")
-                
+
                 if settings.TRADING_MODE == 'SAFE':
                     filtered_setups = filter_setups_safe_mode([setup])
                 else:
                     filtered_setups = filter_setups_aggressive_mode([setup])
-                
+
+                # [P0] Canonical ALLOWLIST/DENYLIST guard.
+                # Enforces runtime policy (risk_engine.is_playbook_allowed) on each
+                # playbook match from PlaybookEngine.  Mirrors the check already
+                # present in evaluate_multi_asset_trade (risk_engine.py lines 864-868).
+                # setup.playbook_name is NOT used here because SetupEngine.score_setup()
+                # never populates it (always '').  Setups with no playbook_matches
+                # are not constrained by this guard.
+                canonical_setups = []
+                for s in filtered_setups:
+                    rejected = False
+                    for m in s.playbook_matches:
+                        allowed, reason = self.risk_engine.is_playbook_allowed(m.playbook_name)
+                        if not allowed:
+                            logger.warning(
+                                f"[P0] {symbol}: setup blocked by canonical policy "
+                                f"(playbook='{m.playbook_name}', reason='{reason}')"
+                            )
+                            rejected = True
+                            break
+                    if not rejected:
+                        canonical_setups.append(s)
+                filtered_setups = canonical_setups
+
                 results[symbol] = filtered_setups
                 
                 logger.info(f"✓ {symbol} complete: {len(filtered_setups)} tradable setups")
