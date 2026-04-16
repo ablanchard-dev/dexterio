@@ -1,7 +1,8 @@
 # CODEX_HANDOFF.md
 # DexterioBOT — Handoff pour Codex / nouvelle session
 # Dernière mise à jour : 2026-04-16
-# HEAD (guard canonique pipeline commité) : 18fc973
+# HEAD (stabilisation repo-driven) : 31b4957
+# Guard canonique pipeline (ALLOWLIST/DENYLIST) : 18fc973
 
 ---
 
@@ -9,9 +10,15 @@
 
 - Branche : `main`
 - HEAD actuel (source de vérité) : exécuter `git rev-parse --short HEAD`
+- Stabilisation (ce repo reflète désormais les passes validées par tests, sans artefacts) :
+  - `4bd024c` — `fix(kpi): lock expectancy/PF/MaxDD defs`
+  - `fc03028` — `fix(sweep): wire liquidity_sweep plumbing`
+  - `c0fe1d2` — `chore(ui): add walk-forward backtest job protocol`
+  - `31511b5` — `test(kpi): add convergence regression coverage`
+  - `31b4957` — `chore(git): ignore local-generated backtest artefacts`
 - UI jobs → artefacts ladder-min (manifest + mini_lab_summary) : commit `7da796e`
 - UI jobs → protocoles explicites (`JOB` vs `MINI_LAB_WEEK`) : voir les commits suivants (`git log -5 --oneline`)
-- **Statut worktree :** repo historiquement "sale" (beaucoup de fichiers/artefacts hors scope). Ne pas les nettoyer ni les revert sans demande explicite.
+- **Statut worktree :** le code est propre ; des artefacts locaux non commités peuvent exister mais sont maintenant ignorés (voir `.gitignore` commit `31b4957`).
 - **Cartographie FULL (repo-driven, versionnée) :**
   - JSON canonique : `backend/results/full_portfolio_map/full_portfolio_map.json`
   - Vue lisible : `backend/docs/FULL_PORTFOLIO_MAP.md`
@@ -151,6 +158,8 @@
 ## 2b. Pasées antérieures (2026-04-14)
 
 ### P1b — Fix sweep scoring (plomberie)
+
+**Commit (stabilisation repo-driven, 2026-04-16) :** `fc03028` — `fix(sweep): wire liquidity_sweep plumbing`
 
 **Deux bugs code corrigés :**
 
