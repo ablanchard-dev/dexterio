@@ -243,7 +243,35 @@ APRÈS (fix) :
 | D6 | Naming : `"London_Sweep"` vs `"London_Sweep_NY_Continuation"` | NAMING | bloqué ALLOWLIST |
 | D7 | HTF aggregation pandas batch vs TimeframeAggregator | POTENTIELLE | non mesurable |
 
-**Prochaine étape logique :** activer `use_v2_shadow=True` sur un appel réel et mesurer les divergences D3/D5 sur vrais artefacts.
+**Passe de mesure réelle (2026-04-16) — commit `3f2809f` :**
+
+- Premier probe réel exécuté : `scripts/run_shadow_probe.py --label probe_v2_20260416`
+- 4 artefacts produits dans `backend/results/debug/shadow_compare/` (gitignored)
+- Session Asia (06:32 UTC), SAFE mode, SPY @ 699.84 / QQQ @ 637.36
+
+**Ce que les artefacts réels montrent :**
+
+| Symbole | Legacy raw | Legacy final | V2 raw | V2 final | Divergence |
+|---------|-----------|--------------|--------|----------|-----------|
+| SPY | C (ict=0.00 pat=1.00) | 0 (SAFE A+) | 0 | 0 | both_empty |
+| QQQ | C (ict=0.28 pat=0.49) | 0 (SAFE A+) | 0 | 0 | both_empty |
+
+**Divergence D5 confirmée (session asymmetry) :**
+- Legacy produit un raw setup (quality C) via candlestick Priorité 3 — sans condition de session
+- V2 ne produit rien — tous les YAML playbooks ont des conditions de session (NY/London)
+- En Asia session: legacy faux-positif C, V2 correct silence
+- Sans le filtre SAFE (A+ requis), legacy produirait des setups en Asia → signal fantôme
+
+**D1+D2 fix opérationnel (preuve réelle) :**
+- Before fix: score_setup() aurait crashé si playbook_matches non vide
+- Ici: playbook_matches=0 (Asia), pas de crash, setup raw C produit normalement via ICT/candlestick
+
+**D8 (nouveau, corrigé) :**
+- `_summarize_setup()` ne stockait pas ict_score/pattern_score/playbook_score → None dans les artefacts
+- Corrigé dans `3f2809f` : ces 3 champs sont maintenant exposés dans les artefacts shadow
+
+**Prochaine étape logique :** exécuter probe pendant NY session (13:30-16:00 UTC) pour observer D3 (V2 over-génère) et D5 (scoring poids fixes vs YAML).
+Commande : `cd backend && .venv/bin/python scripts/run_shadow_probe.py --label probe_ny_<date>`
 
 ---
 
