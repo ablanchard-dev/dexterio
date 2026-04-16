@@ -163,10 +163,20 @@ Différences structurelles majeures vs BacktestEngine :
   `NY_Open_Reversal` passe. Setups sans playbook_matches passent (pas de contrainte policy sans match).
 - Tests : `backend/tests/test_pipeline_canonical_guard.py` — 11 cas, 11 passés.
 
+**Fix D1+D2 (2026-04-16) — commit `b56b982` :**
+- `calculate_playbook_score()` utilisait `p.match_score` (inexistant sur `PlaybookMatch`) → crash.
+  Corrigé : utilise `p.confidence` (champ réel du modèle).
+- `_determine_direction()` Priorité 1 utilisait `p.match_score` et `p.direction` (tous deux inexistants).
+  Corrigé : branche supprimée. Direction vient du BOS ICT (Prio 2) puis candlestick (Prio 3).
+- Avant ce fix : `SetupEngine` produisait 0 setup pour 75% des scénarios (playbook_matches non vide).
+- Après : peut produire des setups, divergences D3-D7 deviennent mesurables sur vrais artefacts shadow.
+- Tests : `backend/tests/test_setup_engine_direction.py` — 14 cas, 14 passés.
+
 **Ce qui reste divergent :**
-- Scoring : `SetupEngine` (poids fixes) ≠ `SetupEngineV2` (YAML, named components, grade_thresholds).
+- Scoring : `SetupEngine` (poids fixes, `confidence`) ≠ `SetupEngineV2` (YAML, named components, grade_thresholds).
 - HTF aggregation : `DataFeedEngine.aggregate_to_higher_tf` (pandas batch) ≠ `TimeframeAggregator` (incrémental).
 - `setup.playbook_name` toujours `''` côté legacy (non corrigé, non bloquant pour le guard).
+- V2 over-génère (10 raw setups invariants par input, `Liquidity_Sweep_Scalp` dominant) — mesurable maintenant.
 
 Conclusion : **le cockpit UI backtest** doit piloter le chemin **BacktestEngine**, pas `TradingPipeline`.
 

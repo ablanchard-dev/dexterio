@@ -206,19 +206,25 @@ proposerait, **sans** remplacer la décision legacy (shadow-only).
 
 **Contexte :** zéro snapshot réel dans `backend/results/debug/shadow_compare/` (plomberie en place, jamais activée). Diagnostic construit sur 8 scénarios synthétiques.
 
-**Bug bloquant confirmé (D1+D2) — `backend/engines/setup_engine.py` :**
+**Bug bloquant confirmé et corrigé (D1+D2) — `backend/engines/setup_engine.py` — commit `b56b982` :**
 
 ```
-_score_playbook_match() ligne 104 :
-    best_match = max(playbook_matches, key=lambda p: p.match_score)  ← AttributeError
-_determine_direction() ligne 218 :
-    best_playbook = max(playbook_matches, key=lambda p: p.match_score)  ← AttributeError
-    return best_playbook.direction                                         ← double bug
+AVANT (crash) :
+  _score_playbook_match() ligne 104 :
+      best_match = max(playbook_matches, key=lambda p: p.match_score)  ← AttributeError
+  _determine_direction() :
+      best_playbook = max(playbook_matches, key=lambda p: p.match_score)  ← AttributeError
+      return best_playbook.direction                                         ← double bug
+
+APRÈS (fix) :
+  calculate_playbook_score() : utilise p.confidence (champ réel PlaybookMatch)
+  _determine_direction() : branche Priorité 1 supprimée ;
+      direction vient du BOS ICT (Prio 2) puis candlestick (Prio 3)
 ```
 
-`PlaybookMatch` (models/setup.py lignes 74-78) : champs réels = `playbook_name`, `confidence`, `matched_conditions`. Ni `match_score` ni `direction` n'existent. Dead code path depuis la création du modèle.
+**Tests :** `backend/tests/test_setup_engine_direction.py` — 14 cas, 14 passés.
 
-**Distribution sur 8 scénarios synthétiques :**
+**Distribution sur 8 scénarios synthétiques (avant fix) :**
 
 | Catégorie | Count | Description |
 |-----------|-------|-------------|
@@ -226,24 +232,18 @@ _determine_direction() ligne 218 :
 | `legacy_quality_filtered` | 1/8 (12%) | playbook_matches=[] + BOS + candlestick → score C → rejeté |
 | `both_empty` | 1/8 (12%) | aucun signal → direction=None → 0 setup |
 
-**V2 invariant :** 10 raw setups sur tout input ; final = `Liquidity_Sweep_Scalp` A+ 0.845 systématiquement.
+**Inventaire divergences (restantes après D1+D2) :**
 
-**Inventaire divergences :**
-
-| ID | Divergence | Sévérité | Fréquence |
-|----|-----------|----------|-----------|
-| D1+D2 | `PlaybookMatch.match_score`/`.direction` inexistants → crash `_determine_direction` | BLOQUANTE | 75% |
-| D3 | V2 over-génère (10 setups/input, score invariant) | STRUCTURELLE | 100% |
-| D4 | `setup.playbook_name` toujours `''` (corrigé par P0-Guard via `playbook_matches`) | FONCTIONNELLE | 100% |
-| D5 | Scoring poids fixes (legacy) vs composants YAML (V2) | CONCEPTUELLE | N/A |
-| D6 | Naming : `"London_Sweep"` (legacy) vs `"London_Sweep_NY_Continuation"` (DENYLIST) | NAMING | partielle |
+| ID | Divergence | Sévérité | Statut |
+|----|-----------|----------|--------|
+| D1+D2 | `PlaybookMatch.match_score`/`.direction` inexistants → crash | BLOQUANTE | **CORRIGÉ** `b56b982` |
+| D3 | V2 over-génère (10 setups/input, score invariant) | STRUCTURELLE | mesurable maintenant |
+| D4 | `setup.playbook_name` toujours `''` | FONCTIONNELLE | contourné par P0-Guard |
+| D5 | Scoring poids fixes (legacy) vs composants YAML (V2) | CONCEPTUELLE | mesurable maintenant |
+| D6 | Naming : `"London_Sweep"` vs `"London_Sweep_NY_Continuation"` | NAMING | bloqué ALLOWLIST |
 | D7 | HTF aggregation pandas batch vs TimeframeAggregator | POTENTIELLE | non mesurable |
 
-**Décision (passe suivante) :**
-
-`fix(setup_engine): repair _determine_direction crash (D1+D2)`
-
-Scope : supprimer/remplacer la branche "Priorité 1" de `_determine_direction()` et `_score_playbook_match()` pour utiliser `confidence` au lieu de l'attribut inexistant `match_score`. Patch minimal, 2 fonctions, ~4 lignes. Déblocage de toute comparaison legacy vs V2 sur scénarios réels.
+**Prochaine étape logique :** activer `use_v2_shadow=True` sur un appel réel et mesurer les divergences D3/D5 sur vrais artefacts.
 
 ---
 
