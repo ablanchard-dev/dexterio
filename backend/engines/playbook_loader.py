@@ -105,6 +105,14 @@ class PlaybookDefinition:
         # Max duration (pour scalps)
         self.max_duration_minutes = data.get('max_duration_minutes')
 
+        # Max setups per session (frequency cap per trading day)
+        # None = unlimited (legacy behavior)
+        self.max_setups_per_session: Optional[int] = data.get('max_setups_per_session')
+
+        # Setup timeframe — which TF to use for pattern detection (sweep/FVG/BOS).
+        # None = use all available TFs (legacy). "5m"/"15m" = prefer patterns from that TF.
+        self.setup_tf: Optional[str] = data.get('setup_tf')
+
         # Signaux obligatoires (ex : ["IFVG_BEAR@5m", "OB_BULL@15m"]).
         # Si présents, le playbook n'est considéré que si TOUS ces signaux
         # sont détectés par les moteurs de patterns.  Absent ou liste vide = aucun filtre.
@@ -794,11 +802,27 @@ class PlaybookEvaluator:
             if playbook.structure_htf and structure not in playbook.structure_htf and structure != 'unknown':
                 bypasses_applied.append(f'structure_htf_mismatch:{structure}_not_in_{playbook.structure_htf}')
         
+        # Phase 0C: Filter ICT patterns by setup_tf if defined.
+        # Prefer patterns from the playbook's setup timeframe, but also accept
+        # patterns from higher timeframes (a 15m BOS is valid for a 5m playbook).
+        tf_hierarchy = ["1m", "5m", "10m", "15m", "1h", "4h", "1d"]
+        effective_ict = ict_patterns
+        if getattr(playbook, 'setup_tf', None):
+            target_tf = playbook.setup_tf.lower()
+            target_idx = tf_hierarchy.index(target_tf) if target_tf in tf_hierarchy else 0
+            effective_ict = [
+                p for p in ict_patterns
+                if getattr(p, 'timeframe', '1m').lower() in tf_hierarchy[target_idx:]
+            ]
+            # Fallback: if filtering removed everything, use all patterns
+            if not effective_ict and ict_patterns:
+                effective_ict = ict_patterns
+
         # 3. Vérifier ICT confluences (assoupli en mode labo AGGRESSIVE)
-        has_sweep = any(p.pattern_type in ("sweep", "liquidity_sweep") for p in ict_patterns)
-        has_fvg = any(p.pattern_type == 'fvg' for p in ict_patterns)
-        has_bos = any(p.pattern_type == 'bos' for p in ict_patterns)
-        has_smt = any(p.pattern_type == 'smt' for p in ict_patterns)
+        has_sweep = any(p.pattern_type in ("sweep", "liquidity_sweep") for p in effective_ict)
+        has_fvg = any(p.pattern_type == 'fvg' for p in effective_ict)
+        has_bos = any(p.pattern_type == 'bos' for p in effective_ict)
+        has_smt = any(p.pattern_type == 'smt' for p in effective_ict)
 
         # Debug : initialiser les composantes pour DAY A+
         debug_components = {
@@ -816,9 +840,9 @@ class PlaybookEvaluator:
         # require_sweep / require_bos pour éviter d'étouffer tous les playbooks
         # tant que les moteurs de sweep/day_type ne sont pas pleinement câblés.
         # On exige simplement au moins un pattern ICT présent (relaxé en AGGRESSIVE).
-        if not is_backtest_aggressive and not ict_patterns:
+        if not is_backtest_aggressive and not effective_ict:
             return None, None
-        elif is_backtest_aggressive and not ict_patterns:
+        elif is_backtest_aggressive and not effective_ict:
             bypasses_applied.append('ict_patterns_empty')
         
         # 4. Vérifier patterns candlestick OBLIGATOIRES (relaxé en AGGRESSIVE)
@@ -846,7 +870,13 @@ class PlaybookEvaluator:
             criterion_score = 0.0
             
             if criterion == 'liquidity_sweep':
-                criterion_score = 1.0 if has_sweep else 0.0
+                if has_sweep:
+                    # Use actual strength from the detected sweep pattern
+                    sweep_patterns = [p for p in effective_ict if p.pattern_type in ("sweep", "liquidity_sweep")]
+                    criterion_score = max(p.strength for p in sweep_patterns) if sweep_patterns else 1.0
+                else:
+                    # Partial credit if other ICT confluences present (BOS near liquidity)
+                    criterion_score = 0.3 if (has_bos or has_fvg) else 0.0
                 debug_components['liquidity_sweep_score'] = criterion_score
             
             elif criterion == 'pattern_quality':
@@ -872,7 +902,7 @@ class PlaybookEvaluator:
             
             elif criterion == 'bos_strength':
                 if has_bos:
-                    bos_patterns = [p for p in ict_patterns if p.pattern_type == 'bos']
+                    bos_patterns = [p for p in effective_ict if p.pattern_type == 'bos']
                     if bos_patterns:
                         raw_strength = bos_patterns[0].strength
                         # CORRECTIF: Si détecté mais strength=0, appliquer un plancher de 0.3
@@ -886,7 +916,7 @@ class PlaybookEvaluator:
             
             elif criterion == 'fvg_quality':
                 if has_fvg:
-                    fvg_patterns = [p for p in ict_patterns if p.pattern_type == 'fvg']
+                    fvg_patterns = [p for p in effective_ict if p.pattern_type == 'fvg']
                     if fvg_patterns:
                         raw_strength = fvg_patterns[0].strength
                         # CORRECTIF: Si détecté mais strength=0, appliquer un plancher de 0.3

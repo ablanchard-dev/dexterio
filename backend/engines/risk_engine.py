@@ -46,6 +46,8 @@ AGGRESSIVE_ALLOWLIST = [
     'Morning_Trap_Reversal',
     'Liquidity_Sweep_Scalp',
     'FVG_Fill_Scalp',
+    # Phase 1: MASTER-aligned playbook (IFVG 5m, Aplus_01/03)
+    'IFVG_5m_Sweep',
 ]
 
 # Playbooks DÉSACTIVÉS (destructeurs ou non calibrés)

@@ -854,6 +854,10 @@ class BacktestEngine:
         opened_symbols_this_minute = set()
         opened_count_this_minute = 0
 
+        # Phase 0B: Session frequency cap — tracks trades per playbook per session-date
+        # Key: (playbook_name, session_date_str) → count
+        session_trades_by_playbook: Dict[Tuple[str, str], int] = {}
+
         # Loop chronologique (désactiver logs fréquents pour perf)
         log_interval = max(1000, len(minutes) // 10)  # Log tous les 10% ou min 1000
         for idx, current_time in enumerate(minutes):
@@ -948,6 +952,18 @@ class BacktestEngine:
                 all_setups_to_try = daily_setups_sorted + scalp_setups_sorted
                 
                 for setup in all_setups_to_try:
+                    # Phase 0B: Check session frequency cap (max_setups_per_session)
+                    pb_name = setup.playbook_name or "unknown"
+                    session_date_str = current_time.strftime("%Y-%m-%d")
+                    session_cap_key = (pb_name, session_date_str)
+                    pb_def = self._get_playbook_definition(pb_name)
+                    if pb_def and pb_def.max_setups_per_session is not None:
+                        current_count = session_trades_by_playbook.get(session_cap_key, 0)
+                        if current_count >= pb_def.max_setups_per_session:
+                            self.debug_counts.setdefault("blocked_by_session_cap", 0)
+                            self.debug_counts["blocked_by_session_cap"] += 1
+                            continue
+
                     # P0.3: Vérifier cap par symbole (1 trade max par symbole par minute)
                     if setup.symbol in opened_symbols_this_minute:
                         self.debug_counts["blocked_by_per_minute_cap"] += 1
@@ -969,6 +985,8 @@ class BacktestEngine:
                         if trade_opened:
                             opened_symbols_this_minute.add(setup.symbol)
                             opened_count_this_minute += 1
+                            # Phase 0B: Increment session frequency counter
+                            session_trades_by_playbook[session_cap_key] = session_trades_by_playbook.get(session_cap_key, 0) + 1
                             
                             # Instrumentation: compter trades par minute
                             minute_key_str = minute_key.isoformat()
@@ -1659,6 +1677,14 @@ class BacktestEngine:
         
         return patterns
     
+    def _get_playbook_definition(self, playbook_name: str):
+        """Lookup PlaybookDefinition by name from the setup engine's loader."""
+        if not hasattr(self, '_playbook_def_cache'):
+            self._playbook_def_cache = {}
+            for pb in self.setup_engine.playbook_loader.playbooks:
+                self._playbook_def_cache[pb.name] = pb
+        return self._playbook_def_cache.get(playbook_name)
+
     def _execute_setup(self, setup: Setup, current_time: datetime) -> bool:
         """
         Exécute un setup (via RiskEngine + ExecutionEngine) avec 2R/1R money management.
