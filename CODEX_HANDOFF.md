@@ -459,7 +459,7 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 | `DAY_Aplus_1_*` | DENYLIST | — | 0 trades |
 | `SCALP_Aplus_1_*` | DENYLIST | — | -1.4R |
 
-**Verdict Phase 1 (2026-04-16) :** 8 playbooks ALLOWLIST, tous négatifs sur WF 6 mois. HTF_Bias_15m_BOS = 0 trades (trop rare). 7 actifs = 1396 trades, E[R] global -0.052. **Seul signal positif : NY grade B (score 0.50-0.65) = E[R]+0.056, PF 1.89 sur 22 trades.** Scoring inversé confirmé (grade A/A+ performent pire que B).
+**Verdict Phase 1C (2026-04-16) :** Dynamic SL + pattern persistence + strict 15m TF. HTF_Bias_15m_BOS **seul positif** (E[R]+0.022, 22 trades fold s0). Phantom SL = breakeven stops (46%), pas un bug. Scoring zéro pouvoir prédictif (r=0.003). Global toujours négatif (E[R]-0.059, 416 trades s0). Fold s1 en cours.
 
 ---
 
@@ -593,16 +593,67 @@ NY quasi neutre avec caps — signal nettement meilleur. Scalps encore négatifs
 - Télécharge jan 2024 → mai 2025 via Polygon, fusionne avec données existantes
 - En attente de clé API Polygon (`export POLYGON_API_KEY=...`)
 
+### Phase 1C — Fixes structurels (2026-04-16)
+
+**3 fixes appliqués :**
+
+1. **Dynamic SL (ICT pattern levels)** — `setup_engine_v2.py` L352-384
+   - SL basé sur `price_level` des ICT patterns au lieu de fixe 0.5%
+   - Clamps : min 0.2%, max 2.0% de distance
+   - Fallback : 0.5% si aucun pattern avec price_level
+
+2. **Pattern persistence** — `engine.py` L1132-1165
+   - ICT/candle patterns persistaient seulement sur la barre de close 5m/15m, reset à [] sur les autres barres 1m
+   - Fix : `_last_ict_patterns` / `_last_candle_patterns` persistent entre les barres 1m
+   - Résultat : HTF_Bias_15m_BOS passe de 0 → 22 trades
+
+3. **Strict 15m TF enforcement** — `playbook_loader.py` L817-847
+   - AGGRESSIVE mode bypassait les conditions ICT patterns vides pour TOUS les playbooks
+   - Fix : pour `setup_tf >= 15m`, aucun bypass même en AGGRESSIVE → filtrage strict
+   - Empêche les 23k faux matches HTF_Bias
+
+**Phase 1C WF Fold s0 (Aug 30 → Oct 14, 2025) — 416 trades :**
+
+| Playbook | Trades | E[R] | WR | PF |
+|----------|--------|------|-----|-----|
+| FVG_Fill_Scalp | 70 | -0.060 | 20% | — |
+| **HTF_Bias_15m_BOS** | **22** | **+0.022** | **18%** | — |
+| IFVG_5m_Sweep | 59 | -0.066 | 9% | — |
+| Liquidity_Sweep_Scalp | 93 | -0.060 | 29% | — |
+| Morning_Trap_Reversal | 62 | -0.066 | 11% | — |
+| NY_Open_Reversal | 61 | -0.061 | 16% | — |
+| News_Fade | 9 | -0.085 | 11% | — |
+| Session_Open_Scalp | 40 | -0.069 | 25% | — |
+| **Global** | **416** | **-0.059** | **18.8%** | **0.40** |
+
+**HTF_Bias_15m_BOS est le SEUL playbook positif** : E[R]+0.022, +0.5R sur 22 trades. Fold s1 en cours.
+
+### Phantom SL Investigation — NOT A BUG (2026-04-16)
+
+46% des trades SL ont `exit_price == entry_price` mais r_multiple ≈ -0.07R.
+
+**Explication :** Ce sont des breakeven stops (code `paper_trading.py` L370-375) :
+1. Trade move +0.5R → breakeven triggered → `stop_loss = entry_price`
+2. Prix reverse → SL hit at entry → `exit_price = entry_price`
+3. Gross PnL = 0, mais NET r_multiple = -costs/risk_dollars ≈ -0.07R
+4. Le parquet stocke `initial_stop_loss` (loin du prix), ce qui fait paraître le trade anormal
+
+**Impact :** Le breakeven à 0.5R est trop agressif — 46% des SL sont des breakevens, générant des pertes de coûts pures sans upside. Le trigger devrait être ≥ 1.0R pour réduire ce taux.
+
+### Scoring system — Zero predictive power (confirmed)
+
+Agent analysis: Pearson r=0.003 (p=0.96) entre score et performance. Aucun re-weighting ne peut corriger — les composants eux-mêmes ne mesurent pas la qualité de trade. Le scoring doit être reconstruit ou désactivé.
+
 ---
 
 ## 11. Prochaine tâche recommandée
 
-1. **Inverser le filtre scoring NY** — ne garder que trades score [0.50-0.65] (grade B = seul positif). Test : campagne NY-only avec seuil A abaissé à 0.50 et A+ à 0.65
-2. **Obtenir clé Polygon + télécharger 18+ mois** → `bash scripts/download_polygon_18m.sh`
-3. **Walk-forward 4+ folds** sur données étendues (jan 2024 — nov 2025)
-4. **Élargir SL IFVG_5m_Sweep** — WR 8% avec 90% SL → SL trop serré (0.5% fixe)
-5. **Débloquer HTF_Bias_15m_BOS** — le problème est structural : les ICT patterns 15m doivent persister entre les barres 1m (actuellement recalculés à chaque eval)
-6. **Si aucun edge après scoring inversé + 18+ mois de data** → reconsidérer approche
+1. **Valider HTF_Bias_15m_BOS fold s1** — résultats en cours, si positif = premier candidat edge
+2. **Augmenter breakeven trigger 0.5R → 1.0R** — réduit les 46% de phantom SL, impact positif net potentiel
+3. **Obtenir clé Polygon + télécharger 18+ mois** → `bash scripts/download_polygon_18m.sh`
+4. **Walk-forward 4+ folds** sur données étendues si HTF_Bias confirme
+5. **Désactiver ou reconstruire scoring** — zéro pouvoir prédictif confirmé
+6. **Si aucun edge après WF étendu** → reconsidérer approche (autres instruments ou discrétionnaire)
 
 ---
 

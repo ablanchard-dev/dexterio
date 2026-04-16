@@ -815,8 +815,13 @@ class PlaybookEvaluator:
                 if getattr(p, 'timeframe', '1m').lower() in tf_hierarchy[target_idx:]
             ]
             # Fallback: if filtering removed everything, use all patterns
+            # Phase 1C: for setup_tf >= 15m, do NOT fallback — require HTF patterns
             if not effective_ict and ict_patterns:
-                effective_ict = ict_patterns
+                if target_idx >= tf_hierarchy.index("15m"):
+                    # Strict: 15m+ playbooks must have patterns at their TF — no fallback
+                    pass
+                else:
+                    effective_ict = ict_patterns
 
         # 3. Vérifier ICT confluences (assoupli en mode labo AGGRESSIVE)
         has_sweep = any(p.pattern_type in ("sweep", "liquidity_sweep") for p in effective_ict)
@@ -835,14 +840,19 @@ class PlaybookEvaluator:
             'fvg_quality_score': 0.0,
             'pattern_quality_score': 0.0,
         }
-        
-        # Pour l'instant en backtest AGGRESSIVE, on ne bloque plus sur
-        # require_sweep / require_bos pour éviter d'étouffer tous les playbooks
-        # tant que les moteurs de sweep/day_type ne sont pas pleinement câblés.
-        # On exige simplement au moins un pattern ICT présent (relaxé en AGGRESSIVE).
+
+        # Phase 1C: for playbooks with setup_tf, require ICT patterns at the right TF
+        # (no bypass even in AGGRESSIVE — the whole point is to filter by timeframe)
+        playbook_has_strict_tf = getattr(playbook, 'setup_tf', None) and \
+            playbook.setup_tf.lower() in tf_hierarchy and \
+            tf_hierarchy.index(playbook.setup_tf.lower()) >= tf_hierarchy.index("15m")
+
         if not is_backtest_aggressive and not effective_ict:
             return None, None
         elif is_backtest_aggressive and not effective_ict:
+            if playbook_has_strict_tf:
+                # Strict 15m+ playbook: no bypass, reject if no HTF patterns
+                return None, None
             bypasses_applied.append('ict_patterns_empty')
         
         # 4. Vérifier patterns candlestick OBLIGATOIRES (relaxé en AGGRESSIVE)

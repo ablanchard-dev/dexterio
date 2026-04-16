@@ -80,15 +80,18 @@ Toujours :
 
 ## Priorités actives
 
-**P0** — ~~Clore gate tp1 News_Fade~~ **CLOS (2026-04-14)** — UNRESOLVED. 94-100% session_end, tp1 inopérant sur aug/sep/oct 2025. E[R] négatif dans les deux bras. Voir `ROADMAP_DEXTERIO_TRUTH.md` § Gate NF tp1.
+**P0** — ~~Clore gate tp1 News_Fade~~ **CLOS (2026-04-14)** — UNRESOLVED.
 
-**P1** — NY_Open_Reversal isolé — **verdict NOT_READY (2026-04-14)**
-WF 2 plis (aug30-nov27) : E[R] pondéré **-0.030** (1521 trades). Problème root cause = **fréquence aberrante** (44 trades/j, max 148/j). Pas de cap fréquence dans le YAML. Signal latent possible sur oct/nov (E[R]≈-0.001, PF 1.004) mais noyé. **Next** : `campaign_wf_ny_only_capped.yml` avec `max_setups_per_session: 1`.
+**P1** — Phase 1 Edge Discovery — **verdict négatif (2026-04-16)**
+WF 6 mois (8 playbooks) : tous négatifs. IFVG_5m_Sweep (MASTER) aussi négatif. Scoring zéro pouvoir prédictif (r=0.003).
 
-**P1b** — ~~NY capped~~ **ANNULÉ** : scoring problem — `liquidity_sweep_score=0.0` sur 100% trades, max score 0.50 vs seuil B=0.65 → zéro trades A/B. Une variante capped = 0 trades. Problème dans `setup_engine_v2.py` scoring sweep. Hors scope immédiat.
+**P1C** — Fixes structurels (2026-04-16) : Dynamic SL, pattern persistence 5m/15m, strict 15m TF.
+**HTF_Bias_15m_BOS seul positif** (E[R]+0.022, 22 trades s0). Fold s1 en cours de validation.
 
-**P2** ← **ACTIF** — Explorer IFVG 5m (Aplus_01/03)
-Lire `engines/patterns/ifvg.py`, vérifier support multi-tf, prototype YAML, smoke 1 jour.
+**P1D** ← **ACTIF** — Breakeven trigger fix (2026-04-16)
+46% des SL = breakeven stops à 0.5R = pertes de coûts pures. Fix : tous playbooks lisent `breakeven_at_rr` du YAML (≥1.0R). Smoke en cours.
+
+**P2** — Obtenir clé Polygon + 18+ mois de données → WF 4+ folds si HTF_Bias confirme.
 
 ---
 

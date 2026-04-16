@@ -352,13 +352,37 @@ class SetupEngineV2:
         # Prix d'entrée: utiliser le dernier close réel (obligatoire)
         entry_price = float(last_price)
 
-        # Stop basé sur la structure locale du pattern
-        if direction == 'LONG':
-            # SL sous le low du pattern (approximé par une distance fixe pour l'instant)
-            stop_loss = entry_price * 0.995  # 0.5% sous l'entrée
+        # Stop basé sur la structure locale (ICT pattern levels si disponibles)
+        # Phase 1C fix: use ICT pattern price_level for structural SL instead of fixed 0.5%
+        sl_from_patterns = None
+        if ict_patterns:
+            if direction == 'LONG':
+                # SL below the lowest relevant ICT level (sweep low, FVG low, etc.)
+                lows = [p.price_level for p in ict_patterns
+                        if p.price_level > 0 and p.price_level < entry_price]
+                if lows:
+                    sl_from_patterns = min(lows) - entry_price * 0.001  # 0.1% padding
+            else:
+                # SL above the highest relevant ICT level
+                highs = [p.price_level for p in ict_patterns
+                         if p.price_level > 0 and p.price_level > entry_price]
+                if highs:
+                    sl_from_patterns = max(highs) + entry_price * 0.001
+
+        if sl_from_patterns is not None:
+            stop_loss = sl_from_patterns
+            # Clamp: SL must be between 0.2% and 2.0% from entry
+            sl_dist_pct = abs(entry_price - stop_loss) / entry_price
+            if sl_dist_pct < 0.002:
+                stop_loss = entry_price * (0.998 if direction == 'LONG' else 1.002)
+            elif sl_dist_pct > 0.020:
+                stop_loss = entry_price * (0.980 if direction == 'LONG' else 1.020)
         else:
-            # SL au-dessus du high du pattern
-            stop_loss = entry_price * 1.005  # 0.5% au-dessus
+            # Fallback: fixed 0.5%
+            if direction == 'LONG':
+                stop_loss = entry_price * 0.995
+            else:
+                stop_loss = entry_price * 1.005
 
         # TP1 basé sur le RR cible
         if direction == 'LONG':

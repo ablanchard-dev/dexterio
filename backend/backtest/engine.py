@@ -1130,27 +1130,39 @@ class BacktestEngine:
                 self.market_state_cache.put(cache_key, market_state)
         
         # Patterns : calculer seulement sur clôture 5m ou supérieure (pas à chaque 1m)
-        ict_patterns: List[ICTPattern] = []
-        candle_patterns: List[CandlestickPattern] = []
-        
+        # Phase 1C fix: persist last-known patterns between bars instead of resetting to []
+        if not hasattr(self, '_last_ict_patterns'):
+            self._last_ict_patterns: List[ICTPattern] = []
+            self._last_candle_patterns: List[CandlestickPattern] = []
+
         if htf_events.get("is_close_5m") or htf_events.get("is_close_15m"):
+            new_ict: List[ICTPattern] = []
+            new_candle: List[CandlestickPattern] = []
+
             # Détecter patterns candlesticks
             if len(candles_5m) > 10:
                 raw_candle_patterns = self.candlestick_engine.detect_patterns(candles_5m[-100:], timeframe="5m")
-                candle_patterns = self._convert_candlestick_patterns(raw_candle_patterns)
-            
+                new_candle = self._convert_candlestick_patterns(raw_candle_patterns)
+
             # ICT patterns via unified custom detectors (BOS/FVG + IFVG/OB/EQ/BB)
             if len(candles_5m) > 10:
                 detections_5m = detect_custom_patterns(candles_5m[-100:], "5m")
                 for plist in detections_5m.values():
                     if plist:
-                        ict_patterns.extend(plist)
-            
+                        new_ict.extend(plist)
+
             if len(candles_15m) > 10 and htf_events.get("is_close_15m"):
                 detections_15m = detect_custom_patterns(candles_15m[-100:], "15m")
                 for plist in detections_15m.values():
                     if plist:
-                        ict_patterns.extend(plist)
+                        new_ict.extend(plist)
+
+            # Update persistent cache
+            self._last_ict_patterns = new_ict
+            self._last_candle_patterns = new_candle
+
+        ict_patterns = self._last_ict_patterns
+        candle_patterns = self._last_candle_patterns
         
         # P0 ÉTAPE 2: Instrumentation - Log évaluation playbooks (rate limit)
         bar_num = self.debug_counts.get("bars_processed", 0)

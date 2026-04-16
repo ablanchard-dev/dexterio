@@ -48,8 +48,8 @@ def test_playbook_loading():
     print(f"   SAFE: {len(safe_pbs)} playbooks")
     print(f"   AGGRESSIVE: {len(aggressive_pbs)} playbooks")
     
-    assert len(loader.playbooks) == 11, "Should have 11 playbooks (6 DAYTRADE + 5 SCALP)"
-    assert len(daytrade) == 6, "Should have 6 DAYTRADE playbooks"
+    assert len(loader.playbooks) == 13, "Should have 13 playbooks (8 DAYTRADE + 5 SCALP)"
+    assert len(daytrade) == 8, "Should have 8 DAYTRADE playbooks (incl. IFVG_5m_Sweep, HTF_Bias_15m_BOS)"
     assert len(scalp) == 5, "Should have 5 SCALP playbooks"
     
     print("\n✅ TEST 1 PASSED\n")
