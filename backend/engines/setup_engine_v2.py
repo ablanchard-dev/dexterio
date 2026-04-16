@@ -341,7 +341,7 @@ class SetupEngineV2:
         - TP2 optionnel selon tp2_rr
         """
 
-        if not candle_patterns:
+        if not candle_patterns and not ict_patterns:
             return None, None, None, None
 
         # P0 FIX: Rejeter si last_price est None (pas de placeholder en backtest)
