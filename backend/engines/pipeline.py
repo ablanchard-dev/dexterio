@@ -20,7 +20,7 @@ from engines.patterns.custom_detectors import (
 from engines.playbooks import PlaybookEngine
 from engines.setup_engine import SetupEngine, filter_setups_safe_mode, filter_setups_aggressive_mode
 from engines.setup_engine_v2 import SetupEngineV2
-from engines.risk_engine import RiskEngine
+from engines.risk_engine import RiskEngine, AGGRESSIVE_ALLOWLIST, AGGRESSIVE_DENYLIST, SAFE_ALLOWLIST
 from engines.execution.paper_trading import ExecutionEngine
 from engines.journal import TradeJournal, PerformanceStats
 from models.setup import Setup, ICTPattern
@@ -30,6 +30,8 @@ from utils.timeframes import get_session_info
 from utils.shadow_comparator import (
     build_shadow_comparison_payload,
     candlestick_patterns_from_legacy_detections,
+    build_shadow_input_snapshot_payload,
+    write_shadow_input_snapshot,
     write_shadow_comparison,
 )
 
@@ -260,6 +262,43 @@ class TradingPipeline:
 
                 # Shadow comparator (SetupEngineV2), strictly non-blocking.
                 if use_v2_shadow:
+                    snapshot_path = None
+                    snapshot_fingerprint = None
+                    try:
+                        snapshot_payload = build_shadow_input_snapshot_payload(
+                            symbol=symbol,
+                            analysis_time=analysis_time,
+                            trading_mode=str(settings.TRADING_MODE),
+                            risk_engine_mode=str(self.risk_engine.state.trading_mode),
+                            current_price=current_price,
+                            market_state=market_state,
+                            ict_patterns=ict_patterns,
+                            candlestick_patterns=candlestick_patterns,
+                            liquidity_levels=liquidity_levels,
+                            swept_levels=swept_levels,
+                            playbook_matches=playbook_matches,
+                            policy_context={
+                                "eval_allow_all_playbooks": bool(self.risk_engine.eval_allow_all_playbooks),
+                                "paper_use_wave1_playbooks": bool(getattr(settings, "PAPER_USE_WAVE1_PLAYBOOKS", False)),
+                                "paper_wave1_allowlist": list(getattr(self.risk_engine, "_paper_wave1_allowlist", []) or []),
+                                # RiskEngine uses AGGRESSIVE_DENYLIST as a global denylist (even in SAFE).
+                                "denylist": list(AGGRESSIVE_DENYLIST),
+                                "aggressive_allowlist": list(AGGRESSIVE_ALLOWLIST),
+                                "safe_allowlist": list(SAFE_ALLOWLIST),
+                            },
+                        )
+                        swr = write_shadow_input_snapshot(
+                            snapshot_payload,
+                            symbol=symbol,
+                            analysis_time=analysis_time,
+                            label=v2_shadow_label,
+                        )
+                        snapshot_path = swr.path
+                        snapshot_fingerprint = snapshot_payload.get("input_fingerprint_sha256")
+                        logger.info(f"[SHADOW_V2] wrote input snapshot: {snapshot_path}")
+                    except Exception as e:
+                        logger.warning(f"[SHADOW_V2] failed to write input snapshot: {e}")
+
                     v2_raw: List[Setup] = []
                     v2_final: List[Setup] = []
                     v2_error: Optional[str] = None
@@ -315,6 +354,10 @@ class TradingPipeline:
                             },
                             is_playbook_allowed=self.risk_engine.is_playbook_allowed,
                         )
+                        payload["input_snapshot"] = {
+                            "path": str(snapshot_path) if snapshot_path else None,
+                            "fingerprint_sha256": snapshot_fingerprint,
+                        }
                         wr = write_shadow_comparison(
                             payload,
                             symbol=symbol,
