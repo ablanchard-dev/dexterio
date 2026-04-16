@@ -1,8 +1,10 @@
 # CODEX_HANDOFF.md
 # DexterioBOT — Handoff pour Codex / nouvelle session
 # Dernière mise à jour : 2026-04-16
-# HEAD (stabilisation repo-driven) : 8b1abee
+# HEAD (source de vérité) : 69af75f
+# HEAD (stabilisation repo-driven, base avant shadow) : 8b1abee
 # Guard canonique pipeline (ALLOWLIST/DENYLIST) : 18fc973
+# Shadow comparator legacy vs V2 (TradingPipeline) : d509ad5
 
 ---
 
@@ -151,6 +153,33 @@
 - Scoring : `SetupEngine` (poids fixes) ≠ `SetupEngineV2` (YAML, named components).
 - HTF aggregation : batch pandas ≠ incrémental `TimeframeAggregator`.
 - `setup.playbook_name` toujours `''` (non corrigé — pas nécessaire pour le guard).
+
+---
+
+## 2b. Shadow comparator legacy vs SetupEngineV2 (2026-04-16)
+
+Objectif : comparer **sur le même snapshot** ce que `TradingPipeline` legacy sélectionne vs ce que `SetupEngineV2`
+proposerait, **sans** remplacer la décision legacy (shadow-only).
+
+**Point d’insertion (repo-driven) :**
+- `backend/engines/pipeline.py` → `TradingPipeline.run_full_analysis()` juste après `legacy_final` (après filtering + guard canonique).
+- Raison : à cet endroit on a déjà `market_state`, `ict_patterns`, `candlestick_patterns`, `liquidity_levels`, `current_price`,
+  et on sait ce que legacy accepte/refuse (sortie stable).
+
+**Activation (API) :**
+- Endpoint : `GET /trading/setups?use_v2_shadow=1&v2_shadow_label=<token>`
+- Par défaut (`use_v2_shadow=0`) : aucun coût/artefact shadow.
+
+**Artefact écrit (non versionné par défaut) :**
+- Dossier : `backend/results/debug/shadow_compare/` (gitignored)
+- Fichier : `shadow_compare_<SYMBOL>_<YYYYMMDD_HHMMSS>_<label|auto>.json`
+- Schéma : `ShadowComparatorV0` (inclut legacy raw/final, v2 raw/final, policy evaluation, raisons de divergence).
+
+**Non-bloquant (contrat) :**
+- Si `SetupEngineV2` crash : legacy continue, `v2_shadow.error` est rempli, un artefact est quand même tenté.
+- Aucune mutation de la sortie legacy (tests dédiés).
+
+**Commit :** `d509ad5` — `feat(shadow): add legacy vs V2 setup comparator`
 
 ---
 
