@@ -147,7 +147,7 @@ def debug_evaluation_simple():
             continue
         
         # Vérifier manuellement les patterns requis
-        has_sweep = any(p.pattern_type == 'sweep' for p in ict_patterns)
+        has_sweep = any(p.pattern_type in ('sweep', 'liquidity_sweep') for p in ict_patterns)
         has_fvg = any(p.pattern_type == 'fvg' for p in ict_patterns)
         has_bos = any(p.pattern_type == 'bos' for p in ict_patterns)
         

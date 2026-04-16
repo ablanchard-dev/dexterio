@@ -15,6 +15,18 @@ from config.settings import settings
 logger = logging.getLogger(__name__)
 
 
+def _ict_has_liquidity_sweep(patterns: List[ICTPattern] | None) -> bool:
+    """
+    Helper used by tests and setup scoring.
+
+    Historical compatibility: older code used 'sweep' while ICTPatternEngine emits
+    'liquidity_sweep'.
+    """
+    if not patterns:
+        return False
+    return any(getattr(p, "pattern_type", None) in ("sweep", "liquidity_sweep") for p in patterns)
+
+
 class SetupEngineV2:
     """
     Setup Engine V2 avec intégration Playbooks
