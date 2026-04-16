@@ -62,6 +62,20 @@ Artefacts canoniques (contrat utilisé par audit/rollup) :
 - `mini_lab_summary_*.json` (résumé + `trade_metrics_parquet` si parquet présent)
 - `trades_*.parquet`, `equity_*.parquet`, `summary_*.json`, `debug_counts_*.json`, etc.
 
+### Layout canonique `results/labs/mini_week/` (nested vs flat)
+
+Les outils campagne (`audit/rollup`) supportent **2 dispositions** (détection auto par présence de `mini_lab_summary*.json`) :
+
+- **nested (campagnes / output_parent)** : `results/labs/mini_week/<output_parent>/<label>/`
+  - **strictement requis** : `mini_lab_summary*.json` dans chaque dossier `<label>/` (sinon le run n’est pas détecté)
+  - **optionnel mais recommandé** : `run_manifest.json` dans chaque dossier `<label>/`
+  - **walk-forward** (optionnel) : `results/labs/mini_week/<output_parent>/walk_forward_campaign.json`
+- **flat (run seul / baseline historique)** : `results/labs/mini_week/<label>/`
+  - **strictement requis** : `mini_lab_summary*.json` directement dans le dossier `<label>/`
+
+Conclusion : pour qu’un run UI soit traité comme un run campagne “normal” par les outils ladder,
+il doit écrire au minimum un `mini_lab_summary*.json` dans un dossier compatible nested/flat.
+
 ### Walk-forward canonique (2 splits)
 
 `backend/scripts/run_walk_forward_mini_lab.py` :
@@ -100,8 +114,27 @@ Les jobs UI exposent désormais un champ explicite `protocol` (dans `BacktestJob
   - aligne le protocole sur `scripts/run_mini_lab_week.py` (flags risk structurants)
   - force `htf_warmup_days=30` (écrit dans `protocol_overrides`)
   - évite de muter le `trade_journal` global (journal local au job, save désactivé)
+- `protocol="MINI_LAB_WALK_FORWARD"` :
+  - lance une **mini-campagne walk-forward 2 splits OOS** (labels auto-générés `wf_s0_test`, `wf_s1_test` par défaut)
+  - réutilise l’orchestrateur canonique `scripts/run_walk_forward_mini_lab.py` (qui spawn `scripts/run_mini_lab_week.py` par fenêtre)
+  - écrit directement sous le layout canonique :
+    - `results/labs/mini_week/<output_parent>/wf_s0_test/…`
+    - `results/labs/mini_week/<output_parent>/wf_s1_test/…`
+    - `results/labs/mini_week/<output_parent>/walk_forward_campaign.json`
 
 Traçabilité : `protocol` est écrit dans `run_manifest.json` et dans `mini_lab_summary_*.json`.
+
+### Lecture des résultats (cockpit-friendly)
+
+Endpoints (preuve : `backend/routes/backtests.py`) :
+
+- `GET /api/backtests/{job_id}` : statut du job (lit `results/jobs/<job_id>/job.json`)
+- `GET /api/backtests/{job_id}/results` : retourne `metrics`, `artifact_paths`, `download_urls`
+  - et **si** `results/jobs/<job_id>/campaign_pointer.json` existe : expose aussi un bloc `campaign`
+    (lit/parsing `campaign_pointer.json`) qui fournit directement :
+    - `campaign_root` (racine canonique)
+    - `walk_forward_campaign_path`, `campaign_audit_path`, `campaign_rollup_path` (chemins canoniques)
+    - `job_files` + `job_download_urls` (artefacts job-facing téléchargeables)
 
 ### Serveur alternatif (ambigu / legacy)
 
@@ -117,6 +150,23 @@ Différences structurelles majeures vs BacktestEngine :
 
 - `TradingPipeline` utilise `engines/setup_engine.py` (`SetupEngine` legacy), pas `SetupEngineV2`.
 - Le flux est “analyse live-style” (data_feed multi-TF, scoring, filtering), pas un replay historique unifié par minute.
+- `SetupEngine.score_setup()` ne peuple jamais `setup.playbook_name` (toujours `''`).
+- `PlaybookEngine` (4 classes Python hardcodées) utilise des noms différents des playbooks YAML :
+  `NY_Open_Reversal`, `London_Sweep`, `Trend_Continuation_Pullback`, `ICT_Manipulation_Reversal`.
+  Seul `NY_Open_Reversal` est dans `AGGRESSIVE_ALLOWLIST`. Les trois autres sont bloqués par la policy.
+
+**Guard canonique ajouté (2026-04-16) :**
+- `TradingPipeline.run_full_analysis()` applique désormais un guard ALLOWLIST/DENYLIST au step 8b.
+- Implémenté via `self.risk_engine.is_playbook_allowed(m.playbook_name)` sur chaque `playbook_matches`.
+- Miroir exact du check dans `evaluate_multi_asset_trade()` (risk_engine.py lignes 864-868).
+- Résultat : `London_Sweep`, `Trend_Continuation_Pullback`, `ICT_Manipulation_Reversal` sont bloqués en AGGRESSIVE.
+  `NY_Open_Reversal` passe. Setups sans playbook_matches passent (pas de contrainte policy sans match).
+- Tests : `backend/tests/test_pipeline_canonical_guard.py` — 11 cas, 11 passés.
+
+**Ce qui reste divergent :**
+- Scoring : `SetupEngine` (poids fixes) ≠ `SetupEngineV2` (YAML, named components, grade_thresholds).
+- HTF aggregation : `DataFeedEngine.aggregate_to_higher_tf` (pandas batch) ≠ `TimeframeAggregator` (incrémental).
+- `setup.playbook_name` toujours `''` côté legacy (non corrigé, non bloquant pour le guard).
 
 Conclusion : **le cockpit UI backtest** doit piloter le chemin **BacktestEngine**, pas `TradingPipeline`.
 
@@ -167,16 +217,40 @@ Si demain on construit le cockpit UI Dexterio et qu’on veut rester **stricteme
 
 Condition d’unification cockpit (désormais **partiellement satisfaite**) :
 
-- Les jobs UI doivent produire des artefacts **compatibles ladder** (`run_manifest.json` + `mini_lab_summary_*.json`) dans leur dossier `results/jobs/<job_id>/`.
-- Ce contrat minimal rend les jobs **auditables/rollupables** via les scripts ladder avec `--path` (layout `flat`), mais ne remplace pas le protocole `mini_week` (layout/flags).
+- Les jobs UI produisent des artefacts **compatibles ladder** (`run_manifest.json` + `mini_lab_summary_*.json`) dans `results/jobs/<job_id>/`.
+- Si `protocol="MINI_LAB_WEEK"` et `output_parent+label` sont fournis, le job écrit aussi ces artefacts dans le **layout canonique** `results/labs/mini_week/<output_parent>/<label>/` (nested), ce qui permet `audit/rollup` via `--output-parent` (sans contournement `--path results/jobs/...`).
+- Si `protocol="MINI_LAB_WALK_FORWARD"` et `output_parent` est fourni, le job déclenche une **mini-campagne walk-forward canonique** (2 splits OOS) sous `results/labs/mini_week/<output_parent>/` :
+  - labels `wf_s0_test`, `wf_s1_test` (par défaut)
+  - `walk_forward_campaign.json`
+  - **cockpit-ready** : `campaign_audit.json` + `campaign_rollup.json` (post-traitement auto du worker via les scripts `audit_campaign_output_parent.py` et `rollup_campaign_summaries.py`)
+  - consommable par `audit/rollup` via `--output-parent` (sans `--path results/jobs/...`).
 
 ---
 
 ## 7) Divergences structurelles prouvées (à surveiller)
 
+- KPI / métriques (vérité unique cockpit/ladder) :
+  - Définitions verrouillées : `backend/backtest/metrics.py` (PF en **R**, expectancy = **mean(r_multiple)** incluant BE).
+  - Le moteur (`BacktestEngine`) expose désormais `BacktestResult.expectancy_r` et `BacktestResult.profit_factor`
+    selon ces définitions (pas une formule win/loss, pas un PF en $).
+  - **MaxDD canonique** : `max_drawdown_r` = max drawdown sur la cumulative `pnl_R_account`
+    (net `$` / `base_r_unit_$`), cohérent avec `RiskEngine.state.max_drawdown_r` et avec
+    `max_drawdown_dollars / base_r_unit_$`.
+    - Le moteur (`BacktestEngine`) expose `BacktestResult.max_drawdown_r` selon cette définition.
+    - Le ladder expose `mini_lab_summary.trade_metrics_parquet.max_drawdown_r` (depuis `trades.parquet`).
+    - Le rollup expose `CampaignRollupV0.max_drawdown_r_max` (= max des MaxDD par run ; l’agrégat exact d’une campagne requiert l’union des parquets trades).
+  - Les métriques ladder dérivées du parquet trades (`mini_lab_summary.trade_metrics_parquet`) suivent les mêmes
+    définitions, et le rollup campagne agrège PF via Σ gross_profit_r / |Σ gross_loss_r| quand disponible.
+
 - Artefacts:
   - ladder écrit `run_manifest.json` + `mini_lab_summary_*.json` sous `results/labs/mini_week/...`
-  - jobs UI écrivent désormais aussi `run_manifest.json` + `mini_lab_summary_*.json` sous `results/jobs/<job_id>/` (layout “jobs”, pas “mini_week”)
+  - jobs UI écrivent aussi `run_manifest.json` + `mini_lab_summary_*.json` sous `results/jobs/<job_id>/` (layout “jobs”)
+  - en `protocol="MINI_LAB_WEEK"` + `output_parent+label`, les jobs UI écrivent **en plus** dans `results/labs/mini_week/<output_parent>/<label>/` (bridge canonique) :
+    - `run_manifest.json` + `mini_lab_summary_*.json` (contrat ladder)
+    - et les artefacts moteur (`summary_*.json`, `trades_*.parquet`, `equity_*.parquet`, `debug_counts_*.json`, …) car `BacktestConfig.output_dir` pointe vers ce dossier canonique
+  - en `protocol="MINI_LAB_WALK_FORWARD"` + `output_parent`, les runs sont produits sous `results/labs/mini_week/<output_parent>/<wf_label>/` via `scripts/run_walk_forward_mini_lab.py` → `scripts/run_mini_lab_week.py` (subprocess).
+    - Canonique : `walk_forward_campaign.json` + `campaign_audit.json` + `campaign_rollup.json` sont écrits sous la racine campagne `results/labs/mini_week/<output_parent>/`.
+    - Job-facing (porte d’entrée cockpit) : le job copie aussi ces JSON dans `results/jobs/<job_id>/` (sans dupliquer les sous-dossiers de runs) et expose les fichiers via `artifact_paths` + `campaign_pointer.json`.
 - Env flags / policy risk:
   - `run_mini_lab_week.py` force des flags (`RISK_EVAL_RELAX_CAPS`, `RISK_EVAL_DISABLE_KILL_SWITCH`, …).
   - `jobs/backtest_jobs.py` :
@@ -196,11 +270,28 @@ Condition d’unification cockpit (désormais **partiellement satisfaite**) :
 
 - `results/jobs/<job_id>/run_manifest.json` (`CampaignManifestV0`)
 - `results/jobs/<job_id>/mini_lab_summary_*.json` (compatible `RunSummaryV0` pour audit/rollup)
+- Et (optionnel) si `protocol="MINI_LAB_WEEK"` + `output_parent+label` :
+  - `results/labs/mini_week/<output_parent>/<label>/run_manifest.json`
+  - `results/labs/mini_week/<output_parent>/<label>/mini_lab_summary_*.json`
+- Et (optionnel) si `protocol="MINI_LAB_WALK_FORWARD"` + `output_parent` :
+  - `results/labs/mini_week/<output_parent>/wf_s0_test/…`
+  - `results/labs/mini_week/<output_parent>/wf_s1_test/…`
+  - `results/labs/mini_week/<output_parent>/walk_forward_campaign.json`
+  - `results/labs/mini_week/<output_parent>/campaign_audit.json`
+  - `results/labs/mini_week/<output_parent>/campaign_rollup.json`
+  - et côté job (porte d’entrée cockpit) :
+    - `results/jobs/<job_id>/campaign_pointer.json`
+    - `results/jobs/<job_id>/walk_forward_campaign.json`
+    - `results/jobs/<job_id>/campaign_audit.json`
+    - `results/jobs/<job_id>/campaign_rollup.json`
 
 Limites restantes (volontairement non traitées ici) :
 
-- Le layout “jobs” reste distinct du layout `results/labs/mini_week/...` (ce n’est pas un `output_parent` mini_week).
-- Layout “jobs” ≠ layout `mini_week` : on peut auditer/rollup un job via `--path`, mais ce n’est pas une campagne `output_parent` mini_week par défaut.
+- `protocol="JOB"` reste **dans** `results/jobs/<job_id>/` (pas un `output_parent` mini_week).
+- `protocol="MINI_LAB_WEEK"` peut rejoindre le layout canonique, mais le job n’est pas un clone parfait de `scripts/run_mini_lab_week.py` :
+  - pas d’override `--playbooks-yaml` côté jobs UI (à ce stade)
+  - runner différent (traçabilité OK via `runner=jobs/backtest_jobs.py`)
+- `protocol="MINI_LAB_WALK_FORWARD"` réutilise l’orchestrateur canonique `scripts/run_walk_forward_mini_lab.py`, mais ce protocole UI n’expose pas encore toutes les options CLI (ex. `--plan`, `--include-train`, forwarded argv arbitrés) — volontairement minimal.
 - La comparabilité “policy” dépend du protocole :
   - `JOB` ≠ mini-lab (volontaire)
   - `MINI_LAB_WEEK` vise l’alignement mini-lab
