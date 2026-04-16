@@ -329,7 +329,7 @@
     min_rr: 2.0
     tp1_rr: 2.0
     tp2_rr: 3.0
-    breakeven_at_rr: 0.5
+    breakeven_at_rr: 1.0
   
   scoring:
     weights:
@@ -474,7 +474,7 @@
     min_rr: 1.5
     tp1_rr: 1.5
     tp2_rr: 2.5
-    breakeven_at_rr: 0.5
+    breakeven_at_rr: 1.0
   
   max_duration_minutes: 30
   
@@ -545,7 +545,7 @@
     min_rr: 1.5
     tp1_rr: 1.5
     tp2_rr: 2.0
-    breakeven_at_rr: 0.5
+    breakeven_at_rr: 1.0
   
   max_duration_minutes: 30
   
@@ -611,7 +611,7 @@
     min_rr: 1.5
     tp1_rr: 1.5
     tp2_rr: 2.0
-    breakeven_at_rr: 0.5
+    breakeven_at_rr: 1.0
   
   max_duration_minutes: 20
   
@@ -680,7 +680,7 @@
     min_rr: 1.5
     tp1_rr: 1.5
     tp2_rr: 2.0
-    breakeven_at_rr: 0.5
+    breakeven_at_rr: 1.0
   
   max_duration_minutes: 15
   
@@ -748,7 +748,7 @@
     min_rr: 1.5
     tp1_rr: 1.5
     tp2_rr: 2.0
-    breakeven_at_rr: 0.5
+    breakeven_at_rr: 1.0
   
   max_duration_minutes: 30
   

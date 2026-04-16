@@ -343,7 +343,8 @@ def test_news_fade_rejects_zero_risk_at_open():
         ex.place_order(bad, _risk_alloc(), current_time=t0)
 
 
-def test_legacy_playbook_breakeven_still_0_5r():
+def test_legacy_playbook_breakeven_uses_yaml_value():
+    """All playbooks now read breakeven_at_rr from YAML (Session_Open_Scalp = 1.0R)."""
     risk = RiskEngine(initial_capital=10_000.0)
     ex = ExecutionEngine(risk)
     t0 = datetime(2025, 11, 3, 14, 30, tzinfo=timezone.utc)
@@ -352,9 +353,15 @@ def test_legacy_playbook_breakeven_still_0_5r():
     placed = ex.place_order(setup, _risk_alloc(), current_time=t0)
     tr = ex.open_trades[placed["trade_id"]]
     assert tr.playbook == "Session_Open_Scalp"
-    assert tr.breakeven_trigger_rr is None
+    assert tr.breakeven_trigger_rr == 1.0  # From YAML, no longer None/0.5
 
+    # At 0.5R (100.5), breakeven should NOT trigger (threshold is 1.0R)
     ex.update_open_trades({"SPY": 100.5}, current_time=t0 + timedelta(minutes=1))
+    assert tr.breakeven_moved is False
+    assert tr.stop_loss == 99.0  # Unchanged
+
+    # At 1.0R (101.0), breakeven SHOULD trigger
+    ex.update_open_trades({"SPY": 101.0}, current_time=t0 + timedelta(minutes=2))
     assert tr.breakeven_moved is True
     assert tr.stop_loss == 100.0
 

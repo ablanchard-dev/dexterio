@@ -91,15 +91,17 @@ class ExecutionEngine:
         session_window_end_utc = None
         max_hold_minutes = None
 
+        # Always read breakeven_at_rr from playbook YAML (not just Phase3B)
+        if pb_def is not None:
+            try:
+                be_trigger_rr = float(pb_def.breakeven_at_rr)
+            except Exception:
+                be_trigger_rr = 1.0
+        else:
+            be_trigger_rr = 1.0
+
         if is_phase3b_playbook(playbook_name):
             if setup.trade_type == "DAILY":
-                if pb_def is not None:
-                    try:
-                        be_trigger_rr = float(pb_def.breakeven_at_rr)
-                    except Exception:
-                        be_trigger_rr = 1.0
-                else:
-                    be_trigger_rr = 1.0
                 if pb_def is not None and should_attach_session_window_end(playbook_name, setup.trade_type):
                     session_window_end_utc = compute_session_window_end_utc(pb_def, now_ts)
             elif setup.trade_type == "SCALP":
@@ -369,7 +371,7 @@ class ExecutionEngine:
             
             # 4. Break-even (Phase 3B: seuil par playbook ; legacy: 0.5R)
             if hasattr(trade, 'breakeven_moved'):
-                trigger = trade.breakeven_trigger_rr if trade.breakeven_trigger_rr is not None else 0.5
+                trigger = trade.breakeven_trigger_rr if trade.breakeven_trigger_rr is not None else 1.0
                 if not trade.breakeven_moved and r_multiple >= trigger:
                     trade.stop_loss = trade.entry_price
                     trade.breakeven_moved = True
