@@ -3,8 +3,10 @@ PHASE C - Backtest API Routes
 Endpoints for UI-triggered backtests
 """
 
+import json
 import os
 import logging
+import re
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta
@@ -33,6 +35,16 @@ router = APIRouter(
 
 # Limite de taille lue pour éviter saturer la mémoire / la réponse HTTP
 _MAX_JOB_LOG_BYTES = int(os.environ.get("MAX_JOB_LOG_BYTES", str(512 * 1024)))
+
+_LAYOUT_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,120}$")
+
+
+def _require_safe_layout_token(name: str, value: str) -> None:
+    if not value or not _LAYOUT_TOKEN_RE.match(value):
+        raise HTTPException(
+            400,
+            f"Invalid {name}: {value!r} (allowed: [A-Za-z0-9][A-Za-z0-9_.-]{{0,120}})",
+        )
 
 
 @router.post("/run")
@@ -70,12 +82,59 @@ async def run_backtest(request: BacktestJobRequest):
         if tt not in ["DAILY", "SCALP"]:
             raise HTTPException(400, f"Invalid trade_type: {tt}")
 
-    # Protocol contract: MINI_LAB_WEEK is an AGGRESSIVE ladder-aligned protocol.
-    if getattr(request, "protocol", "JOB") == "MINI_LAB_WEEK":
+    protocol = getattr(request, "protocol", "JOB")
+
+    # Protocol contracts:
+    # - JOB: UI job output only (results/jobs/<job_id>/)
+    # - MINI_LAB_WEEK: single canonical mini_week run (optional output_parent+label bridge)
+    # - MINI_LAB_WALK_FORWARD: canonical 2-split OOS campaign under results/labs/mini_week/<output_parent>/
+    if protocol == "MINI_LAB_WEEK":
         if request.trading_mode != "AGGRESSIVE":
             raise HTTPException(400, "protocol=MINI_LAB_WEEK requires trading_mode=AGGRESSIVE")
         if sorted({x.strip().upper() for x in request.trade_types}) != ["DAILY", "SCALP"]:
             raise HTTPException(400, "protocol=MINI_LAB_WEEK requires trade_types=['DAILY','SCALP']")
+
+        if getattr(request, "label_prefix", None) is not None:
+            raise HTTPException(400, "label_prefix is only supported for protocol=MINI_LAB_WALK_FORWARD")
+
+        # Optional canonical mini-week layout targeting: must specify both fields together.
+        op = getattr(request, "output_parent", None)
+        lb = getattr(request, "label", None)
+        if (op is None) != (lb is None):
+            raise HTTPException(400, "protocol=MINI_LAB_WEEK requires output_parent and label together (or neither)")
+        if op is not None:
+            _require_safe_layout_token("output_parent", str(op))
+            _require_safe_layout_token("label", str(lb))
+
+    elif protocol == "MINI_LAB_WALK_FORWARD":
+        if request.trading_mode != "AGGRESSIVE":
+            raise HTTPException(400, "protocol=MINI_LAB_WALK_FORWARD requires trading_mode=AGGRESSIVE")
+        if sorted({x.strip().upper() for x in request.trade_types}) != ["DAILY", "SCALP"]:
+            raise HTTPException(400, "protocol=MINI_LAB_WALK_FORWARD requires trade_types=['DAILY','SCALP']")
+
+        # Walk-forward plan requires at least 8 calendar days (inclusive).
+        days_inclusive = (end - start).days + 1
+        if days_inclusive < 8:
+            raise HTTPException(400, f"protocol=MINI_LAB_WALK_FORWARD requires >= 8 days (inclusive), got {days_inclusive}")
+
+        op = getattr(request, "output_parent", None)
+        if not op:
+            raise HTTPException(400, "protocol=MINI_LAB_WALK_FORWARD requires output_parent")
+        _require_safe_layout_token("output_parent", str(op))
+
+        if getattr(request, "label", None) is not None:
+            raise HTTPException(400, "protocol=MINI_LAB_WALK_FORWARD does not accept label (labels are generated)")
+
+        lp = getattr(request, "label_prefix", None)
+        if lp is not None:
+            _require_safe_layout_token("label_prefix", str(lp))
+
+    else:
+        # Keep protocol=JOB simple and unambiguous: it always writes under results/jobs/<job_id>/.
+        if getattr(request, "output_parent", None) is not None or getattr(request, "label", None) is not None:
+            raise HTTPException(400, "output_parent/label are only supported for protocol=MINI_LAB_WEEK")
+        if getattr(request, "label_prefix", None) is not None:
+            raise HTTPException(400, "label_prefix is only supported for protocol=MINI_LAB_WALK_FORWARD")
 
     try:
         job_id = submit_job(request)
@@ -163,14 +222,67 @@ async def get_job_results(job_id: str):
     if status.status != "done":
         raise HTTPException(400, f"Job not done yet: {status.status}")
 
+    download_urls = {
+        name: f"/api/backtests/{job_id}/download?file={filename}"
+        for name, filename in (status.artifact_paths or {}).items()
+    }
+
+    # Optional: if a walk-forward job wrote `campaign_pointer.json`, expose a cockpit-friendly
+    # `campaign` block so the UI can discover canonical paths without downloading/parsing the file.
+    campaign = None
+    try:
+        job_dir = get_job_dir(job_id)
+        pointer_path = assert_safe_job_file(job_dir, "campaign_pointer.json")
+        if pointer_path.is_file():
+            raw = pointer_path.read_text(encoding="utf-8")
+            pointer = json.loads(raw)
+
+            job_files: dict[str, str | None] = {"campaign_pointer": "campaign_pointer.json"}
+            ja = pointer.get("job_artifacts")
+            if isinstance(ja, dict):
+                for k, v in ja.items():
+                    if isinstance(k, str) and isinstance(v, str):
+                        job_files[k] = v
+
+            ap = status.artifact_paths or {}
+            for k in ["walk_forward_campaign", "campaign_audit", "campaign_rollup"]:
+                if not job_files.get(k) and isinstance(ap.get(k), str):
+                    job_files[k] = ap.get(k)
+
+            campaign_root = pointer.get("campaign_root") if isinstance(pointer.get("campaign_root"), str) else None
+            root_path = Path(campaign_root) if campaign_root else None
+
+            def _canon_path(key: str, filename: str) -> str | None:
+                v = pointer.get(key)
+                if isinstance(v, str) and v:
+                    return v
+                if root_path is not None:
+                    cand = root_path / filename
+                    if cand.is_file():
+                        return str(cand)
+                return None
+
+            campaign = {
+                "pointer_schema_version": pointer.get("schema_version"),
+                "output_parent": pointer.get("output_parent"),
+                "label_prefix": pointer.get("label_prefix"),
+                "campaign_root": campaign_root,
+                "walk_forward_campaign_path": _canon_path("walk_forward_campaign_path", "walk_forward_campaign.json"),
+                "campaign_audit_path": _canon_path("campaign_audit_path", "campaign_audit.json"),
+                "campaign_rollup_path": _canon_path("campaign_rollup_path", "campaign_rollup.json"),
+                "job_files": job_files,
+                "job_download_urls": {k: download_urls[k] for k in job_files.keys() if k in download_urls},
+            }
+    except Exception:
+        # Best-effort only: do not fail the endpoint on pointer issues.
+        campaign = None
+
     return {
         "job_id": job_id,
         "metrics": status.metrics,
         "artifact_paths": status.artifact_paths,
-        "download_urls": {
-            name: f"/api/backtests/{job_id}/download?file={filename}"
-            for name, filename in (status.artifact_paths or {}).items()
-        },
+        "download_urls": download_urls,
+        "campaign": campaign,
     }
 
 

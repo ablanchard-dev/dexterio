@@ -7,6 +7,7 @@ import json
 import uuid
 import logging
 import os
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Literal
@@ -16,6 +17,17 @@ from pydantic import BaseModel
 from utils.path_resolver import results_path
 
 logger = logging.getLogger(__name__)
+
+# Allow simple tokens only (no slashes) for on-disk campaign layout names.
+_LAYOUT_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,120}$")
+
+
+def _require_safe_layout_token(name: str, value: str) -> None:
+    if not value or not _LAYOUT_TOKEN_RE.match(value):
+        raise ValueError(
+            f"Invalid {name}: {value!r} (allowed: [A-Za-z0-9][A-Za-z0-9_.-]{{0,120}})"
+        )
+
 
 # Job executor (singleton)
 _executor = None
@@ -51,7 +63,7 @@ def shutdown_executor():
 
 class BacktestJobRequest(BaseModel):
     """Request to run a backtest"""
-    protocol: Literal["JOB", "MINI_LAB_WEEK"] = "JOB"
+    protocol: Literal["JOB", "MINI_LAB_WEEK", "MINI_LAB_WALK_FORWARD"] = "JOB"
     symbols: List[str]
     start_date: str  # YYYY-MM-DD
     end_date: str
@@ -59,6 +71,15 @@ class BacktestJobRequest(BaseModel):
     trade_types: List[str]  # DAILY, SCALP
     htf_warmup_days: int = 40
     initial_capital: float = 50000.0
+
+    # Optional (protocol=MINI_LAB_WEEK only): allow writing the run under the canonical ladder layout.
+    # Layout: backend/results/labs/mini_week/<output_parent>/<label>/
+    output_parent: Optional[str] = None
+    label: Optional[str] = None
+
+    # Optional (protocol=MINI_LAB_WALK_FORWARD only): labels are auto-generated as
+    #   {label_prefix}_s{0|1}_test (2-split walk-forward OOS).
+    label_prefix: Optional[str] = None
     
     # Costs config (PHASE B)
     commission_model: str = "ibkr_fixed"
@@ -387,9 +408,29 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                 return "unknown"
 
         git_sha = _git_sha()
-        
+
+        # Output layout:
+        # - protocol=JOB: always stays under results/jobs/<job_id>/ (current UI contract).
+        # - protocol=MINI_LAB_WEEK: may optionally also write ladder artifacts under
+        #   results/labs/mini_week/<output_parent>/<label>/ (canonical mini-lab layout).
+        mini_week_output_parent = None
+        mini_week_label = None
+        mini_week_run_dir: Optional[Path] = None
+
+        engine_output_dir = results_path()
+
         # Create config
         run_name = f"job_{job_id}"
+        if protocol == "MINI_LAB_WEEK" and request.output_parent and request.label:
+            _require_safe_layout_token("output_parent", request.output_parent)
+            _require_safe_layout_token("label", request.label)
+            mini_week_output_parent = request.output_parent
+            mini_week_label = request.label
+            mini_week_run_dir = results_path("labs", "mini_week", mini_week_output_parent, mini_week_label)
+            mini_week_run_dir.mkdir(parents=True, exist_ok=True)
+            engine_output_dir = mini_week_run_dir
+            run_name = f"miniweek_{mini_week_output_parent}_{mini_week_label}"
+
         config = BacktestConfig(
             run_name=run_name,
             symbols=request.symbols,
@@ -406,7 +447,7 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             slippage_cost_pct=request.slippage_cost_pct,
             spread_model=request.spread_model,
             spread_bps=request.spread_bps,
-            output_dir=str(results_path())  # Use absolute path for subprocess
+            output_dir=str(engine_output_dir)  # absolute output dir
         )
         
         log("Running backtest...")
@@ -447,21 +488,23 @@ def run_backtest_worker(job_id: str, request_dict: dict):
         # Copy artifacts
         artifact_paths = {}
         
-        summary_src = results_path(summary_name)
+        artifact_root = Path(config.output_dir)
+
+        summary_src = artifact_root / summary_name
         if summary_src.exists():
             summary_dst = job_dir / "summary.json"
             summary_dst.write_bytes(summary_src.read_bytes())
             artifact_paths["summary"] = "summary.json"
             log(f"Summary: {summary_dst}")
         
-        trades_src = results_path(trades_name)
+        trades_src = artifact_root / trades_name
         if trades_src.exists():
             trades_dst = job_dir / "trades.parquet"
             trades_dst.write_bytes(trades_src.read_bytes())
             artifact_paths["trades"] = "trades.parquet"
             log(f"Trades: {trades_dst}")
         
-        equity_src = results_path(equity_name)
+        equity_src = artifact_root / equity_name
         if equity_src.exists():
             equity_dst = job_dir / "equity.parquet"
             equity_dst.write_bytes(equity_src.read_bytes())
@@ -470,20 +513,47 @@ def run_backtest_worker(job_id: str, request_dict: dict):
         
         # DIAGNOSTIC: Copy debug_counts.json to job directory
         debug_counts_name = f"debug_counts_{run_name}.json"
-        debug_counts_src = results_path(debug_counts_name)
+        debug_counts_src = artifact_root / debug_counts_name
         if debug_counts_src.exists():
             debug_counts_dst = job_dir / "debug_counts.json"
             debug_counts_dst.write_bytes(debug_counts_src.read_bytes())
             log(f"Debug counts: {debug_counts_dst}")
 
-        # Ladder-compatible artifacts (minimal): run_manifest.json + mini_lab_summary*.json
+        # Ladder-compatible artifacts (minimal):
+        # - Always write into results/jobs/<job_id>/ (UI contract).
+        # - Additionally, when MINI_LAB_WEEK + (output_parent,label) are provided,
+        #   also write into results/labs/mini_week/<output_parent>/<label>/ so the run is
+        #   natively consumable by audit/rollup as a canonical mini-week campaign.
+        allow_all = os.environ.get("RISK_EVAL_ALLOW_ALL_PLAYBOOKS", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        bypass_lss = os.environ.get("RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        respect_allowlists = not allow_all
+        mini_week_block = None
+        if mini_week_run_dir is not None:
+            mini_week_block = {
+                "output_parent": mini_week_output_parent,
+                "label": mini_week_label,
+                "run_dir": str(mini_week_run_dir.resolve()),
+            }
+
+        job_manifest: Dict[str, Any] = {}
         try:
-            manifest = {
+            job_manifest = {
                 "schema_version": "CampaignManifestV0",
                 "contract_version": "RunSummaryV0",
                 "run_id": run_name,
                 "runner": "jobs/backtest_jobs.py",
                 "protocol": protocol,
+                "job_id": job_id,
                 "argv": [
                     "jobs/backtest_jobs.py",
                     "run_backtest_worker",
@@ -503,12 +573,8 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                 # Keep fields for parity with mini-lab, but do not pretend we had a playbooks YAML override.
                 "label": run_name,
                 "output_parent": f"jobs/{job_id}",
-                "respect_allowlists": os.environ.get("RISK_EVAL_ALLOW_ALL_PLAYBOOKS", "false").strip().lower()
-                not in {"1", "true", "yes", "on"},
-                "bypass_lss_quarantine": os.environ.get("RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY", "false")
-                .strip()
-                .lower()
-                in {"1", "true", "yes", "on"},
+                "respect_allowlists": respect_allowlists,
+                "bypass_lss_quarantine": bypass_lss,
                 "playbooks_yaml": None,
                 "nf_tp1_rr_meta": None,
                 "run_clock_mode": "BACKTEST",
@@ -526,50 +592,51 @@ def run_backtest_worker(job_id: str, request_dict: dict):
                     "by_path": dc_report.get("by_path") or [],
                 },
             }
+            if mini_week_block is not None:
+                job_manifest["mini_week"] = mini_week_block
             if protocol_overrides:
-                manifest["protocol_overrides"] = protocol_overrides
+                job_manifest["protocol_overrides"] = protocol_overrides
+
             manifest_path = job_dir / "run_manifest.json"
-            manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+            manifest_path.write_text(json.dumps(job_manifest, indent=2, ensure_ascii=False), encoding="utf-8")
             artifact_paths["run_manifest"] = "run_manifest.json"
             log(f"Run manifest: {manifest_path}")
         except Exception as e:
             log(f"WARNING: failed to write run_manifest.json: {e}")
 
+        # Job-local summary (flat layout) for UI + `--path results/jobs/<job_id>`
+        base_mini_lab_summary: Dict[str, Any] = {
+            "protocol": protocol,
+            "runner": "jobs/backtest_jobs.py",
+            "contract_version": "RunSummaryV0",
+            "run_started_at_utc": run_started_at_utc,
+            "git_sha": git_sha,
+            "run_id": run_name,
+            "job_id": job_id,
+            "start_date": request.start_date,
+            "end_date": request.end_date,
+            "symbols": list(request.symbols),
+            "respect_allowlists": respect_allowlists,
+            "bypass_lss_quarantine": bypass_lss,
+            "output_parent": f"jobs/{job_id}",
+            "playbooks_yaml": None,
+            "nf_tp1_rr_meta": None,
+            "data_coverage_ok": bool(dc_report["ok"]),
+            "data_coverage_error_count": len(dc_report.get("errors") or []),
+            "total_trades": int(result.total_trades),
+            "final_capital": str(result.final_capital),
+            "profit_factor": float(result.profit_factor) if result.profit_factor is not None else None,
+            "expectancy_r": float(result.expectancy_r) if result.expectancy_r is not None else None,
+            "winrate": float(result.winrate) if result.winrate is not None else None,
+        }
+        if mini_week_block is not None:
+            base_mini_lab_summary["mini_week"] = mini_week_block
+        if protocol_overrides:
+            base_mini_lab_summary["protocol_overrides"] = protocol_overrides
+
         try:
             trade_metrics = summarize_trades_parquet(job_dir / "trades.parquet")
-            # Align on mini-lab schema so existing audit/rollup tools can parse it.
-            mini_lab_summary = {
-                "protocol": protocol,
-                "runner": "jobs/backtest_jobs.py",
-                "contract_version": "RunSummaryV0",
-                "run_started_at_utc": run_started_at_utc,
-                "git_sha": git_sha,
-                "run_id": run_name,
-                "job_id": job_id,
-                "start_date": request.start_date,
-                "end_date": request.end_date,
-                "symbols": list(request.symbols),
-                "respect_allowlists": os.environ.get("RISK_EVAL_ALLOW_ALL_PLAYBOOKS", "false")
-                .strip()
-                .lower()
-                not in {"1", "true", "yes", "on"},
-                "bypass_lss_quarantine": os.environ.get("RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY", "false")
-                .strip()
-                .lower()
-                in {"1", "true", "yes", "on"},
-                "output_parent": f"jobs/{job_id}",
-                "playbooks_yaml": None,
-                "nf_tp1_rr_meta": None,
-                "data_coverage_ok": bool(dc_report["ok"]),
-                "data_coverage_error_count": len(dc_report.get("errors") or []),
-                "total_trades": int(result.total_trades),
-                "final_capital": str(result.final_capital),
-                "profit_factor": float(result.profit_factor) if result.profit_factor is not None else None,
-                "expectancy_r": float(result.expectancy_r) if result.expectancy_r is not None else None,
-                "winrate": float(result.winrate) if result.winrate is not None else None,
-            }
-            if protocol_overrides:
-                mini_lab_summary["protocol_overrides"] = protocol_overrides
+            mini_lab_summary = dict(base_mini_lab_summary)
             if trade_metrics:
                 mini_lab_summary["trade_metrics_parquet"] = trade_metrics
 
@@ -583,6 +650,40 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             log(f"Mini-lab summary: {summary_path}")
         except Exception as e:
             log(f"WARNING: failed to write mini_lab_summary*.json: {e}")
+
+        # Canonical mini-week layout bridge (nested layout) when requested.
+        if mini_week_run_dir is not None:
+            try:
+                mini_week_manifest = dict(job_manifest)
+                mini_week_manifest["label"] = str(mini_week_label)
+                mini_week_manifest["output_parent"] = str(mini_week_output_parent)
+                mini_week_manifest["mini_week_bridge_source"] = {
+                    "job_id": job_id,
+                    "job_dir": str(job_dir.resolve()),
+                }
+                (mini_week_run_dir / "run_manifest.json").write_text(
+                    json.dumps(mini_week_manifest, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                log(f"Mini-week manifest: {mini_week_run_dir / 'run_manifest.json'}")
+            except Exception as e:
+                log(f"WARNING: failed to write mini_week run_manifest.json: {e}")
+
+            try:
+                # Prefer the engine-written trades parquet (so parquet_path points at the canonical location).
+                canonical_trade_metrics = summarize_trades_parquet(trades_src)
+                mini_week_summary = dict(base_mini_lab_summary)
+                mini_week_summary["output_parent"] = str(mini_week_output_parent)
+                if canonical_trade_metrics:
+                    mini_week_summary["trade_metrics_parquet"] = canonical_trade_metrics
+                summary_path = mini_week_run_dir / f"mini_lab_summary_{mini_week_label}.json"
+                summary_path.write_text(
+                    json.dumps(mini_week_summary, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                log(f"Mini-week summary: {summary_path}")
+            except Exception as e:
+                log(f"WARNING: failed to write mini_week mini_lab_summary*.json: {e}")
         
         # Extract key metrics
         metrics = {
@@ -669,6 +770,236 @@ def run_backtest_worker(job_id: str, request_dict: dict):
             pass
 
 
+def run_mini_lab_walk_forward_worker(job_id: str, request_dict: dict):
+    """
+    UI job worker: canonical mini walk-forward (2 splits OOS) under results/labs/mini_week/<output_parent>/.
+
+    Implementation choice (minimal divergence vs campaigns):
+    - Reuses the canonical orchestrator `scripts/run_walk_forward_mini_lab.py`, which itself
+      spawns `scripts/run_mini_lab_week.py` per split window.
+    - Writes `walk_forward_campaign.json` under the canonical campaign root, plus a small pointer
+      file under the UI job directory for traceability.
+    """
+    import sys
+    import traceback
+    import subprocess
+    from pathlib import Path
+
+    backend_dir = Path(__file__).parent.parent
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
+
+    from utils.path_resolver import results_path
+    from utils.campaign_rollup import rollup_summaries_under_base
+
+    log_file = get_job_log(job_id)
+
+    def log(msg: str) -> None:
+        try:
+            with open(log_file, "a", encoding="utf-8", errors="replace") as f:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"[{timestamp}] {msg}\n")
+                f.flush()
+        except Exception:
+            pass
+
+    try:
+        run_started_at_utc = datetime.now(timezone.utc).isoformat()
+        log("Starting mini-lab walk-forward worker...")
+        update_job_status(job_id, "running")
+
+        request = BacktestJobRequest(**request_dict)
+        if request.protocol != "MINI_LAB_WALK_FORWARD":
+            raise ValueError(f"Invalid protocol for walk-forward worker: {request.protocol}")
+
+        if not request.output_parent:
+            raise ValueError("protocol=MINI_LAB_WALK_FORWARD requires output_parent")
+        _require_safe_layout_token("output_parent", request.output_parent)
+
+        if request.label is not None:
+            raise ValueError("protocol=MINI_LAB_WALK_FORWARD does not accept label (labels are generated)")
+
+        label_prefix = (request.label_prefix or "wf").strip()
+        _require_safe_layout_token("label_prefix", label_prefix)
+
+        # Align contract with mini-lab week: AGGRESSIVE + DAILY+SCALP.
+        if request.trading_mode != "AGGRESSIVE":
+            raise ValueError("protocol=MINI_LAB_WALK_FORWARD requires trading_mode=AGGRESSIVE")
+        if sorted({x.strip().upper() for x in request.trade_types}) != ["DAILY", "SCALP"]:
+            raise ValueError("protocol=MINI_LAB_WALK_FORWARD requires trade_types=['DAILY','SCALP']")
+
+        symbols = [s.strip().upper() for s in (request.symbols or []) if s and s.strip()]
+        if not symbols:
+            raise ValueError("symbols cannot be empty")
+        symbols_arg = ",".join(symbols)
+
+        campaign_root = results_path("labs", "mini_week", request.output_parent)
+        wf_script = backend_dir / "scripts" / "run_walk_forward_mini_lab.py"
+        cmd = [
+            sys.executable,
+            str(wf_script),
+            "--start",
+            request.start_date,
+            "--end",
+            request.end_date,
+            "--output-parent",
+            request.output_parent,
+            "--label-prefix",
+            label_prefix,
+            "--symbols",
+            symbols_arg,
+        ]
+
+        log(f"Launching canonical WF script: {' '.join(cmd)}")
+        with open(log_file, "a", encoding="utf-8", errors="replace") as f:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{timestamp}] SUBPROCESS {' '.join(cmd)}\n")
+            f.flush()
+            proc = subprocess.run(cmd, cwd=str(backend_dir), stdout=f, stderr=subprocess.STDOUT)
+        rc = int(proc.returncode)
+        log(f"WF subprocess returncode: {rc}")
+
+        wf_meta_src = campaign_root / "walk_forward_campaign.json"
+        if not wf_meta_src.is_file():
+            raise RuntimeError(f"Expected walk_forward_campaign.json missing: {wf_meta_src}")
+
+        artifact_paths: Dict[str, str] = {}
+        job_dir = get_job_dir(job_id)
+
+        # Copy WF meta into job dir for UI download/debugging (canonical source stays under labs/mini_week).
+        try:
+            wf_meta_dst = job_dir / "walk_forward_campaign.json"
+            wf_meta_dst.write_bytes(wf_meta_src.read_bytes())
+            artifact_paths["walk_forward_campaign"] = wf_meta_dst.name
+        except Exception as e:
+            log(f"WARNING: failed to copy walk_forward_campaign.json into job dir: {e}")
+
+        # Pointer to canonical campaign root (downloadable, small).
+        try:
+            pointer = {
+                "schema_version": "MiniLabWalkForwardJobPointerV0",
+                "job_id": job_id,
+                "run_started_at_utc": run_started_at_utc,
+                "output_parent": request.output_parent,
+                "label_prefix": label_prefix,
+                "campaign_root": str(campaign_root.resolve()),
+                "walk_forward_campaign_path": str(wf_meta_src.resolve()),
+            }
+            pth = job_dir / "campaign_pointer.json"
+            pth.write_text(json.dumps(pointer, indent=2, ensure_ascii=False), encoding="utf-8")
+            artifact_paths["campaign_pointer"] = pth.name
+        except Exception as e:
+            log(f"WARNING: failed to write campaign_pointer.json: {e}")
+
+        # Post-processing: produce cockpit-ready artefacts directly under the canonical campaign root.
+        # Reuse scripts (no re-implementation): audit + rollup => campaign_audit.json / campaign_rollup.json
+        if rc == 0:
+            audit_script = backend_dir / "scripts" / "audit_campaign_output_parent.py"
+            rollup_script = backend_dir / "scripts" / "rollup_campaign_summaries.py"
+            audit_out = campaign_root / "campaign_audit.json"
+            rollup_out = campaign_root / "campaign_rollup.json"
+            for script_path, out_path, name in [
+                (audit_script, audit_out, "audit"),
+                (rollup_script, rollup_out, "rollup"),
+            ]:
+                cmd2 = [
+                    sys.executable,
+                    str(script_path),
+                    "--output-parent",
+                    request.output_parent,
+                    "--out",
+                    str(out_path),
+                ]
+                log(f"Launching campaign {name}: {' '.join(cmd2)}")
+                with open(log_file, "a", encoding="utf-8", errors="replace") as f:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"[{timestamp}] SUBPROCESS {' '.join(cmd2)}\n")
+                    f.flush()
+                    proc2 = subprocess.run(cmd2, cwd=str(backend_dir), stdout=f, stderr=subprocess.STDOUT)
+                rc2 = int(proc2.returncode)
+                log(f"{name} subprocess returncode: {rc2}")
+                if not out_path.is_file():
+                    raise RuntimeError(f"Expected {name} output missing: {out_path}")
+                if rc2 != 0:
+                    log(f"WARNING: {name} returned {rc2} (file written: {out_path.name})")
+
+            # Expose final campaign artefacts under the job directory (UI entrypoint) without duplicating the run dirs.
+            # Canonical source stays under results/labs/mini_week/<output_parent>/.
+            for src, key in [
+                (audit_out, "campaign_audit"),
+                (rollup_out, "campaign_rollup"),
+            ]:
+                try:
+                    dst = job_dir / src.name
+                    dst.write_bytes(src.read_bytes())
+                    artifact_paths[key] = dst.name
+                except Exception as e:
+                    log(f"WARNING: failed to copy {src.name} into job dir: {e}")
+
+            # Enrich pointer (best-effort) with canonical paths and job-facing filenames.
+            try:
+                pth = job_dir / "campaign_pointer.json"
+                if pth.is_file():
+                    pointer = json.loads(pth.read_text(encoding="utf-8"))
+                    pointer.update(
+                        {
+                            "campaign_audit_path": str(audit_out.resolve()),
+                            "campaign_rollup_path": str(rollup_out.resolve()),
+                            "job_artifacts": {
+                                "walk_forward_campaign": artifact_paths.get("walk_forward_campaign"),
+                                "campaign_audit": artifact_paths.get("campaign_audit"),
+                                "campaign_rollup": artifact_paths.get("campaign_rollup"),
+                            },
+                        }
+                    )
+                    pth.write_text(json.dumps(pointer, indent=2, ensure_ascii=False), encoding="utf-8")
+            except Exception as e:
+                log(f"WARNING: failed to enrich campaign_pointer.json: {e}")
+
+        # Best-effort rollup for job metrics.
+        metrics: Dict[str, Any] = {
+            "protocol": request.protocol,
+            "output_parent": request.output_parent,
+            "label_prefix": label_prefix,
+        }
+        try:
+            rep = rollup_summaries_under_base(campaign_root, logical_name=request.output_parent)
+            metrics.update(
+                {
+                    "campaign_run_count": rep.get("run_count"),
+                    "total_trades_sum": rep.get("total_trades_sum"),
+                    "expectancy_r_weighted_by_trades": rep.get("expectancy_r_weighted_by_trades"),
+                }
+            )
+        except Exception as e:
+            log(f"WARNING: rollup failed: {e}")
+
+        if rc == 0:
+            update_job_status(job_id, "done", artifact_paths=artifact_paths, metrics=metrics)
+            log("Walk-forward job completed successfully")
+        else:
+            update_job_status(
+                job_id,
+                "failed",
+                error=f"Walk-forward subprocess returned {rc}",
+                artifact_paths=artifact_paths,
+                metrics=metrics,
+            )
+            log("Walk-forward job failed (non-zero returncode)")
+
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {str(e)}"
+        try:
+            log(f"ERROR: {error_msg}")
+            log(traceback.format_exc())
+        except Exception:
+            pass
+        try:
+            update_job_status(job_id, "failed", error=error_msg)
+        except Exception:
+            pass
+
+
 def submit_job(request: BacktestJobRequest) -> str:
     """
     Submit job for async execution
@@ -693,8 +1024,11 @@ def submit_job(request: BacktestJobRequest) -> str:
         raise RuntimeError("Executor not available")
     
     try:
-        executor.submit(run_backtest_worker, job_id, request.dict())
-        logger.info(f"Submitted job {job_id} to executor")
+        if request.protocol == "MINI_LAB_WALK_FORWARD":
+            executor.submit(run_mini_lab_walk_forward_worker, job_id, request.dict())
+        else:
+            executor.submit(run_backtest_worker, job_id, request.dict())
+        logger.info(f"Submitted job {job_id} to executor (protocol={request.protocol})")
     except RuntimeError as e:
         # Si executor shutdown, recréer et réessayer
         if "cannot schedule new futures after shutdown" in str(e).lower():
@@ -702,8 +1036,11 @@ def submit_job(request: BacktestJobRequest) -> str:
             global _executor
             _executor = None
             executor = get_executor()
-            executor.submit(run_backtest_worker, job_id, request.dict())
-            logger.info(f"Submitted job {job_id} to new executor")
+            if request.protocol == "MINI_LAB_WALK_FORWARD":
+                executor.submit(run_mini_lab_walk_forward_worker, job_id, request.dict())
+            else:
+                executor.submit(run_backtest_worker, job_id, request.dict())
+            logger.info(f"Submitted job {job_id} to new executor (protocol={request.protocol})")
         else:
             raise
     
