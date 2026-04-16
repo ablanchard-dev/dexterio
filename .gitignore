@@ -64,6 +64,21 @@ chainlit.md
 # Data and databases
 agenthub/agents/youtube/db
 
+# Local-generated backtest outputs (timestamped)
+.codex
+backend/data/backtest_results/*_backtest_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*
+data/backtest_results/*_backtest_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*
+backend/results/*_job_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*
+backend/run_*.py
+backend/results/jobs/
+backend/results/labs/mini_week/ui_*/
+backend/results/labs/mini_week/wf_*/
+backend/results/labs/mini_week/ifvg_*/
+backend/results/labs/mini_week/smoke_ifvg_5m/
+backend/results/labs/mini_week/debug_*/
+backend/results/labs/mini_week/*_probe_*/
+backend/results/labs/mini_week/*_postfix*/
+
 # Archive files and large assets
 **/*.zip
 **/*.tar.gz
