@@ -100,10 +100,10 @@ def calculate_playbook_score(playbook_matches: List[PlaybookMatch]) -> float:
     if not playbook_matches:
         return 0.0
     
-    # Prendre le meilleur match
-    best_match = max(playbook_matches, key=lambda p: p.match_score)
-    
-    return best_match.match_score
+    # Prendre le meilleur match (PlaybookMatch.confidence est le champ de score)
+    best_match = max(playbook_matches, key=lambda p: p.confidence)
+
+    return best_match.confidence
 
 
 class SetupEngine:
@@ -213,17 +213,15 @@ class SetupEngine:
                             playbook_matches: List[PlaybookMatch]) -> Optional[str]:
         """Détermine direction du trade (LONG/SHORT)"""
         
-        # Priorité 1: Playbook
-        if playbook_matches:
-            best_playbook = max(playbook_matches, key=lambda p: p.match_score)
-            return best_playbook.direction
-        
+        # Priorité 1 (supprimée) : PlaybookMatch n'a pas de champ direction ni match_score.
+        # La direction est déterminée par le contexte ICT, pas par le playbook lui-même.
+
         # Priorité 2: ICT BOS
         bos_patterns = [p for p in ict_patterns if p.pattern_type == 'bos']
         if bos_patterns:
             direction_map = {'bullish': 'LONG', 'bearish': 'SHORT'}
             return direction_map.get(bos_patterns[-1].direction)
-        
+
         # Priorité 3: Pattern chandelier
         if candlestick_patterns:
             best_pattern = max(candlestick_patterns, key=lambda p: p.pattern_score)
