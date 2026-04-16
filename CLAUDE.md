@@ -86,12 +86,14 @@ Toujours :
 WF 6 mois (8 playbooks) : tous négatifs. IFVG_5m_Sweep (MASTER) aussi négatif. Scoring zéro pouvoir prédictif (r=0.003).
 
 **P1C** — Fixes structurels (2026-04-16) : Dynamic SL, pattern persistence 5m/15m, strict 15m TF.
-**HTF_Bias_15m_BOS seul positif** (E[R]+0.022, 22 trades s0). Fold s1 en cours de validation.
+**WF COMPLET : NÉGATIF.** HTF_Bias s0 +0.022 → s1 -0.087. Zéro playbook positif sur 2 folds. 800 trades, E[R] pondéré -0.067.
 
-**P1D** ← **ACTIF** — Breakeven trigger fix (2026-04-16)
-46% des SL = breakeven stops à 0.5R = pertes de coûts pures. Fix : tous playbooks lisent `breakeven_at_rr` du YAML (≥1.0R). Smoke en cours.
+**P1D** — Breakeven trigger fix (2026-04-16)
+**WF COMPLET : NÉGATIF.** BE fix aggrave HTF_Bias s1 (-0.087→-0.115) et IFVG (-0.086→-0.106). Weighted E[R] = -0.071 (800 trades). Pire que P1C.
 
-**P2** — Obtenir clé Polygon + 18+ mois de données → WF 4+ folds si HTF_Bias confirme.
+**KILL CRITERIA ATTEINT sur 6 mois.** 4 configurations, 3200 trades, toutes négatives.
+
+**P2** ← **ACTIF** — Obtenir clé Polygon + 18+ mois de données → WF 4+ folds (dernière chance).
 
 ---
 

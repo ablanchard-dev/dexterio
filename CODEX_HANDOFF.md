@@ -450,7 +450,7 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 | `Morning_Trap_Reversal` | ALLOWLIST | 2/session, setup_tf=5m | E[R] **-0.072**, 245 trades, WR 11%, PF 0.36 |
 | `Liquidity_Sweep_Scalp` | ALLOWLIST | 3/session, setup_tf=5m | E[R] **-0.052**, 375 trades, WR 29%, PF 0.27 |
 | `IFVG_5m_Sweep` | **ALLOWLIST (NEW)** | 2/session, setup_tf=5m | E[R] **-0.049**, 219 trades, WR 8%, PF 0.41 |
-| `HTF_Bias_15m_BOS` | **ALLOWLIST (NEW)** | 1/session, setup_tf=15m | **0 trades** — conditions 15m trop rares |
+| `HTF_Bias_15m_BOS` | **ALLOWLIST (NEW)** | 1/session, setup_tf=15m | P1C: s0+0.022→s1-0.087. P1D: s0+0.015→**s1-0.115. Effondré 2x.** |
 | `London_Sweep_NY_Continuation` | DENYLIST | — | -326R |
 | `Trend_Continuation_FVG_Retest` | DENYLIST | — | -22R |
 | `BOS_Momentum_Scalp` | DENYLIST | — | -142R |
@@ -459,7 +459,9 @@ Source de vérité exécution : `backend/engines/risk_engine.py` (ALLOWLIST / DE
 | `DAY_Aplus_1_*` | DENYLIST | — | 0 trades |
 | `SCALP_Aplus_1_*` | DENYLIST | — | -1.4R |
 
-**Verdict Phase 1D (2026-04-16) :** Breakeven fix (0.5R→1.0R) = changement majeur. Smoke 1 sem : **E[R]+0.002** (était -0.059). HTF_Bias E[R]+0.26, IFVG E[R]+0.27. Phantom SL 46%→30%. WF complet nécessaire pour confirmer.
+**Verdict Phase 1C WF (2026-04-16) :** NÉGATIF. HTF_Bias seul positif sur s0 (+0.022) mais s'effondre sur s1 (-0.087). Weighted E[R] = -0.067 (800 trades). Aucun edge validé.
+
+**Verdict Phase 1D WF (2026-04-16) :** NÉGATIF. Breakeven fix (0.5→1.0R) aggrave HTF_Bias sur s1 (-0.087→-0.115) et IFVG (-0.086→-0.106). Weighted E[R] = -0.071 (800 trades, pire que P1C). Smoke 1 semaine était trompeur. **KILL CRITERIA ATTEINT sur 6 mois.**
 
 ---
 
@@ -626,7 +628,21 @@ NY quasi neutre avec caps — signal nettement meilleur. Scalps encore négatifs
 | Session_Open_Scalp | 40 | -0.069 | 25% | — |
 | **Global** | **416** | **-0.059** | **18.8%** | **0.40** |
 
-**HTF_Bias_15m_BOS est le SEUL playbook positif** : E[R]+0.022, +0.5R sur 22 trades. Fold s1 en cours.
+**Phase 1C WF Fold s1 (Oct 14 → Nov 28, 2025) — 384 trades :**
+
+| Playbook | Trades | E[R] | WR | PF |
+|----------|--------|------|-----|-----|
+| FVG_Fill_Scalp | 59 | -0.046 | 27% | 0.29 |
+| **HTF_Bias_15m_BOS** | **20** | **-0.087** | **5%** | **0.23** |
+| IFVG_5m_Sweep | 48 | -0.086 | 2% | 0.11 |
+| Liquidity_Sweep_Scalp | 96 | -0.087 | 26% | 0.21 |
+| Morning_Trap_Reversal | 58 | -0.084 | 19% | 0.46 |
+| NY_Open_Reversal | 60 | -0.076 | 30% | 0.45 |
+| News_Fade | 8 | -0.078 | 38% | 0.33 |
+| Session_Open_Scalp | 35 | -0.063 | 20% | 0.21 |
+| **Global** | **384** | **-0.076** | **21.4%** | **0.30** |
+
+**Phase 1C WF Verdict : NÉGATIF.** HTF_Bias_15m_BOS s'est effondré sur s1 (E[R]+0.022 → -0.087, WR 18% → 5%, 1 win sur 20 trades). L'edge apparent sur s0 n'a pas survécu au walk-forward. **Zéro playbook positif sur les deux folds.** Weighted E[R] = -0.067 (800 trades).
 
 ### Phantom SL Investigation — NOT A BUG (2026-04-16)
 
@@ -670,15 +686,75 @@ Agent analysis: Pearson r=0.003 (p=0.96) entre score et performance. Aucun re-we
 
 ⚠️ **Caveat :** 1 semaine, 79 trades = trop peu pour conclure. WF complet nécessaire.
 
+**Phase 1D WF Fold s0 (Aug 30 → Oct 14, 2025) — 416 trades — avec breakeven fix :**
+
+| Playbook | Trades | E[R] | WR | PF | vs P1C s0 |
+|----------|--------|------|-----|-----|-----------|
+| **HTF_Bias_15m_BOS** | **22** | **+0.015** | **27%** | **1.11** | +0.022→+0.015 |
+| IFVG_5m_Sweep | 59 | -0.043 | 19% | 0.71 | **-0.066→-0.043** |
+| Liquidity_Sweep_Scalp | 93 | -0.054 | 30% | 0.37 | -0.060→-0.054 |
+| NY_Open_Reversal | 61 | -0.061 | 16% | 0.48 | ~stable |
+| FVG_Fill_Scalp | 70 | -0.059 | 24% | 0.09 | ~stable |
+| Morning_Trap_Reversal | 62 | -0.113 | 13% | 0.36 | aggravé |
+| Session_Open_Scalp | 40 | -0.076 | 25% | 0.23 | aggravé |
+| News_Fade | 9 | -0.082 | 11% | 0.25 | ~stable |
+| **Global** | **416** | **-0.061** | **21.9%** | **0.45** | **-0.059→-0.061** |
+
+**Bilan s0 :** Le breakeven fix ne change pas fondamentalement le verdict. IFVG améliore (-0.066→-0.043) mais reste négatif. HTF_Bias marginalement positif (+0.015). Global E[R] quasi identique.
+
+**Phase 1D WF Fold s1 (Oct 15 → Nov 28, 2025) — 384 trades — avec breakeven fix :**
+
+| Playbook | Trades | E[R] | WR | PF | vs P1C s1 |
+|----------|--------|------|-----|-----|-----------|
+| FVG_Fill_Scalp | 59 | -0.046 | 27% | 0.29 | ~stable |
+| Session_Open_Scalp | 35 | -0.058 | 26% | 0.29 | -0.063→-0.058 |
+| NY_Open_Reversal | 60 | -0.072 | 30% | 0.44 | -0.076→-0.072 |
+| News_Fade | 8 | -0.079 | 38% | 0.32 | ~stable |
+| Liquidity_Sweep_Scalp | 96 | -0.085 | 26% | 0.21 | ~stable |
+| Morning_Trap_Reversal | 58 | -0.094 | 19% | 0.42 | -0.084→-0.094 (aggravé) |
+| IFVG_5m_Sweep | 48 | **-0.106** | 6% | 0.21 | **-0.086→-0.106 (aggravé)** |
+| **HTF_Bias_15m_BOS** | **20** | **-0.115** | **5%** | **0.18** | **-0.087→-0.115 (aggravé)** |
+| **Global** | **384** | **-0.080** | **22.4%** | — | **-0.076→-0.080** |
+
+**Bilan s1 :** Le breakeven fix **aggrave** les deux playbooks les plus prometteurs. HTF_Bias : -0.087 (P1C) → -0.115 (P1D). IFVG : -0.086 → -0.106. Le fix a probablement supprimé les quelques échappées breakeven qui généraient du profit.
+
+**Phase 1D WF Verdict : NÉGATIF.** Weighted E[R] = -0.071 (800 trades). Pire que Phase 1C (-0.067). Le breakeven fix n'est pas la solution. Zéro playbook positif sur les deux folds. HTF_Bias s'effondre systématiquement sur s1 (P1C: +0.022→-0.087, P1D: +0.015→-0.115).
+
+### Bilan cumulé Phase 1 (2026-04-16) — KILL CRITERIA ATTEINT
+
+| Phase | Config | s0 E[R] | s1 E[R] | Weighted E[R] | Trades |
+|-------|--------|---------|---------|---------------|--------|
+| P1 (base) | 7 playbooks, 0.5R BE | -0.059 | -0.076 | -0.067 | 800 |
+| P1C | +dynamic SL, pattern persist, strict 15m | -0.059 | -0.076 | -0.067 | 800 |
+| P1D | +breakeven 0.5→1.0R | -0.061 | -0.080 | **-0.071** | 800 |
+
+**Conclusion Phase 1 :** Quatre configurations testées (P1 base, P1C fixes, P1D BE fix), toutes négatives. Le meilleur cas (HTF_Bias s0) ne survit jamais au walk-forward s1. Le scoring n'a aucun pouvoir prédictif. Les fixes structurels (dynamic SL, pattern persistence, breakeven) ne changent pas le verdict fondamental.
+
+**Options restantes (par ordre de priorité) :**
+1. **Polygon 18+ mois** → WF 4+ folds. Si aucun playbook ne survit sur 4 folds, l'ICT systématique sur SPY/QQQ n'a pas d'edge mesurable.
+2. **Autres instruments** (ES/NQ futures) — structure de coûts différente, meilleure liquidité.
+3. **Accepter** que ICT discrétionnaire ≠ ICT systématique à cette granularité.
+
 ---
 
 ## 11. Prochaine tâche recommandée
 
-1. **WF complet 2 folds avec breakeven fix** — valider que E[R]≥0 tient sur 6 mois
-2. **Obtenir clé Polygon + télécharger 18+ mois** → `bash scripts/download_polygon_18m.sh`
-3. **Walk-forward 4+ folds** sur données étendues (jan 2024 — nov 2025)
-4. **Désactiver scoring** — zéro pouvoir prédictif, phase 1D confirme que grade C > grade A+
-5. **Si E[R]≥0 sur WF 6 mois** → Passer à Phase 2 (DecisionKernel convergence)
+**Phase 1 kill criteria atteint sur 6 mois (jun-nov 2025).** 4 configurations testées, toutes négatives. 3200 trades analysés au total.
+
+**Options par priorité :**
+
+1. **Polygon 18+ mois de données** → WF 4+ folds (dernière chance statistique). Si aucun playbook ne survit 4 folds sur 18+ mois, verdict définitif.
+   - Obtenir clé API Polygon (gratuit = 5 appels/min, suffisant pour historique)
+   - Télécharger SPY/QQQ 1m depuis jan 2024 via `backend/scripts/providers/polygon_provider.py`
+   - Walk-forward 4+ folds sur 18+ mois
+
+2. **Désactiver scoring** — confirmé zéro pouvoir prédictif (r=0.003). Le scoring ajoute du bruit, pas du signal.
+
+3. **Autres instruments** (ES/NQ futures) — structure de coûts différente, tick-size adapté aux concepts ICT.
+
+4. **Accepter que ICT discrétionnaire ≠ ICT systématique** si Polygon WF aussi négatif.
+
+**NE PAS passer à Phase 2+ (DecisionKernel, paper, live) sans edge prouvé.**
 
 ---
 
