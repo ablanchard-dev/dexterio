@@ -1,6 +1,7 @@
 # CODEX_HANDOFF.md
 # DexterioBOT — Handoff pour Codex / nouvelle session
-# Dernière mise à jour : 2026-04-15
+# Dernière mise à jour : 2026-04-16
+# HEAD (guard canonique pipeline commité) : 18fc973
 
 ---
 
@@ -20,13 +21,81 @@
   - Protocoles :
     - `protocol=JOB` (défaut) : policy/env brute
     - `protocol=MINI_LAB_WEEK` : aligne flags risk mini-lab + `htf_warmup_days=30` (voir `protocol_overrides` dans le manifest)
-  - Artefacts écrits dans `backend/results/jobs/<job_id>/` :
+    - `protocol=MINI_LAB_WALK_FORWARD` : mini-campagne walk-forward canonique (2 splits OOS) sous `results/labs/mini_week/<output_parent>/` via `scripts/run_walk_forward_mini_lab.py`
+  - Artefacts écrits dans `backend/results/jobs/<job_id>/` (toujours) :
     - `run_manifest.json` (`CampaignManifestV0`)
     - `mini_lab_summary_job_<job_id>.json` (compatible `RunSummaryV0` pour audit/rollup)
+  - **Sortie mini-week canonique (optionnel, `protocol=MINI_LAB_WEEK` + `output_parent+label`) :**
+    - `backend/results/labs/mini_week/<output_parent>/<label>/run_manifest.json`
+    - `backend/results/labs/mini_week/<output_parent>/<label>/mini_lab_summary_<label>.json`
+  - **Sortie mini walk-forward canonique (optionnel, `protocol=MINI_LAB_WALK_FORWARD` + `output_parent`) :**
+    - `backend/results/labs/mini_week/<output_parent>/wf_s0_test/…`
+    - `backend/results/labs/mini_week/<output_parent>/wf_s1_test/…`
+    - `backend/results/labs/mini_week/<output_parent>/walk_forward_campaign.json`
+    - `backend/results/labs/mini_week/<output_parent>/campaign_audit.json` (auto, via `scripts/audit_campaign_output_parent.py --out ...`)
+    - `backend/results/labs/mini_week/<output_parent>/campaign_rollup.json` (auto, via `scripts/rollup_campaign_summaries.py --out ...`)
+    - Job-facing (porte d’entrée cockpit, sans rescanner le canonique) :
+      - `backend/results/jobs/<job_id>/campaign_pointer.json` (pointe `campaign_root` + chemins canoniques)
+      - `backend/results/jobs/<job_id>/walk_forward_campaign.json` (copie)
+      - `backend/results/jobs/<job_id>/campaign_audit.json` (copie)
+      - `backend/results/jobs/<job_id>/campaign_rollup.json` (copie)
+  - **API results (cockpit-friendly) :**
+    - `backend/routes/backtests.py` → `GET /api/backtests/{job_id}/results`
+      - expose `metrics`, `artifact_paths`, `download_urls`
+      - et si `campaign_pointer.json` existe : expose aussi un bloc `campaign` (racine canonique + chemins + mapping job-facing)
+  - **KPI canonique (vérité unique cockpit/ladder) :**
+    - Définitions verrouillées : `backend/backtest/metrics.py`
+      - `expectancy_r` = mean(`r_multiple`) incluant BE
+      - `profit_factor` = Σ gains_R / |Σ pertes_R| (BE exclu)
+      - `max_drawdown_r` = MaxDD sur cumulative `pnl_R_account` (net `$` / `base_r_unit_$`)
+    - `BacktestEngine` (`BacktestResult.expectancy_r` / `BacktestResult.profit_factor`) est aligné sur ces définitions.
+    - `mini_lab_summary.trade_metrics_parquet` inclut désormais `gross_profit_r`, `gross_loss_r`, `profit_factor`, `winrate` et `max_drawdown_r` (dérivés du parquet trades).
+    - `rollup_campaign_summaries.py` agrège PF via Σ `gross_profit_r` / |Σ `gross_loss_r`| quand disponible, et expose `max_drawdown_r_max` (= max des MaxDD par run).
   - Validation rapide (sans serveur) :
     - exécuter `run_backtest_worker` localement, puis :
     - `cd backend && .venv/bin/python scripts/audit_campaign_output_parent.py --path results/jobs/<job_id>`
     - `cd backend && .venv/bin/python scripts/rollup_campaign_summaries.py --path results/jobs/<job_id>`
+    - si sortie mini-week canonique utilisée :
+      - `cd backend && .venv/bin/python scripts/audit_campaign_output_parent.py --output-parent <output_parent>`
+      - `cd backend && .venv/bin/python scripts/rollup_campaign_summaries.py --output-parent <output_parent>`
+    - si sortie mini walk-forward canonique utilisée :
+      - `cd backend && .venv/bin/python scripts/audit_campaign_output_parent.py --output-parent <output_parent>`
+      - `cd backend && .venv/bin/python scripts/rollup_campaign_summaries.py --output-parent <output_parent>`
+  - **Preuve (2026-04-15) :**
+    - `protocol=JOB` : `backend/results/jobs/4016c8bd/` (audit/rollup via `--path` OK)
+    - `protocol=MINI_LAB_WEEK` + `output_parent=ui_miniweek_bridge_20260415` + `label=smoke_20251103` :
+      - job UI : `backend/results/jobs/60ca71ae/`
+      - layout canonique : `backend/results/labs/mini_week/ui_miniweek_bridge_20260415/smoke_20251103/`
+      - audit/rollup via `--output-parent ui_miniweek_bridge_20260415` OK
+    - `protocol=MINI_LAB_WALK_FORWARD` + `output_parent=ui_wf_bridge_20260415` :
+      - job UI : `backend/results/jobs/aba122c6/` (pointeur `campaign_pointer.json`)
+      - layout canonique : `backend/results/labs/mini_week/ui_wf_bridge_20260415/`
+        - `wf_s0_test/`, `wf_s1_test/`, `walk_forward_campaign.json`
+      - audit/rollup via `--output-parent ui_wf_bridge_20260415` OK
+    - `protocol=MINI_LAB_WALK_FORWARD` + `output_parent=ui_wf_cockpit_ready_20260415` (cockpit-ready) :
+      - job UI : `backend/results/jobs/2c3a8c10/`
+      - layout canonique : `backend/results/labs/mini_week/ui_wf_cockpit_ready_20260415/`
+        - `wf_s0_test/`, `wf_s1_test/`, `walk_forward_campaign.json`
+        - `campaign_audit.json`, `campaign_rollup.json` (auto)
+      - cohérence : relancer `scripts/audit_campaign_output_parent.py --output-parent ui_wf_cockpit_ready_20260415 --out ...` et `scripts/rollup_campaign_summaries.py --output-parent ui_wf_cockpit_ready_20260415 --out ...` → JSON identiques
+    - `protocol=MINI_LAB_WALK_FORWARD` + `output_parent=ui_wf_jobdir_friendly_20260415` (job cockpit-friendly) :
+      - job UI : `backend/results/jobs/f575ccc8/`
+        - `campaign_pointer.json`, `walk_forward_campaign.json`, `campaign_audit.json`, `campaign_rollup.json`
+        - `job.json: artifact_paths` expose ces 4 artefacts (download URLs UI)
+      - layout canonique : `backend/results/labs/mini_week/ui_wf_jobdir_friendly_20260415/`
+        - `wf_s0_test/`, `wf_s1_test/`, `walk_forward_campaign.json`, `campaign_audit.json`, `campaign_rollup.json`
+      - preuve API (sans serveur) : exécuter `asyncio.run(routes.backtests.get_job_results('f575ccc8'))` → champ `campaign` présent et cohérent avec `campaign_pointer.json`
+    - Unification `max_drawdown_r` (2026-04-16) :
+      - job UI `protocol=MINI_LAB_WEEK` + `output_parent=ui_dd_unify_20260416` + `label=dd_smoke_20251103_04`
+        - job UI : `backend/results/jobs/a2fb92c9/`
+          - `job.json: metrics.max_drawdown_r = 44.522880870999884`
+          - `summary.json: max_drawdown_r = 44.522880870999884`
+          - `mini_lab_summary_job_a2fb92c9.json: trade_metrics_parquet.max_drawdown_r = 44.522880870999884`
+        - layout canonique : `backend/results/labs/mini_week/ui_dd_unify_20260416/dd_smoke_20251103_04/`
+          - `mini_lab_summary_dd_smoke_20251103_04.json: trade_metrics_parquet.max_drawdown_r = 44.522880870999884`
+        - rollup (manuel) : `backend/results/labs/mini_week/ui_dd_unify_20260416/campaign_rollup.json`
+          - `max_drawdown_r_max = 44.522880870999884`
+        - preuve API (sans serveur) : `asyncio.run(routes.backtests.get_job_results('a2fb92c9'))['metrics']['max_drawdown_r'] == 44.522880870999884`
 - **Artefacts de validation "postfix" (preuves sur `git_sha=4e7246a`) :**
   - `backend/results/labs/mini_week/ifvg_probe_sep29_oct02_postfix/`
   - `backend/results/labs/mini_week/ifvg_oos_jun_nov2025_postfix/`
@@ -39,7 +108,47 @@
 
 ---
 
-## 2. Ce qui a été fini récemment (passe 2026-04-14)
+## 2. Ce qui a été fini récemment (passe 2026-04-16 — guard canonique pipeline)
+
+### P0-Guard — ALLOWLIST/DENYLIST guard dans TradingPipeline (2026-04-16)
+
+**Divergence confirmée (preuve code) :**
+- `SetupEngine.score_setup()` ne peuple jamais `setup.playbook_name` (toujours `''`).
+- Step 8 de `run_full_analysis` appelait uniquement `filter_setups_safe/aggressive_mode`
+  (qualité/confluences/RR) — zéro ALLOWLIST/DENYLIST.
+- `PlaybookEngine` émet les noms : `NY_Open_Reversal`, `London_Sweep`,
+  `Trend_Continuation_Pullback`, `ICT_Manipulation_Reversal`.
+  Seul `NY_Open_Reversal` est dans `AGGRESSIVE_ALLOWLIST`. Les autres passaient sans contrôle.
+- Note naming : le DENYLIST porte `"London_Sweep_NY_Continuation"` mais le legacy pipeline
+  émet `"London_Sweep"`. Noms différents — concept identique. Bloqué par ALLOWLIST de toute façon
+  (non présent dans AGGRESSIVE_ALLOWLIST).
+
+**Patch minimal appliqué :**
+- Fichier : `backend/engines/pipeline.py`
+- Step 8b ajouté dans `run_full_analysis()`, après le filter quality/RR existant.
+- Implémentation : itère sur `setup.playbook_matches`, appelle
+  `self.risk_engine.is_playbook_allowed(m.playbook_name)` sur chaque match.
+  Si ANY match est refusé → setup rejeté, warning loggé.
+- Miroir exact du check `evaluate_multi_asset_trade` (risk_engine.py lignes 864-868).
+- Rien d'autre changé : `PlaybookEngine`, `SetupEngine`, scoring, routes, DataFeedEngine — intacts.
+
+**Tests :**
+- `backend/tests/test_pipeline_canonical_guard.py` — 11 cas, 11 passés.
+  - DENYLIST : `London_Sweep_NY_Continuation`, `BOS_Momentum_Scalp`, `Trend_Continuation_FVG_Retest` → bloqués.
+  - Not-in-ALLOWLIST : `London_Sweep`, `Trend_Continuation_Pullback`, `ICT_Manipulation_Reversal` → bloqués.
+  - ALLOWLIST : `NY_Open_Reversal`, `FVG_Fill_Scalp` → passent.
+  - Cas limites : no matches → passe ; mixed batch ; setup avec un match OK + un refusé → refusé.
+
+**Commit :** `18fc973` — `feat(pipeline): add canonical ALLOWLIST/DENYLIST guard in TradingPipeline`
+
+**Ce qui reste divergent (non touché par cette passe) :**
+- Scoring : `SetupEngine` (poids fixes) ≠ `SetupEngineV2` (YAML, named components).
+- HTF aggregation : batch pandas ≠ incrémental `TimeframeAggregator`.
+- `setup.playbook_name` toujours `''` (non corrigé — pas nécessaire pour le guard).
+
+---
+
+## 2b. Pasées antérieures (2026-04-14)
 
 ### P1b — Fix sweep scoring (plomberie)
 
