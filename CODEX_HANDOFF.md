@@ -198,6 +198,55 @@ proposerait, **sans** remplacer la décision legacy (shadow-only).
 
 ---
 
+## 2c. Diagnostic divergences legacy vs V2 (2026-04-16)
+
+### Passe d'analyse — mesure des divergences SetupEngine vs SetupEngineV2
+
+**HEAD au moment du diagnostic :** `24c5944`
+
+**Contexte :** zéro snapshot réel dans `backend/results/debug/shadow_compare/` (plomberie en place, jamais activée). Diagnostic construit sur 8 scénarios synthétiques.
+
+**Bug bloquant confirmé (D1+D2) — `backend/engines/setup_engine.py` :**
+
+```
+_score_playbook_match() ligne 104 :
+    best_match = max(playbook_matches, key=lambda p: p.match_score)  ← AttributeError
+_determine_direction() ligne 218 :
+    best_playbook = max(playbook_matches, key=lambda p: p.match_score)  ← AttributeError
+    return best_playbook.direction                                         ← double bug
+```
+
+`PlaybookMatch` (models/setup.py lignes 74-78) : champs réels = `playbook_name`, `confidence`, `matched_conditions`. Ni `match_score` ni `direction` n'existent. Dead code path depuis la création du modèle.
+
+**Distribution sur 8 scénarios synthétiques :**
+
+| Catégorie | Count | Description |
+|-----------|-------|-------------|
+| `legacy_no_raw` | 6/8 (75%) | playbook_matches non vide → crash → 0 setup |
+| `legacy_quality_filtered` | 1/8 (12%) | playbook_matches=[] + BOS + candlestick → score C → rejeté |
+| `both_empty` | 1/8 (12%) | aucun signal → direction=None → 0 setup |
+
+**V2 invariant :** 10 raw setups sur tout input ; final = `Liquidity_Sweep_Scalp` A+ 0.845 systématiquement.
+
+**Inventaire divergences :**
+
+| ID | Divergence | Sévérité | Fréquence |
+|----|-----------|----------|-----------|
+| D1+D2 | `PlaybookMatch.match_score`/`.direction` inexistants → crash `_determine_direction` | BLOQUANTE | 75% |
+| D3 | V2 over-génère (10 setups/input, score invariant) | STRUCTURELLE | 100% |
+| D4 | `setup.playbook_name` toujours `''` (corrigé par P0-Guard via `playbook_matches`) | FONCTIONNELLE | 100% |
+| D5 | Scoring poids fixes (legacy) vs composants YAML (V2) | CONCEPTUELLE | N/A |
+| D6 | Naming : `"London_Sweep"` (legacy) vs `"London_Sweep_NY_Continuation"` (DENYLIST) | NAMING | partielle |
+| D7 | HTF aggregation pandas batch vs TimeframeAggregator | POTENTIELLE | non mesurable |
+
+**Décision (passe suivante) :**
+
+`fix(setup_engine): repair _determine_direction crash (D1+D2)`
+
+Scope : supprimer/remplacer la branche "Priorité 1" de `_determine_direction()` et `_score_playbook_match()` pour utiliser `confidence` au lieu de l'attribut inexistant `match_score`. Patch minimal, 2 fonctions, ~4 lignes. Déblocage de toute comparaison legacy vs V2 sur scénarios réels.
+
+---
+
 ## 2b. Pasées antérieures (2026-04-14)
 
 ### P1b — Fix sweep scoring (plomberie)
