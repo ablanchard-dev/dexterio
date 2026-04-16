@@ -452,6 +452,10 @@ def _summarize_setup(setup: Setup) -> dict[str, Any]:
         "trade_type": setup.trade_type,
         "quality": setup.quality,
         "final_score": float(setup.final_score),
+        # Component scores (diagnostic — needed to measure D5 scoring divergence)
+        "ict_score": float(getattr(setup, "ict_score", 0.0) or 0.0),
+        "pattern_score": float(getattr(setup, "pattern_score", 0.0) or 0.0),
+        "playbook_score": float(getattr(setup, "playbook_score", 0.0) or 0.0),
         "match_score": setup.match_score,
         "match_grade": setup.match_grade,
         "playbook_name": getattr(setup, "playbook_name", "") or "",
