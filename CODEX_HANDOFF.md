@@ -1,7 +1,7 @@
 # CODEX_HANDOFF.md
 # DexterioBOT — Handoff pour Codex / nouvelle session
 # Dernière mise à jour : 2026-04-16
-# HEAD (stabilisation repo-driven) : 31b4957
+# HEAD (stabilisation repo-driven) : 8b1abee
 # Guard canonique pipeline (ALLOWLIST/DENYLIST) : 18fc973
 
 ---
@@ -11,11 +11,10 @@
 - Branche : `main`
 - HEAD actuel (source de vérité) : exécuter `git rev-parse --short HEAD`
 - Stabilisation (ce repo reflète désormais les passes validées par tests, sans artefacts) :
-  - `4bd024c` — `fix(kpi): lock expectancy/PF/MaxDD defs`
-  - `fc03028` — `fix(sweep): wire liquidity_sweep plumbing`
-  - `c0fe1d2` — `chore(ui): add walk-forward backtest job protocol`
-  - `31511b5` — `test(kpi): add convergence regression coverage`
-  - `31b4957` — `chore(git): ignore local-generated backtest artefacts`
+  - `415ab7b` — `fix(kpi): lock expectancy/PF/MaxDD defs` (implémentation + tests atomiques)
+  - `437c6bc` — `fix(sweep): wire liquidity_sweep plumbing`
+  - `e73f311` — `chore(ui): add walk-forward backtest job protocol`
+  - `e60aa39` — `chore(git): ignore local-generated backtest artefacts`
 - UI jobs → artefacts ladder-min (manifest + mini_lab_summary) : commit `7da796e`
 - UI jobs → protocoles explicites (`JOB` vs `MINI_LAB_WEEK`) : voir les commits suivants (`git log -5 --oneline`)
 - **Statut worktree :** le code est propre ; des artefacts locaux non commités peuvent exister mais sont maintenant ignorés (voir `.gitignore` commit `31b4957`).
