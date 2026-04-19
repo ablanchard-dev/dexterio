@@ -1527,7 +1527,7 @@
     trailing_mode: trail_rr
     trailing_trigger_rr: 0.8
     trailing_offset_rr: 0.3
-  max_duration_minutes: 120
+  max_duration_minutes: 240
   scoring:
     weights:
       bos_strength: 0.6

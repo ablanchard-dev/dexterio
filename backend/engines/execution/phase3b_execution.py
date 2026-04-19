@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from engines.playbook_loader import PlaybookDefinition
 
 PHASE3B_PLAYBOOKS = frozenset(
-    {"NY_Open_Reversal", "News_Fade", "Liquidity_Sweep_Scalp"}
+    {"NY_Open_Reversal", "News_Fade", "Liquidity_Sweep_Scalp", "BOS_Scalp_1m"}
 )
 
 
