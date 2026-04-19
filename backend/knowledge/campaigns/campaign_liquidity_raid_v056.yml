@@ -1,0 +1,7 @@
+# V056 Model 2 — Liquidity Raid (90% codable)
+# Isolated test campaign for the highest-codability discovery from Phase 2.
+# All logic is close-based: equal H/L → sweep → closure confirmation → entry.
+name: "Liquidity_Raid_V056"
+description: "V056 M2 isolated test — sweep of equal H/L + close back above"
+selected_playbooks:
+  - "Liquidity_Raid_V056"

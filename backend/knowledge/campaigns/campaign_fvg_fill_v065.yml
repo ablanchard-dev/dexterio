@@ -1,0 +1,103 @@
+# FVG_Fill_V065 — Faithful implementation of VIDEO 065 "3 Step A+ Strategy"
+#
+# Source: SOURCE_V065_TRUTH_PACK.md (MASTER_FINAL.txt L44685-44829)
+# Role: Noyau 1 — CALIBRATION / FIDÉLITÉ
+#
+# VIDEO 065 rules (all RÈGLE EXPLOITABLE):
+#   Step 1: Mark high/low of 1st 15m candle (9:30-9:45 ET) = range
+#   Step 2: On 5m, wait for break out of range WITH FVG (no FVG = no trade)
+#   Step 3: Limit order at 50% of FVG, SL at candle 1 of FVG, TP 2:1 fixed
+#   Session: 9:45-12:00 ET only
+#   Management: Set and forget (no trailing, no BE, no partial)
+#
+# Écarts corrigés vs playbooks.yml FVG_Fill_Scalp (see ECARTS_V065_vs_YAML.md):
+#   1. required_signals gate binaire FVG@5m (was: scoring composite)
+#   2. Session 09:45-12:00 (was: 09:30-15:30)
+#   3. TP 2:1 fixed, no partial (was: tp1=1.5, tp2=2.0, BE@1R)
+#   4. No candlestick pattern requirement (was: doji/spinning_top/pin_bar required)
+#   5. confirmation_tf = 5m (was: 1m)
+#   6. max_duration = 135 min (was: 30 min)
+#
+# G01+G05: Opening Range 15m + FVG outside range gate now implemented.
+# The engine creates an OpeningRangeTracker (15 min, 9:30 ET) per symbol.
+# FVG signals are only valid when FVG zone extends beyond the opening range.
+
+- playbook_name: "FVG_Fill_V065"
+  category: "SCALP"
+  description: "VIDEO 065 faithful: 5m FVG break → limit 50% → TP 2:1 (calibration noyau)"
+  max_setups_per_session: 1  # V065 implies 1 trade/day (1 range, 1 break, 1 FVG)
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  # G01: Opening Range = first 15m candle (9:30-9:45 ET)
+  opening_range:
+    duration_minutes: 15
+    session_start_et: "09:30"
+
+  # G05: FVG must have at least 1 candle closing outside the opening range
+  require_fvg_outside_range: true
+
+  # GATE BINAIRE: FVG on 5m required (replaces scoring composite)
+  # "no fair value gap so there is no trade" (V065 L44759)
+  required_signals:
+    - "FVG@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:  # V065: "9:45 am" to "before 12 pm"
+      - ["09:45", "12:00"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]  # V065 doesn't filter on HTF bias
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  # V065 does NOT require any candlestick patterns — only FVG matters
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"          # "limit order on the FVG [...] middle line" (V065 L44725-44730)
+    confirmation_tf: "5m"   # Entry on 5m (not 1m) — V065 uses 5m chart for entry
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "fvg_extreme"  # "base of fair value gap candle one" (V065 L44731-44734)
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 2.0              # V065: "two to one risk to reward" (L44735)
+    tp1_rr: 2.0              # Single TP, no partial close
+    tp2_rr: null              # No second target
+    breakeven_at_rr: 999.0    # V065: "sit back and let the market do the heavy lifting" = set and forget (999 = never triggers)
+
+  max_duration_minutes: 135   # 2h15 = full session window (9:45-12:00)
+
+  # Scoring is kept minimal — the real gating is required_signals above.
+  # Thresholds set very low so any FVG that passes the gate gets grade A.
+  scoring:
+    weights:
+      fvg_quality: 1.0
+      pattern_quality: 0.0
+      trend_alignment: 0.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0

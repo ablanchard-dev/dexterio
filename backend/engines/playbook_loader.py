@@ -757,6 +757,7 @@ class PlaybookEvaluator:
                     'IFVG': 'ifvg',
                     'OB': 'order_block',
                     'EQ': 'equilibrium',
+                    'SWEEP': 'liquidity_sweep',
                     'BRKR': 'breaker_block',
                     'BRKRBLK': 'breaker_block',
                     'BRKRBLOCK': 'breaker_block',

@@ -915,3 +915,517 @@
       A_plus: 0.80
       A: 0.65
       B: 0.50
+
+# ============================================================================
+# PHASE 5a — FAITHFUL MASTER STRATEGIES (7)
+# Each playbook is faithful to its source MASTER video transcript.
+# Binary gates (required_signals) replace composite scoring.
+# ============================================================================
+
+# --- S1a: FVG_Fill_V065 — VIDEO 065 "3 Step A+ Strategy" (100% codable) ---
+# Source: SOURCE_V065_TRUTH_PACK.md (MASTER_FINAL.txt L44685-44829)
+# Flow: 15m opening range → 5m FVG break outside range → limit 50% FVG → TP 2:1
+- playbook_name: "FVG_Fill_V065"
+  category: "SCALP"
+  description: "V065 faithful: 15m range → 5m FVG break → limit 50% → TP 2:1"
+  max_setups_per_session: 1
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  opening_range:
+    duration_minutes: 15
+    session_start_et: "09:30"
+
+  require_fvg_outside_range: true
+
+  required_signals:
+    - "FVG@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:45", "12:00"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "fvg_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: null
+    breakeven_at_rr: 999.0
+
+  max_duration_minutes: 135
+
+  scoring:
+    weights:
+      fvg_quality: 1.0
+      pattern_quality: 0.0
+      trend_alignment: 0.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0
+
+# --- S7a: Liquidity_Raid_V056 — VIDEO 056 Model 2 (90% codable) ---
+# Source: SOURCE_S7_S8_OB_NQ_TRUTH_PACK.md
+# Flow: Equal H/L on 5m → sweep (liquidity raid) → close back → entry at MARKET → TP 2:1/4:1
+- playbook_name: "Liquidity_Raid_V056"
+  category: "SCALP"
+  description: "V056 M2 faithful: equal H/L sweep → close confirmation → MARKET entry"
+  max_setups_per_session: 2
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "SWEEP@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:30", "12:00"]
+      - ["14:00", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "sweep_close"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "sweep_extreme"
+    padding_ticks: 2
+
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: 4.0
+    breakeven_at_rr: 1.5
+
+  max_duration_minutes: 120
+
+  scoring:
+    weights:
+      liquidity_sweep: 1.0
+      pattern_quality: 0.0
+      trend_alignment: 0.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0
+
+# --- S1b: Range_FVG_V054 — VIDEO 054 "3-Step Scalping" (95% codable) ---
+# Source: SOURCE_S1_FVG_FILL_TRUTH_PACK.md
+# Flow: 5m opening range → FVG break + engulfing confirmation → limit 50% → TP 3:1
+- playbook_name: "Range_FVG_V054"
+  category: "SCALP"
+  description: "V054 faithful: 5m range → FVG + engulfing → limit 50% → TP 3:1"
+  max_setups_per_session: 1
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  opening_range:
+    duration_minutes: 5
+    session_start_et: "09:30"
+
+  required_signals:
+    - "FVG@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:35", "12:00"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families:
+      - "engulfing"
+    direction: "any"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "fvg_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: null
+    breakeven_at_rr: 999.0
+
+  max_duration_minutes: 145
+
+  scoring:
+    weights:
+      fvg_quality: 0.7
+      pattern_quality: 0.3
+      trend_alignment: 0.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0
+
+# --- S3b: Asia_Sweep_V051 — VIDEO 051 "3-Step Asia Sweep" (86% codable) ---
+# Source: SOURCE_S3_SESSION_FAKEOUT_TRUTH_PACK.md
+# Flow: Daily bias + 15m structure → Asia H/L sweep → 5m BOS → entry → TP 5:1
+- playbook_name: "Asia_Sweep_V051"
+  category: "DAYTRADE"
+  description: "V051 faithful: daily bias + Asia sweep + BOS → London reversal → TP 5:1"
+  max_setups_per_session: 1
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "SWEEP@5m"
+    - "BOS@5m"
+
+  timefilters:
+    session: "LONDON"
+    time_windows:
+      - ["02:00", "05:00"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "manipulation_reversal"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: true
+    require_bos: true
+    smt_bonus: true
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "bos_close"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "sweep_extreme"
+    padding_ticks: 3
+
+  take_profit_logic:
+    min_rr: 5.0
+    tp1_rr: 5.0
+    tp2_rr: null
+    breakeven_at_rr: 2.0
+
+  max_duration_minutes: 180
+
+  scoring:
+    weights:
+      liquidity_sweep: 0.5
+      bos_strength: 0.3
+      context_strength: 0.2
+    grade_thresholds:
+      A_plus: 0.70
+      A: 0.40
+      B: 0.0
+
+# --- S3a: London_Fakeout_V066 — VIDEO 066 "First $100k" (83% codable) ---
+# Source: SOURCE_S3_SESSION_FAKEOUT_TRUTH_PACK.md
+# Flow: London H/L sweep → 5m BOS reversal → FVG/OB entry → TP 3:1
+- playbook_name: "London_Fakeout_V066"
+  category: "DAYTRADE"
+  description: "V066 faithful: London fakeout → 5m BOS reversal → FVG entry → TP 3:1"
+  max_setups_per_session: 1
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "SWEEP@5m"
+    - "BOS@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["03:00", "08:00"]
+      - ["09:30", "11:00"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: true
+    require_bos: true
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "sweep_extreme"
+    padding_ticks: 2
+
+  take_profit_logic:
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.5
+
+  max_duration_minutes: 240
+
+  scoring:
+    weights:
+      liquidity_sweep: 0.4
+      bos_strength: 0.3
+      fvg_quality: 0.3
+    grade_thresholds:
+      A_plus: 0.60
+      A: 0.30
+      B: 0.0
+
+# --- S7b: Engulfing_Bar_V056 — VIDEO 056 Model 1 (85% codable) ---
+# Source: SOURCE_S7_S8_OB_NQ_TRUTH_PACK.md
+# Flow: D/4H bias → engulfing candle on 5m → MARKET entry → TP 2:1/4:1
+- playbook_name: "Engulfing_Bar_V056"
+  category: "SCALP"
+  description: "V056 M1 faithful: engulfing bar on 5m → MARKET entry → TP 2:1"
+  max_setups_per_session: 2
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals: []
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:30", "12:00"]
+      - ["14:00", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families:
+      - "engulfing"
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "pattern_close"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "pattern_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: 4.0
+    breakeven_at_rr: 1.0
+
+  max_duration_minutes: 120
+
+  scoring:
+    weights:
+      pattern_quality: 1.0
+      trend_alignment: 0.0
+      fvg_quality: 0.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0
+
+# --- S9: OB_Retest_V004 — VIDEO 004 "Order Block Strategy" (80-85% codable) ---
+# Source: SOURCE_S7_S8_OB_NQ_TRUTH_PACK.md
+# Flow: Identify OB before BOS → wait for retest of OB → MARKET entry → TP 3:1/5:1
+- playbook_name: "OB_Retest_V004"
+  category: "DAYTRADE"
+  description: "V004 faithful: OB before BOS → retest → MARKET entry → TP 3:1"
+  max_setups_per_session: 2
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "OB@5m"
+    - "BOS@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:30", "12:00"]
+      - ["14:00", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish"]
+    day_type_allowed: ["trend", "manipulation_reversal"]
+    structure_htf: ["uptrend", "downtrend"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: true
+    smt_bonus: true
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "ob_retest"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "ob_extreme"
+    padding_ticks: 2
+
+  take_profit_logic:
+    min_rr: 3.0
+    tp1_rr: 3.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 1.5
+
+  max_duration_minutes: 180
+
+  scoring:
+    weights:
+      bos_strength: 0.5
+      context_strength: 0.3
+      pattern_quality: 0.2
+    grade_thresholds:
+      A_plus: 0.60
+      A: 0.30
+      B: 0.0
