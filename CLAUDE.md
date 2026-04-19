@@ -33,7 +33,7 @@ backtest crédible → campagnes comparables → portefeuille discipliné → pa
 | `FVG_Fill_Scalp` | ALLOWLIST | functional_but_limited — E[R] négatif OOS |
 | `Session_Open_Scalp` | ALLOWLIST | **LAB ONLY** — bloqué runtime edge (2026-04-09) |
 | `Morning_Trap_Reversal` | ALLOWLIST + B1 patch + C.1 vwap_regime (2026-04-20) | **C.1 partial (2026-04-20)** : E[R] -0.147 (B1) → -0.123 (B2: BE/dur) → -0.081 (C.1: vwap_regime). WR 28%, n 32, total_R -2.59. Toujours <0 → signal-quality ceiling, ne pas empiler de filtres. |
-| `Liquidity_Sweep_Scalp` | ALLOWLIST / quarantine YAML | **B1 REVIEW** (corpus: 51 tr, E[R]=-0.03, peak_R p60=0.57R) — proposé TP1 1.5→0.28R, flag SIGNAL_QUALITY_SUSPECT. |
+| `Liquidity_Sweep_Scalp` | ALLOWLIST + C.1 vwap_regime (2026-04-20) | **C.1 NULL EFFECT (2026-04-20)** : E[R] -0.034 → -0.035 (n 51→50). vwap_regime cut matches 16-44%/wk mais `max_setups_per_session: 3` cap binding. Signal asymptote, ne pas empiler de filtres. |
 | `Engulfing_Bar_V056` | (new, Phase 5a faithful) | **B1 REVIEW** (corpus: 34 tr, E[R]=-0.10, time_stop 53%) — proposé TP1 2.0→0.68R, LARGE_TP1_CUT flag. |
 | `BOS_Scalp_1m` | legacy | **B1 HOLD** (corpus: 51 tr, E[R]=-0.11, peak_R p60=0.40R) — DURATION_ANOMALY (YAML 15m mais wins 120m) + SIGNAL_QUALITY_SUSPECT. Investiguer avant apply. |
 | `ORB_Breakout_5m` | **DENYLIST (B0.3 done 2026-04-19)** | Fair audit : E[R]=-0.10, 16 tr, WR=25% — trop tôt pour calibrer. Déplacé ALLOWLIST→DENYLIST. |
@@ -98,6 +98,14 @@ FVG_Fill_Scalp est le principal porteur de dérive. NY survit mieux en isolation
 - **B2 gate** : ❌ FAIL (0/3 targets E[R]>0). Per validated Option A : pivot **Phase C.1** (filtres VWAP/volume).
 - **BOS_Scalp_1m bloqué** : YAML `max_duration_minutes` silencieusement ignoré pour SCALPs hors PHASE3B_PLAYBOOKS — détails [bos_scalp_duration_anomaly.md](backend/data/backtest_results/bos_scalp_duration_anomaly.md). Calibration BOS_Scalp impossible jusqu'au fix engine.
 
+### Phase C.1 progression 2026-04-20 — vwap_regime tests
+
+- **C.0 (read-only diagnosis)** : EXECUTION_LAYER_ISSUE était un artefact d'audit (kill_switch OFF + DAY_Aplus_1 drainant le compte sous le seuil min-share). Pas de bug réel. Détails [c0_execution_layer_root_cause.md](backend/data/backtest_results/c0_execution_layer_root_cause.md).
+- **C.1 Morning_Trap_Reversal** : `vwap_regime: true` → E[R] -0.123 → **-0.081** (Δ +0.042), WR 25 → 28%, n 32 inchangé. `max_setups_per_session: 2` cap binding — filtre swap which 2/session pairs fire. Cumulé B1→B2→C.1 : -0.147 → -0.123 → **-0.081**, jamais ≥0. Détails [c1_vwap_verdict.md](backend/data/backtest_results/c1_vwap_verdict.md).
+- **C.1 Liquidity_Sweep_Scalp** : `vwap_regime: true` → E[R] -0.034 → **-0.035** (Δ -0.001), n 51 → 50. **Effet nul.** Même mécanique cap-binding (`max_setups_per_session: 3`) mais sous-ensemble vwap-aligné statistiquement indistinct. Détails [c1_lsweep_verdict.md](backend/data/backtest_results/c1_lsweep_verdict.md).
+- **Enseignement** : vwap_regime n'est pas un edge universel. Quand post-entry tweaks (TP/SL/BE/duration) ET post-filter gates (vwap_regime) plafonnent, le signal est le ceiling. Stacker plus de filtres coûte du sample sans changer la math.
+- **C.1 stop** : 2 data points (Morning_Trap +0.042, Liquidity_Sweep 0.0). **Décision humaine requise** avant : (A) volume_gate_ratio sur Liquidity_Sweep, (B) PHASE3B_PLAYBOOKS engine fix pour débloquer BOS_Scalp_1m, (C) escalade signal redesign / portfolio reduction.
+
 ---
 
 ## Vérité MASTER
@@ -147,8 +155,8 @@ WF 6 mois (8 playbooks) : tous négatifs. IFVG_5m_Sweep (MASTER) aussi négatif.
 - ✓ **B2 Morning_Trap re-run** (2026-04-20) : E[R] -0.147 → -0.123, gate FAIL (ne croise pas zéro). Voir [b2_morningtrap_verdict.md](backend/data/backtest_results/b2_morningtrap_verdict.md).
 - ✓ **C.0 root cause** (2026-04-20) : EXECUTION_LAYER_ISSUE = artefact audit (DAY_Aplus_1 spam drain account → silent position-size reject). Pas de fix engine nécessaire. [c0_execution_layer_root_cause.md](backend/data/backtest_results/c0_execution_layer_root_cause.md).
 - ✓ **C.1 Morning_Trap vwap_regime** (2026-04-20) : E[R] -0.123 → -0.081 (Δ +0.042), WR 25%→28%, n inchangé (filtre nuance la sélection mais cap session=2 binding). Cumul B1→B2→C.1 : -0.147 → -0.081. Toujours négatif. Voir [c1_vwap_verdict.md](backend/data/backtest_results/c1_vwap_verdict.md).
-- ⏭ **Décision next** : (A) stack 2nd filter sur Morning_Trap [marginal], (B) appliquer C.1 à Liquidity_Sweep_Scalp [HIGH conf], ou (C) accepter Morning_Trap ceiling, escalader signal redesign. Recommandation report = (B).
-- ⏸ **PHASE3B_PLAYBOOKS gate fix** (engine-correctness) : prerequis pour calibrer BOS_Scalp_1m + tout futur SCALP avec `max_duration_minutes` YAML.
+- ✓ **C.1 Liquidity_Sweep_Scalp vwap_regime** (2026-04-20) : E[R] -0.034 → -0.035 (Δ -0.001), n 51→50. **Effet nul** — vwap-aligned subset statistiquement indistinct. Voir [c1_lsweep_verdict.md](backend/data/backtest_results/c1_lsweep_verdict.md).
+- ⏸ **C.1 STOP — décision humaine requise** : (A) volume_gate_ratio sur Liquidity_Sweep [filtre sweep-aligned], (B) **PHASE3B_PLAYBOOKS engine fix** pour débloquer BOS_Scalp_1m calibration [recommandé — engine-correctness, scope prévisible], (C) accepter C.1 inconclusive, escalader signal redesign / portfolio reduction.
 
 ---
 
