@@ -1577,3 +1577,285 @@
       A_plus: 0.50
       A: 0.01
       B: 0.0
+
+# ──────────────────────────────────────────────────────────────────────────
+# INDICATOR-BASED SCALP STRATEGIES (5m) — Internet research, 100% codable
+# ──────────────────────────────────────────────────────────────────────────
+
+# S10 — ORB (Opening Range Breakout) 5m
+# Source: classic ORB strategy, widely backtested
+# Rules: First 15min high/low → 5m candle closes outside → entry
+# SL: opposite side of range, TP: 2:1
+- playbook_name: "ORB_Breakout_5m"
+  category: "SCALP"
+  description: "5m ORB: first 15min range → breakout on 5m close → SL opposite side → TP 2:1"
+  max_setups_per_session: 2
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "ORB@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:45", "11:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "pattern_close"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "pattern_extreme"
+    padding_ticks: 2
+
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: null
+    breakeven_at_rr: 1.0
+
+  max_duration_minutes: 60
+
+  scoring:
+    weights:
+      indicator_strength: 1.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0
+
+# S11 — EMA 9/21 Crossover Scalp 5m
+# Source: classic momentum strategy, 9 EMA crosses 21 EMA + 50 EMA trend filter
+# SL: recent swing low/high, TP: 2:1
+- playbook_name: "EMA_Cross_5m"
+  category: "SCALP"
+  description: "5m EMA 9/21 crossover: 9 EMA crosses 21 EMA + 50 EMA trend filter → SL swing → TP 2:1"
+  max_setups_per_session: 3
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "EMA@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:35", "11:30"]
+      - ["14:00", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "pattern_close"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "pattern_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: null
+    breakeven_at_rr: 1.0
+
+  max_duration_minutes: 45
+
+  scoring:
+    weights:
+      indicator_strength: 1.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0
+
+# S12 — VWAP Bounce Scalp 5m
+# Source: VWAP mean reversion, widely used by institutional/retail
+# Rules: price touches VWAP + RSI(7) oversold/overbought → bounce entry
+# SL: recent swing, TP: 1.5:1
+- playbook_name: "VWAP_Bounce_5m"
+  category: "SCALP"
+  description: "5m VWAP bounce: price touches VWAP + RSI<35 → long (or RSI>65 → short) → TP 1.5:1"
+  max_setups_per_session: 3
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "VWAP@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:35", "11:00"]
+      - ["14:00", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "pattern_close"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "pattern_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: null
+    breakeven_at_rr: 999.0
+
+  max_duration_minutes: 40
+
+  scoring:
+    weights:
+      indicator_strength: 1.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0
+
+# S13 — RSI(2) Mean Reversion 5m
+# Source: Larry Connors RSI(2) strategy, backtested 91% WR on daily (adapted to 5m)
+# Rules: RSI(2) < 10 → long, RSI(2) > 90 → short
+# SL: recent swing, TP: 1.5:1
+- playbook_name: "RSI_MeanRev_5m"
+  category: "SCALP"
+  description: "5m RSI(2) mean reversion: RSI(2)<10 → long, RSI(2)>90 → short → TP 1.5:1"
+  max_setups_per_session: 3
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "RSI@5m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:35", "11:30"]
+      - ["14:00", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "pattern_close"
+    confirmation_tf: "5m"
+  setup_tf: "5m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "pattern_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: null
+    breakeven_at_rr: 999.0
+
+  max_duration_minutes: 40
+
+  scoring:
+    weights:
+      indicator_strength: 1.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0

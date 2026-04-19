@@ -22,6 +22,7 @@ from .ifvg import detect_ifvg
 from .order_block import detect_order_blocks
 from .equilibrium import detect_equilibrium
 from .breaker_block import detect_breaker_blocks
+from .indicators import detect_ema_crossover, detect_vwap_bounce, detect_rsi_extreme, detect_orb_breakout
 
 # Import the core ICTPatternEngine to reuse existing BOS/FVG/SMT/CHOCH logic.
 from .ict import ICTPatternEngine
@@ -86,6 +87,12 @@ def detect_custom_patterns(candles: List[Candle], timeframe: str) -> Dict[str, L
     bos_list = ict_engine.detect_bos(candles, timeframe)
     fvg_list = ict_engine.detect_fvg(candles, timeframe)
     sweep_list = ict_engine.detect_liquidity_sweep(candles, timeframe)
+    ind_cfg = cfg.get("indicators") or {}
+    ema_cfg = ind_cfg.get("ema_crossover") or {}
+    vwap_cfg = ind_cfg.get("vwap_bounce") or {}
+    rsi_cfg = ind_cfg.get("rsi_extreme") or {}
+    orb_cfg = ind_cfg.get("orb_breakout") or {}
+
     return {
         "bos": bos_list,
         "fvg": fvg_list,
@@ -94,6 +101,10 @@ def detect_custom_patterns(candles: List[Candle], timeframe: str) -> Dict[str, L
         "order_block": detect_order_blocks(candles, timeframe, ob_cfg),
         "equilibrium": detect_equilibrium(candles, timeframe, eq_cfg),
         "breaker_block": detect_breaker_blocks(candles, timeframe, brkr_cfg),
+        "ema_cross": detect_ema_crossover(candles, timeframe, ema_cfg),
+        "vwap_bounce": detect_vwap_bounce(candles, timeframe, vwap_cfg),
+        "rsi_extreme": detect_rsi_extreme(candles, timeframe, rsi_cfg),
+        "orb_break": detect_orb_breakout(candles, timeframe, orb_cfg),
     }
 
 def detect_smt_pattern(spy_candles: List[Candle], qqq_candles: List[Candle]) -> List[ICTPattern]:
