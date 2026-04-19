@@ -80,7 +80,11 @@ class MarketState(BaseModel):
     
     # FVG HTF
     htf_fvgs: List[Dict[str, Any]] = []
-    
+
+    # Regime filter (15m ADX / Choppiness Index)
+    adx_15m: Optional[float] = None
+    chop_index_15m: Optional[float] = None
+
     # Contexte
     current_session: str = 'unknown'  # 'asia', 'london', 'ny'
     notes: str = ''
