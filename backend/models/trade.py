@@ -102,7 +102,13 @@ class Trade(BaseModel):
     breakeven_moved: bool = False
     session_window_end_utc: Optional[datetime] = None
     max_hold_minutes: Optional[float] = None
-    
+
+    # Trailing stop fields
+    trailing_mode: Optional[str] = None  # e.g. 'trail_rr'
+    trailing_trigger_rr: Optional[float] = None
+    trailing_offset_rr: Optional[float] = None
+    peak_r: float = 0.0
+
     # P1: Master Candle info (Sprint 2)
     mc_high: Optional[float] = None
     mc_low: Optional[float] = None

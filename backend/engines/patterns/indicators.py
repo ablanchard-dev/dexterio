@@ -3,7 +3,7 @@
 Produces ICTPattern objects for purely mechanical, indicator-driven strategies:
 - EMA crossover (9/21 with 50 EMA trend filter)
 - VWAP bounce (price touches VWAP + RSI oversold/overbought)
-- RSI extreme (RSI(2) < 10 or > 90 mean reversion)
+- RSI extreme (RSI(5) < 15 or > 85 mean reversion)
 - ORB breakout (opening range high/low break on close)
 
 All detectors return List[ICTPattern] compatible with the existing pipeline.
@@ -97,6 +97,7 @@ def detect_ema_crossover(candles: List[Candle], timeframe: str, config: Dict[str
     Signal: 9 EMA crosses 21 EMA on the LAST candle.
     Trend filter: price must be on same side of 50 EMA.
     SL: recent swing low (bullish) or swing high (bearish) over lookback.
+    Body ratio filter: weak-body candles get strength penalty.
     """
     results: List[ICTPattern] = []
     fast_p = int(config.get('fast_period', 9))
@@ -122,6 +123,13 @@ def detect_ema_crossover(candles: List[Candle], timeframe: str, config: Dict[str
     if ema_fast[prev] <= ema_slow[prev] and ema_fast[last] > ema_slow[last]:
         if c.close > ema_trend[last]:  # trend filter
             swing_low = min(cn.low for cn in candles[-lookback_sl:])
+            # Body ratio filter: strong close in direction
+            c_range = c.high - c.low
+            c_body = abs(c.close - c.open)
+            body_ratio = c_body / c_range if c_range > 0 else 0
+            ema_strength = 0.8
+            if body_ratio < 0.5:
+                ema_strength *= 0.5
             results.append(ICTPattern(
                 symbol=c.symbol,
                 timeframe=timeframe,
@@ -133,8 +141,9 @@ def detect_ema_crossover(candles: List[Candle], timeframe: str, config: Dict[str
                     'ema_slow': round(ema_slow[last], 4),
                     'ema_trend': round(ema_trend[last], 4),
                     'close_price': c.close,
+                    'body_ratio': round(body_ratio, 4),
                 },
-                strength=0.8,
+                strength=ema_strength,
                 confidence=0.7,
             ))
 
@@ -142,6 +151,13 @@ def detect_ema_crossover(candles: List[Candle], timeframe: str, config: Dict[str
     if ema_fast[prev] >= ema_slow[prev] and ema_fast[last] < ema_slow[last]:
         if c.close < ema_trend[last]:
             swing_high = max(cn.high for cn in candles[-lookback_sl:])
+            # Body ratio filter: strong close in direction
+            c_range = c.high - c.low
+            c_body = abs(c.close - c.open)
+            body_ratio = c_body / c_range if c_range > 0 else 0
+            ema_strength = 0.8
+            if body_ratio < 0.5:
+                ema_strength *= 0.5
             results.append(ICTPattern(
                 symbol=c.symbol,
                 timeframe=timeframe,
@@ -153,8 +169,9 @@ def detect_ema_crossover(candles: List[Candle], timeframe: str, config: Dict[str
                     'ema_slow': round(ema_slow[last], 4),
                     'ema_trend': round(ema_trend[last], 4),
                     'close_price': c.close,
+                    'body_ratio': round(body_ratio, 4),
                 },
-                strength=0.8,
+                strength=ema_strength,
                 confidence=0.7,
             ))
 
@@ -171,7 +188,7 @@ def detect_vwap_bounce(candles: List[Candle], timeframe: str, config: Dict[str, 
     rsi_period = int(config.get('rsi_period', 7))
     rsi_oversold = float(config.get('rsi_oversold', 35))
     rsi_overbought = float(config.get('rsi_overbought', 65))
-    touch_tolerance = float(config.get('touch_tolerance', 0.001))  # 0.1% from VWAP
+    touch_tolerance = float(config.get('touch_tolerance', 0.0005))  # 0.05% from VWAP
 
     n = len(candles)
     if n < max(rsi_period + 2, 20):
@@ -236,16 +253,16 @@ def detect_vwap_bounce(candles: List[Candle], timeframe: str, config: Dict[str, 
 
 
 def detect_rsi_extreme(candles: List[Candle], timeframe: str, config: Dict[str, Any]) -> List[ICTPattern]:
-    """Detect RSI(2) extreme mean reversion signal.
+    """Detect RSI(5) extreme mean reversion signal.
 
-    Bullish: RSI(2) < 10 → price likely to bounce.
-    Bearish: RSI(2) > 90 → price likely to drop.
+    Bullish: RSI(5) < 15 -> price likely to bounce.
+    Bearish: RSI(5) > 85 -> price likely to drop.
     SL: recent swing low/high. TP: return to 20 EMA (handled by playbook).
     """
     results: List[ICTPattern] = []
-    rsi_period = int(config.get('rsi_period', 2))
-    rsi_buy = float(config.get('rsi_buy_threshold', 10))
-    rsi_sell = float(config.get('rsi_sell_threshold', 90))
+    rsi_period = int(config.get('rsi_period', 5))
+    rsi_buy = float(config.get('rsi_buy_threshold', 15))
+    rsi_sell = float(config.get('rsi_sell_threshold', 85))
     lookback_sl = int(config.get('lookback_sl', 10))
 
     n = len(candles)
@@ -302,7 +319,7 @@ def detect_orb_breakout(candles: List[Candle], timeframe: str, config: Dict[str,
     The opening range is defined as the high/low of the first N minutes after market open (9:30 ET).
     A breakout occurs when a candle closes outside this range.
 
-    This detector is stateless — it rebuilds the opening range from the candle history
+    This detector is stateless -- it rebuilds the opening range from the candle history
     each time it's called, by finding candles within [09:30, 09:30+range_minutes) of the
     current day.
     """
@@ -316,7 +333,7 @@ def detect_orb_breakout(candles: List[Candle], timeframe: str, config: Dict[str,
     last = candles[-1]
     ts = last.timestamp
 
-    # Work in ET — we need to identify 9:30 AM ET
+    # Work in ET -- we need to identify 9:30 AM ET
     try:
         from zoneinfo import ZoneInfo
         et = ZoneInfo("America/New_York")
@@ -370,8 +387,25 @@ def detect_orb_breakout(candles: List[Candle], timeframe: str, config: Dict[str,
     if range_size <= 0:
         return results
 
+    # Collect post-range candles for retest check
+    post_range_candles = []
+    for c in candles:
+        c_ts = c.timestamp
+        if c_ts.tzinfo is None:
+            from datetime import timezone as _tz
+            c_et = c_ts.replace(tzinfo=_tz.utc).astimezone(et)
+        else:
+            c_et = c_ts.astimezone(et)
+        if c_et.date() == ts_et.date() and c_et >= range_end_et and c is not last:
+            post_range_candles.append(c)
+
     # Breakout: last candle closes outside the range
     if last.close > range_high:
+        orb_strength = min(1.0, (last.close - range_high) / range_size)
+        # Retest check: did any post-range candle pull back to range_high?
+        retested = any(c.low <= range_high for c in post_range_candles)
+        if not retested:
+            orb_strength *= 0.6
         results.append(ICTPattern(
             symbol=last.symbol,
             timeframe=timeframe,
@@ -385,12 +419,18 @@ def detect_orb_breakout(candles: List[Candle], timeframe: str, config: Dict[str,
                 'close_price': last.close,
                 'range_minutes': range_minutes,
                 'breakout_distance': round(last.close - range_high, 4),
+                'retested': retested,
             },
-            strength=min(1.0, (last.close - range_high) / range_size),
+            strength=orb_strength,
             confidence=0.75,
         ))
 
     if last.close < range_low:
+        orb_strength = min(1.0, (range_low - last.close) / range_size)
+        # Retest check: did any post-range candle pull back to range_low?
+        retested = any(c.high >= range_low for c in post_range_candles)
+        if not retested:
+            orb_strength *= 0.6
         results.append(ICTPattern(
             symbol=last.symbol,
             timeframe=timeframe,
@@ -404,8 +444,9 @@ def detect_orb_breakout(candles: List[Candle], timeframe: str, config: Dict[str,
                 'close_price': last.close,
                 'range_minutes': range_minutes,
                 'breakout_distance': round(range_low - last.close, 4),
+                'retested': retested,
             },
-            strength=min(1.0, (range_low - last.close) / range_size),
+            strength=orb_strength,
             confidence=0.75,
         ))
 

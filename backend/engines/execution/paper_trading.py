@@ -142,6 +142,10 @@ class ExecutionEngine:
             grade_thresholds=grade_thresholds_setup,
             score_scale_hint=score_scale_hint_setup,
             breakeven_trigger_rr=be_trigger_rr,
+            trailing_mode=getattr(pb_def, 'trailing_mode', None) if pb_def else None,
+            trailing_trigger_rr=getattr(pb_def, 'trailing_trigger_rr', None) if pb_def else None,
+            trailing_offset_rr=getattr(pb_def, 'trailing_offset_rr', None) if pb_def else None,
+            peak_r=0.0,
             session_window_end_utc=session_window_end_utc,
             max_hold_minutes=max_hold_minutes,
             
@@ -222,8 +226,16 @@ class ExecutionEngine:
             if trade.symbol not in market_data:
                 continue
             
-            current_price = market_data[trade.symbol]
-            
+            raw = market_data[trade.symbol]
+            if isinstance(raw, dict):
+                current_price = raw['close']
+                candle_high = raw['high']
+                candle_low = raw['low']
+            else:
+                current_price = raw
+                candle_high = raw
+                candle_low = raw
+
             # Calculer P&L unrealized
             if trade.direction == 'LONG':
                 pnl_points = current_price - trade.entry_price
@@ -234,9 +246,18 @@ class ExecutionEngine:
             sl0 = trade.initial_stop_loss if trade.initial_stop_loss is not None else trade.stop_loss
             risk_distance = abs(trade.entry_price - sl0)
             r_multiple = pnl_points / risk_distance if risk_distance > 0 else 0
-            
-            # 1. Vérifier Stop Loss
-            if trade.direction == 'LONG' and current_price <= trade.stop_loss:
+
+            # Track peak R for trailing stop
+            if hasattr(trade, 'peak_r'):
+                if trade.direction == 'LONG':
+                    peak_pnl = candle_high - trade.entry_price
+                else:
+                    peak_pnl = trade.entry_price - candle_low
+                peak_r = peak_pnl / risk_distance if risk_distance > 0 else 0
+                trade.peak_r = max(trade.peak_r, peak_r)
+
+            # 1. Vérifier Stop Loss (intrabar: use candle extremes)
+            if trade.direction == 'LONG' and candle_low <= trade.stop_loss:
                 trades_to_close.append({
                     'trade_id': trade_id,
                     'reason': 'SL',
@@ -249,7 +270,7 @@ class ExecutionEngine:
                 })
                 continue
             
-            elif trade.direction == 'SHORT' and current_price >= trade.stop_loss:
+            elif trade.direction == 'SHORT' and candle_high >= trade.stop_loss:
                 trades_to_close.append({
                     'trade_id': trade_id,
                     'reason': 'SL',
@@ -267,14 +288,14 @@ class ExecutionEngine:
                 tp1_hit = False
                 tp2_hit = False
                 if trade.take_profit_2:
-                    if trade.direction == 'LONG' and current_price >= trade.take_profit_2:
+                    if trade.direction == 'LONG' and candle_high >= trade.take_profit_2:
                         tp2_hit = True
-                    elif trade.direction == 'SHORT' and current_price <= trade.take_profit_2:
+                    elif trade.direction == 'SHORT' and candle_low <= trade.take_profit_2:
                         tp2_hit = True
                 if not tp2_hit and trade.take_profit_1:
-                    if trade.direction == 'LONG' and current_price >= trade.take_profit_1:
+                    if trade.direction == 'LONG' and candle_high >= trade.take_profit_1:
                         tp1_hit = True
-                    elif trade.direction == 'SHORT' and current_price <= trade.take_profit_1:
+                    elif trade.direction == 'SHORT' and candle_low <= trade.take_profit_1:
                         tp1_hit = True
                 if tp2_hit:
                     trades_to_close.append({
@@ -288,8 +309,8 @@ class ExecutionEngine:
                         'r_multiple': r_multiple
                     })
                     if trade.take_profit_1:
-                        tp1_would_hit = (trade.direction == 'LONG' and current_price >= trade.take_profit_1) or \
-                                        (trade.direction == 'SHORT' and current_price <= trade.take_profit_1)
+                        tp1_would_hit = (trade.direction == 'LONG' and candle_high >= trade.take_profit_1) or \
+                                        (trade.direction == 'SHORT' and candle_low <= trade.take_profit_1)
                         if tp1_would_hit:
                             logger.debug(
                                 f"Trade {trade_id}: TP2 hit ({trade.take_profit_2:.2f}), "
@@ -381,7 +402,23 @@ class ExecutionEngine:
                         'new_sl': trade.entry_price
                     })
                     logger.info(f"Trade {trade_id}: Stop moved to breakeven @ {trade.entry_price:.2f}")
-        
+
+            # 5. Trailing stop
+            if hasattr(trade, 'trailing_mode') and trade.trailing_mode == 'trail_rr':
+                trigger = trade.trailing_trigger_rr if trade.trailing_trigger_rr is not None else 1.0
+                offset = trade.trailing_offset_rr if trade.trailing_offset_rr is not None else 0.5
+                if trade.peak_r >= trigger:
+                    trail_r = trade.peak_r - offset
+                    if trail_r > 0:
+                        if trade.direction == 'LONG':
+                            new_sl = trade.entry_price + trail_r * risk_distance
+                        else:
+                            new_sl = trade.entry_price - trail_r * risk_distance
+                        if trade.direction == 'LONG' and new_sl > trade.stop_loss:
+                            trade.stop_loss = new_sl
+                        elif trade.direction == 'SHORT' and new_sl < trade.stop_loss:
+                            trade.stop_loss = new_sl
+
         # Fermer trades (sécurité: dédupliquer par trade_id)
         closed_trades = set()
         for close_req in trades_to_close:

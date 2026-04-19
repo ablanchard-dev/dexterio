@@ -88,6 +88,8 @@ class SetupEngineV2:
             'session_profile': market_state.session_profile,
             'day_type': market_state.day_type,
             'volatility': market_state.volatility,
+            'adx_15m': market_state.adx_15m,
+            'chop_index_15m': market_state.chop_index_15m,
         }
         
         # P0 ÉTAPE 3: Compter évaluation playbooks (via attribut externe si disponible)
@@ -305,15 +307,15 @@ class SetupEngineV2:
         ]
 
         if playbook_name in contrarian_playbooks:
-            # Direction opposée au bias ou au dernier mouvement
-            # Pour simplifier, on prend la direction du pattern dominant
-            bullish_patterns = [p for p in candle_patterns if p.direction == 'bullish']
-            bearish_patterns = [p for p in candle_patterns if p.direction == 'bearish']
+            # Strength-weighted scoring instead of count-based
+            bullish_score = sum(p.strength for p in candle_patterns if p.direction == 'bullish')
+            bearish_score = sum(p.strength for p in candle_patterns if p.direction == 'bearish')
 
-            if len(bullish_patterns) > len(bearish_patterns):
+            if bullish_score > bearish_score * 1.3:  # Need 30% edge
                 return 'LONG'
-            elif len(bearish_patterns) > len(bullish_patterns):
+            elif bearish_score > bullish_score * 1.3:
                 return 'SHORT'
+            # else fall through to None
 
         else:
             # Continuation playbooks: prefer HTF bias first
@@ -322,7 +324,7 @@ class SetupEngineV2:
             elif bias == 'bearish':
                 return 'SHORT'
 
-            # Fallback: use ICT pattern direction (indicator signals carry direction)
+            # Fallback: use strength-weighted ICT pattern direction
             # This handles indicator-based playbooks (EMA cross, VWAP bounce, RSI, ORB)
             # when HTF bias is neutral
             if ict_patterns:
@@ -331,9 +333,12 @@ class SetupEngineV2:
                 directional = [p for p in ict_patterns
                                if p.pattern_type in indicator_types and p.direction in ('bullish', 'bearish')]
                 if directional:
-                    # Use the most recent signal's direction
-                    last_signal = directional[-1]
-                    return 'LONG' if last_signal.direction == 'bullish' else 'SHORT'
+                    bull_str = sum(p.strength for p in directional if p.direction == 'bullish')
+                    bear_str = sum(p.strength for p in directional if p.direction == 'bearish')
+                    if bull_str > bear_str * 1.3:
+                        return 'LONG'
+                    elif bear_str > bull_str * 1.3:
+                        return 'SHORT'
 
         return None
     

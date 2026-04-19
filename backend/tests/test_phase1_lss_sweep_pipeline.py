@@ -37,18 +37,25 @@ def test_custom_detectors_exposes_liquidity_sweep_key():
 def test_detect_liquidity_sweep_produces_liquidity_sweep_pattern_type():
     """
     Bougies synthétiques: pivot low + pivot high (detect_liquidity_sweep exige les deux),
-    puis dernière bougie sweep high + rejet (ict.py ~338-339).
+    puis dernière bougie sweep high + rejet.
+    Need 10+ candles on each side for lookback=10 pivot detection.
     """
     candles: list[Candle] = []
-    for i in range(5):
+    # 10 flat candles before pivot low
+    for i in range(10):
         candles.append(_candle(i, 100.0, 100.2, 99.8, 100.0))
-    candles.append(_candle(5, 99.5, 100.0, 98.0, 99.2))
-    for i in range(6, 10):
+    # Pivot low at index 10 (with 10 candles on each side)
+    candles.append(_candle(10, 99.5, 100.0, 97.0, 99.2))
+    # 10 candles between pivot low and pivot high
+    for i in range(11, 21):
         candles.append(_candle(i, 99.5, 100.2, 99.0, 99.8))
-    candles.append(_candle(10, 100.0, 102.0, 99.5, 100.5))
-    for i in range(11, 24):
+    # Pivot high at index 21 (with 10 candles on each side)
+    candles.append(_candle(21, 100.0, 103.0, 99.5, 100.5))
+    # 10 candles after pivot high
+    for i in range(22, 32):
         candles.append(_candle(i, 100.0, 101.0, 99.5, 100.2))
-    candles.append(_candle(24, 101.0, 103.5, 100.0, 100.8))
+    # Last candle: sweep high with rejection + sufficient wick (>0.1% of price)
+    candles.append(_candle(32, 101.0, 104.5, 100.0, 100.8))
 
     engine = ICTPatternEngine()
     sweeps = engine.detect_liquidity_sweep(candles, "5m")

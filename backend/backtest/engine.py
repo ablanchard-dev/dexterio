@@ -38,6 +38,7 @@ from engines.execution.paper_trading import ExecutionEngine
 from engines.timeframe_aggregator import TimeframeAggregator
 from engines.market_state_cache import MarketStateCache
 from engines.master_candle import calculate_master_candle, get_ny_rth_session_date, get_session_labels
+from engines.regime_filter import calculate_adx, calculate_chop_index
 from engines.session_range import SessionRangeTracker
 from utils.timeframes import get_session_info, is_in_kill_zone
 from utils.volatility import volatility_score_from_1m
@@ -1114,7 +1115,12 @@ class BacktestEngine:
                     "volatility": vol_score,
                 }
             )
-            
+
+            # Regime filter: ADX and Chop Index on 15m candles
+            if len(candles_15m) >= 30:
+                market_state.adx_15m = calculate_adx(candles_15m)
+                market_state.chop_index_15m = calculate_chop_index(candles_15m)
+
             # Mettre en cache
             self.market_state_cache.put(cache_key, market_state)
         else:
@@ -1130,7 +1136,7 @@ class BacktestEngine:
                     "4h": candles_4h[-30:],  # P2-2.B
                     "1d": candles_1d[-30:]   # P2-2.B
                 }
-                
+
                 vol_score_fb = volatility_score_from_1m(candles_1m, window=30)
                 market_state = self.market_state_engine.create_market_state(
                     symbol,
@@ -1141,6 +1147,12 @@ class BacktestEngine:
                         "volatility": vol_score_fb,
                     }
                 )
+
+                # Regime filter: ADX and Chop Index on 15m candles
+                if len(candles_15m) >= 30:
+                    market_state.adx_15m = calculate_adx(candles_15m)
+                    market_state.chop_index_15m = calculate_chop_index(candles_15m)
+
                 self.market_state_cache.put(cache_key, market_state)
         
         # Patterns : detect per TF on their close events
@@ -2056,13 +2068,20 @@ class BacktestEngine:
     def _update_positions(self, current_time: datetime):
         """Met à jour les positions ouvertes avec les prix actuels et ingère les trades fermés."""
 
-        # Récupérer prix actuels à partir des données historiques déjà chargées
-        market_data: Dict[str, float] = {}
+        # Récupérer prix actuels à partir des données historiques déjà chargées (full OHLC)
+        market_data: Dict[str, dict] = {}
         for symbol in self.config.symbols:
             symbol_data = self.data[symbol]
             current_bars = symbol_data[symbol_data["datetime"] <= current_time]
             if not current_bars.empty:
-                market_data[symbol] = float(current_bars["close"].iloc[-1])
+                last_bar = current_bars.iloc[-1]
+                close_val = float(last_bar["close"])
+                market_data[symbol] = {
+                    'open': float(last_bar["open"]) if "open" in symbol_data.columns else close_val,
+                    'high': float(last_bar["high"]) if "high" in symbol_data.columns else close_val,
+                    'low': float(last_bar["low"]) if "low" in symbol_data.columns else close_val,
+                    'close': close_val,
+                }
 
         # Mettre à jour les positions (SL/TP/BE) via ExecutionEngine
         self.execution_engine.update_open_trades(market_data, current_time=current_time)  # P0 FIX: Transmettre current_time

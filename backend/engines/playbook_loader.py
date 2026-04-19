@@ -105,6 +105,12 @@ class PlaybookDefinition:
         # Max duration (pour scalps)
         self.max_duration_minutes = data.get('max_duration_minutes')
 
+        # Trailing stop (optional, from take_profit_logic or top-level)
+        _tp_logic = data.get('take_profit_logic', {})
+        self.trailing_mode: Optional[str] = _tp_logic.get('trailing_mode') or data.get('trailing_mode')
+        self.trailing_trigger_rr: Optional[float] = _tp_logic.get('trailing_trigger_rr') or data.get('trailing_trigger_rr')
+        self.trailing_offset_rr: Optional[float] = _tp_logic.get('trailing_offset_rr') or data.get('trailing_offset_rr')
+
         # Max setups per session (frequency cap per trading day)
         # None = unlimited (legacy behavior)
         self.max_setups_per_session: Optional[int] = data.get('max_setups_per_session')
@@ -117,6 +123,13 @@ class PlaybookDefinition:
         # Si présents, le playbook n'est considéré que si TOUS ces signaux
         # sont détectés par les moteurs de patterns.  Absent ou liste vide = aucun filtre.
         self.required_signals: List[str] = data.get('required_signals', [])
+
+        # Regime filter thresholds (optional, set via YAML context_requirements)
+        # adx_min: reject trades when ADX < this value (no trend)
+        # chop_max: reject trades when Chop Index > this value (choppy market)
+        ctx_r = data.get('context_requirements', {})
+        self.adx_min: Optional[float] = ctx_r.get('adx_min')
+        self.chop_max: Optional[float] = ctx_r.get('chop_max')
 
 
 class PlaybookLoader:
@@ -706,7 +719,17 @@ class PlaybookEvaluator:
             # FAIL-CLOSE: Si volatilité non définie ou insuffisante, rejeter
             if volatility is None or volatility < playbook.volatility_min:
                 return False, "volatility_insufficient"
-        
+
+        # Regime filter: reject trades in choppy/range markets
+        if getattr(playbook, 'adx_min', None) is not None:
+            adx_val = market_state.get('adx_15m')
+            if adx_val is not None and adx_val < playbook.adx_min:
+                return False, f"ADX {adx_val:.1f} < min {playbook.adx_min}"
+        if getattr(playbook, 'chop_max', None) is not None:
+            chop_val = market_state.get('chop_index_15m')
+            if chop_val is not None and chop_val > playbook.chop_max:
+                return False, f"Chop {chop_val:.1f} > max {playbook.chop_max}"
+
         return True, None
     
     def _evaluate_playbook_conditions(
