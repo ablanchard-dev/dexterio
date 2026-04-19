@@ -146,6 +146,7 @@ class ExecutionEngine:
             trailing_trigger_rr=getattr(pb_def, 'trailing_trigger_rr', None) if pb_def else None,
             trailing_offset_rr=getattr(pb_def, 'trailing_offset_rr', None) if pb_def else None,
             peak_r=0.0,
+            mae_r=0.0,
             session_window_end_utc=session_window_end_utc,
             max_hold_minutes=max_hold_minutes,
             
@@ -247,7 +248,7 @@ class ExecutionEngine:
             risk_distance = abs(trade.entry_price - sl0)
             r_multiple = pnl_points / risk_distance if risk_distance > 0 else 0
 
-            # Track peak R for trailing stop
+            # Track peak R for trailing stop (MFE proxy)
             if hasattr(trade, 'peak_r'):
                 if trade.direction == 'LONG':
                     peak_pnl = candle_high - trade.entry_price
@@ -255,6 +256,15 @@ class ExecutionEngine:
                     peak_pnl = trade.entry_price - candle_low
                 peak_r = peak_pnl / risk_distance if risk_distance > 0 else 0
                 trade.peak_r = max(trade.peak_r, peak_r)
+
+            # Track MAE (Max Adverse Excursion) for SL calibration
+            if hasattr(trade, 'mae_r'):
+                if trade.direction == 'LONG':
+                    adverse_pnl = candle_low - trade.entry_price
+                else:
+                    adverse_pnl = trade.entry_price - candle_high
+                adverse_r = adverse_pnl / risk_distance if risk_distance > 0 else 0
+                trade.mae_r = min(trade.mae_r, adverse_r)
 
             # 1. Vérifier Stop Loss (intrabar: use candle extremes)
             if trade.direction == 'LONG' and candle_low <= trade.stop_loss:

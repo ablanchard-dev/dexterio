@@ -135,6 +135,10 @@ class TradeResult(BaseModel):
     mc_window_minutes: Optional[int] = None
     mc_session_date: Optional[str] = None  # YYYY-MM-DD
 
+    # Phase A: MAE / MFE excursion tracking (for SL/TP calibration)
+    peak_r: float = 0.0   # Max Favorable Excursion in R (>= 0)
+    mae_r: float = 0.0    # Max Adverse Excursion in R (<= 0)
+
 
 class BacktestResult(BaseModel):
     """Résultats complets d'un backtest"""
