@@ -770,6 +770,95 @@ Agent analysis: Pearson r=0.003 (p=0.96) entre score et performance. Aucun re-we
 
 ---
 
+## 12. Phase Moteur Réaliste + Signaux Resserrés (2026-04-19)
+
+**Commit :** `024636e` — `feat(engine): intrabar SL/TP, trailing stop, ADX regime filter, tighter detectors`
+
+### Changements moteur (Phase 1)
+
+1. **Intrabar SL/TP** — `paper_trading.py`
+   - SL vérifié sur `candle.low` (LONG) / `candle.high` (SHORT) au lieu du close
+   - TP vérifié sur `candle.high` (LONG) / `candle.low` (SHORT)
+   - Full OHLC candle passé depuis `engine.py` `_update_positions()`
+   - Backward compat : accepte toujours `{symbol: float}` (legacy format)
+
+2. **Trailing Stop** — `paper_trading.py` + `trade.py` + `playbook_loader.py`
+   - Nouveau mode `trail_rr` : SL suit `peak_r - offset` après trigger
+   - Champs Trade : `trailing_mode`, `trailing_trigger_rr`, `trailing_offset_rr`, `peak_r`
+   - Chargé depuis YAML `take_profit_logic` section
+   - `peak_r` tracké via candle extremes à chaque tick
+
+3. **MAE/MFE tracking** — `peak_r` field tracké per trade (base pour future calibration)
+
+### Filtre de régime (Phase 2)
+
+4. **ADX + Chop Index** — `engines/regime_filter.py` (NOUVEAU)
+   - `calculate_adx(candles, period=14)` : ADX(14) Wilder's smoothing, pur Python
+   - `calculate_chop_index(candles, period=14)` : CI standard
+   - Vérifié : trend synthétique ADX=100, CI=23 ; range synthétique ADX=8, CI=72
+   - Stocké dans `MarketState.adx_15m` / `chop_index_15m` (calculé sur 15m candles)
+   - `PlaybookDefinition` : champs `adx_min`, `chop_max` dans `context_requirements`
+   - Vérification dans `_check_basic_filters()` : rejette si ADX < adx_min ou Chop > chop_max
+   - **playbooks.yml** : `adx_min: 20` sur tous les playbooks directionnels (pas reversals/mean-reversion)
+
+### Détecteurs resserrés (Phase 3)
+
+5. **BOS** — `ict.py`
+   - Buffer validation : 0.1 ATR → 0.3 ATR
+   - Lookback pivots : 3 → 10 (1m), 7 (5m), 5 (15m+)
+   - Confirmation penalty : strength *= 0.5 si barre suivante ne confirme pas
+
+6. **FVG** — `ict.py`
+   - Gap minimum : max(0.2%, 0.3 ATR) → max(0.3%, 0.5 ATR)
+   - Fill check : si >50% comblé dans 3 barres suivantes, strength *= 0.3
+
+7. **Sweep** — `ict.py`
+   - Lookback : 3 → 10
+   - Wick minimum : 0.1% du prix requis
+   - Confirmation : strength *= 0.4 si barre suivante ne confirme pas
+
+8. **Indicators** — `indicators.py`
+   - EMA : body ratio check (strength *= 0.5 si body < 50% range)
+   - RSI : period 2 → 5, thresholds 10/90 → 15/85
+   - VWAP : tolerance 0.1% → 0.05%
+   - ORB : retest penalty (strength *= 0.6 sans retest)
+
+### Direction pondérée (Phase 4)
+
+9. **setup_engine_v2.py** `_determine_direction()`
+   - Contrarian : somme pondérée par strength avec seuil 1.3x (était comptage brut)
+   - Continuation : fallback ICT utilise somme pondérée au lieu du dernier signal
+
+### Résultats backtest comparatifs (4 semaines, AGGRESSIVE ALLOWLIST)
+
+| Semaine | BASELINE | POST-FIX (intrabar+detect) | + ADX filter |
+|---------|----------|---------------------------|-------------|
+| Sep15-19 | 48 tr, E[R]=-0.131 | 44 tr, E[R]=-0.155 | 43 tr, E[R]=-0.143 |
+| **Oct06-10** | 51 tr, E[R]=-0.036 | 43 tr, **E[R]=+0.024** | 49 tr, E[R]=-0.044 |
+| Oct27-31 | 61 tr, E[R]=-0.130 | 49 tr, E[R]=-0.117 | 47 tr, E[R]=-0.129 |
+| Nov17-21 | 60 tr, E[R]=-0.128 | 44 tr, E[R]=-0.110 | 43 tr, E[R]=-0.108 |
+
+**Observations :**
+- Oct06-10 premier E[R] positif observé (+0.024) avec le fix intrabar
+- Nombre de trades réduit de ~18% (détecteurs plus stricts)
+- time_stop exits drastiquement réduits (Nov17-21 : majorité → 9%)
+- ADX filter effet mitigé : bloque certains bons trades aussi
+- **BOS_Scalp_1m** et **Engulfing_Bar_V056** restent les principaux destructeurs de R
+
+### Indicateur-based 5m playbooks (commit `61c862f`)
+
+4 nouveaux playbooks ajoutés dans même session :
+- `ORB_Breakout_5m`, `EMA_Cross_5m`, `VWAP_Bounce_5m`, `RSI_MeanRev_5m`
+- Nouveaux détecteurs dans `indicators.py` (EMA 9/21, VWAP bounce, RSI(5), ORB)
+- Scoring via `indicator_strength` criterion
+- Direction fallback via ICT pattern direction quand HTF bias neutre
+
+### Tests
+
+218 tests passent. 12 échecs pré-existants (news_fade_context, timeframe_aggregator DST, timezone pytz, concurrent_positions import).
+
+---
+
 ## 10. FULL baseline comparable (campagne courte, protocole standard)
 
 **Objectif :** obtenir une baseline labo FULL *comparable* (fenêtre fixe, protocole fixe, portefeuille explicite), sans SAFE/paper/live.
