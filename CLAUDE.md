@@ -32,7 +32,7 @@ backtest crédible → campagnes comparables → portefeuille discipliné → pa
 | `News_Fade` | ALLOWLIST | Gate `REOPEN_1R_VS_1P5R` **CLOS UNRESOLVED** (2026-04-14). E[R]≈-0.05 sur aug/sep/oct. Session_end dominant (94-100%). Edge possible sur nov 2025 seulement. |
 | `FVG_Fill_Scalp` | ALLOWLIST | functional_but_limited — E[R] négatif OOS |
 | `Session_Open_Scalp` | ALLOWLIST | **LAB ONLY** — bloqué runtime edge (2026-04-09) |
-| `Morning_Trap_Reversal` | ALLOWLIST / quarantine YAML | **CALIBRATE B1** (corpus: 34 tr, E[R]=-0.15, peak_R p60=1.11R) — patch proposé: BE 1.0→2.15R, max_dur→155m. Seul candidat "safe apply". |
+| `Morning_Trap_Reversal` | ALLOWLIST + B1 patch APPLIQUÉ (BE 2.15R, max_dur 155m) | **B2 FAIL (2026-04-20)** : E[R] -0.147 → -0.123 (Δ +0.024), n 32, WR 25%. Direction OK mais ne croise pas zéro → pivot Phase C.1 (filtres signal). |
 | `Liquidity_Sweep_Scalp` | ALLOWLIST / quarantine YAML | **B1 REVIEW** (corpus: 51 tr, E[R]=-0.03, peak_R p60=0.57R) — proposé TP1 1.5→0.28R, flag SIGNAL_QUALITY_SUSPECT. |
 | `Engulfing_Bar_V056` | (new, Phase 5a faithful) | **B1 REVIEW** (corpus: 34 tr, E[R]=-0.10, time_stop 53%) — proposé TP1 2.0→0.68R, LARGE_TP1_CUT flag. |
 | `BOS_Scalp_1m` | legacy | **B1 HOLD** (corpus: 51 tr, E[R]=-0.11, peak_R p60=0.40R) — DURATION_ANOMALY (YAML 15m mais wins 120m) + SIGNAL_QUALITY_SUSPECT. Investiguer avant apply. |
@@ -81,6 +81,16 @@ FVG_Fill_Scalp est le principal porteur de dérive. NY survit mieux en isolation
 - **B0.4 corpus production-like** : `calib_corpus_v1/` (170 trades, 4 semaines, caps actives, allowlist restreinte 4 candidats) — tous gates passent (≥20 tr/playbook, gap_p50 ≥ cooldown). Manifest complet ([manifest.json](backend/results/labs/mini_week/calib_corpus_v1/manifest.json)).
 - **B1 calibration proposée** ([calibration_report_v1.md](backend/data/backtest_results/calibration_report_v1.md)) : 3/4 targets flaggés SIGNAL_QUALITY_SUSPECT (peak_R p60 < 0.6R) — proposer des TP1 à 0.22-0.68R signale un problème signal, pas TP/SL. Seul `Morning_Trap_Reversal` safe apply (BE 1.0→2.15R, max_dur 155m). **Review humaine bloquante avant B2.**
 
+### Phase B2 verdict 2026-04-20 — Morning_Trap calibration FAIL
+
+- **Patch appliqué** : Morning_Trap_Reversal seul (BE 1.0→2.15R, max_duration_minutes 155). 3 autres targets non patchés (review B1 = signal-quality issue, pas TP/SL).
+- **Re-run 4 semaines** (`b2_morningtrap_v1`, caps actives, allowlist 4 cibles, 28 playbooks loaded) — détails [b2_morningtrap_verdict.md](backend/data/backtest_results/b2_morningtrap_verdict.md).
+- **Morning_Trap_Reversal** : E[R] **-0.147 → -0.123** (Δ +0.024), WR 20.6% → 25.0%, n 34→32. Direction correcte (BE plus large + max_dur étendu = winners protégés, durée capturée), **mais ne croise pas zéro**.
+- **Mécanique observée** : SL share 76.5% → 71.9%, TP1 share 20.6% → 21.9% (winners passent BE plus souvent), avg |mae_r| 0.83 → 0.89 (losers absorbent plus de R avant exit — coût du trade-off).
+- **Cause de l'échec** : WR 25% × avg winner ~1.3R ne couvre pas. La calibration TP/SL atteint son plafond — seul un filtre signal qui éjecte les pires setups peut bouger le cadran.
+- **B2 gate** : ❌ FAIL (0/3 targets E[R]>0). Per validated Option A : pivot **Phase C.1** (filtres VWAP/volume).
+- **BOS_Scalp_1m bloqué** : YAML `max_duration_minutes` silencieusement ignoré pour SCALPs hors PHASE3B_PLAYBOOKS — détails [bos_scalp_duration_anomaly.md](backend/data/backtest_results/bos_scalp_duration_anomaly.md). Calibration BOS_Scalp impossible jusqu'au fix engine.
+
 ---
 
 ## Vérité MASTER
@@ -126,9 +136,11 @@ WF 6 mois (8 playbooks) : tous négatifs. IFVG_5m_Sweep (MASTER) aussi négatif.
 - ✓ **B0.2** (commit `38ffef3`) : diagnose_silent_playbooks.py → **EXECUTION_LAYER_ISSUE découvert** sur 4 playbooks.
 - ✓ **B0.3** (commit `38ffef3`) : NY_Open_Reversal + ORB_Breakout_5m déplacés AGGRESSIVE_ALLOWLIST → DENYLIST.
 - ✓ **B0.4** (commit `a30d459`) : `calib_corpus_v1/` (170 tr, 4 semaines, gates OK).
-- ⏸ **B1 REVIEW** : patch + report produits. 3/4 cibles flaggées signal-quality. **Décision humaine requise** : apply partiel (Morning_Trap only), apply total, skip vers C.1, ou investiguer BOS_Scalp_1m duration anomaly.
-- **B2** : re-audit calibré avec caps normales + split train/test anti-overfit (post-review).
-- **C.0** (nouveau) : triage EXECUTION_LAYER_ISSUE (FVG_Fill_V065, Range_FVG_V054, Liquidity_Raid_V056, FVG_Scalp_1m) avant Phase C.1.
+- ✓ **B1 review humaine** (2026-04-20) : Morning_Trap apply approuvé seul, 3 autres skip (signal-quality flags). BOS_Scalp duration anomaly investiguée en parallèle ([bos_scalp_duration_anomaly.md](backend/data/backtest_results/bos_scalp_duration_anomaly.md)).
+- ✓ **B2 Morning_Trap re-run** (2026-04-20) : E[R] -0.147 → -0.123, gate FAIL (ne croise pas zéro). Voir [b2_morningtrap_verdict.md](backend/data/backtest_results/b2_morningtrap_verdict.md).
+- ⏭ **Phase C.1** (next, per validated Option A) : activer `vwap_regime: near` mean-reversion + `volume_gate_ratio` breakouts, single-filter-at-a-time, mesurer E[R] delta sur 4 semaines.
+- ⏸ **C.0 EXECUTION_LAYER_ISSUE** : triage FVG_Fill_V065, Range_FVG_V054, Liquidity_Raid_V056, FVG_Scalp_1m avant ou en parallèle de C.1.
+- ⏸ **PHASE3B_PLAYBOOKS gate fix** (engine-correctness) : prerequis pour calibrer BOS_Scalp_1m + tout futur SCALP avec `max_duration_minutes` YAML.
 
 ---
 
