@@ -1,0 +1,7 @@
+# V054 — 5m Range FVG + Engulfing (~95% codable)
+# Opening range = first 5m candle (9:30-9:35). FVG break + engulfing retest.
+# More aggressive than V065: 3:1 RR, 5m range, engulfing confirmation.
+name: "Range_FVG_V054"
+description: "V054 isolated test — 5m opening range + FVG break + engulfing"
+selected_playbooks:
+  - "Range_FVG_V054"

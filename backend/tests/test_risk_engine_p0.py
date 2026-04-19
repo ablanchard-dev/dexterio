@@ -191,8 +191,12 @@ class TestPlaybookAllowlist:
     def test_aggressive_allowlist_contains_baseline(self):
         """Vérifier que la allowlist contient les playbooks baseline"""
         assert 'News_Fade' in AGGRESSIVE_ALLOWLIST
-        assert 'Session_Open_Scalp' in AGGRESSIVE_ALLOWLIST
-        # Quarantaine volontaire : voir AGGRESSIVE_DENYLIST dans risk_engine
+        assert 'NY_Open_Reversal' in AGGRESSIVE_ALLOWLIST
+        # Phase 5a faithful MASTER strategies
+        assert 'FVG_Fill_V065' in AGGRESSIVE_ALLOWLIST
+        assert 'Liquidity_Raid_V056' in AGGRESSIVE_ALLOWLIST
+        # Old unfaithful originals moved to denylist
+        assert 'Session_Open_Scalp' in AGGRESSIVE_DENYLIST
         assert 'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open' in AGGRESSIVE_DENYLIST
     
     def test_aggressive_denylist_contains_destructeurs(self):

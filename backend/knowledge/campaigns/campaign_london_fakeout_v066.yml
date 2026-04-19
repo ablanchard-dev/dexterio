@@ -1,0 +1,7 @@
+# V066 — London Fakeout (83% codable)
+# Simplest S3: Asian H/L swept during London → 5m BOS reversal → entry.
+# No daily bias required, no 15m structure. Just sweep + BOS = trade.
+name: "London_Fakeout_V066"
+description: "V066 isolated test — London fakeout sweep + BOS reversal"
+selected_playbooks:
+  - "London_Fakeout_V066"

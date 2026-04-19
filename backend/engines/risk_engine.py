@@ -34,33 +34,42 @@ def _env_flag(name: str, default: str = "false") -> bool:
 # P0 COMMIT 1: ALLOWLIST/DENYLIST PLAYBOOKS
 # ============================================================================
 
-# Playbooks AUTORISÉS en mode AGGRESSIVE (baseline +88R + A+ fonctionnels)
+# Playbooks AUTORISÉS en mode AGGRESSIVE
+# Phase 5a (2026-04-19): Faithful MASTER strategies replace unfaithful originals.
+# Old playbooks moved to DENYLIST — they are unfaithful approximations
+# that mix concepts from multiple videos with composite scoring.
 AGGRESSIVE_ALLOWLIST = [
-    'News_Fade',                               # +90.64R, 32.5% WR ✅
-    'Session_Open_Scalp',                      # -2.4R, 38.4% WR ✅
-    # PATCH 2: SCALP_Aplus_1_Mini_FVG_Retest_NY_Open retiré (quarantiné)
-    # Ancien: +10.5R, 41% WR ✅ (SNIPER)
-    # Réalité job_ae6e4740: 6 trades, 0 win, -1.399R ❌ TOXIQUE
-    # Playbooks du YAML (activation progressive selon calibration)
-    'NY_Open_Reversal',
-    'Morning_Trap_Reversal',
-    'Liquidity_Sweep_Scalp',
-    'FVG_Fill_Scalp',
-    # Phase 1: MASTER-aligned playbooks
-    'IFVG_5m_Sweep',
-    'HTF_Bias_15m_BOS',
+    # --- Faithful MASTER strategies (Phase 5a) ---
+    'FVG_Fill_V065',                           # S1a: V065 15m Range FVG (100% codable)
+    'Liquidity_Raid_V056',                     # S7: V056 M2 Liquidity Raid (90% codable)
+    'Range_FVG_V054',                          # S1b: V054 5m Range FVG + Engulfing (95%)
+    'Asia_Sweep_V051',                         # S3b: V051 strict Asia sweep (86%)
+    'Engulfing_Bar_V056',                      # S7: V056 M1 Engulfing Bar (85%)
+    'London_Fakeout_V066',                     # S3a: V066 London fakeout (83%)
+    'OB_Retest_V004',                          # S7: V004 OB Retest + BOS (80-85%)
+    # --- Kept from legacy (not MASTER-sourced) ---
+    'NY_Open_Reversal',                        # Only legacy playbook with non-negative signal
+    'News_Fade',                               # User invention, not MASTER
 ]
 
-# Playbooks DÉSACTIVÉS (destructeurs ou non calibrés)
+# Playbooks DÉSACTIVÉS (destructeurs, non calibrés, ou unfaithful originals)
 AGGRESSIVE_DENYLIST = [
+    # --- Destructive / proven negative ---
     'London_Sweep_NY_Continuation',            # -326R ❌
     'BOS_Momentum_Scalp',                      # -142R ❌
     'Power_Hour_Expansion',                    # -31R ❌
-    'DAY_Aplus_1_Liquidity_Sweep_OB_Retest',   # Sweep/BOS non détectés ❌
     'Lunch_Range_Scalp',                       # Toxique ❌
-    'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # PATCH 2: Quarantiné (job_ae6e4740: 6 trades, 0 win, -1.399R)
-    # Aligné knowledge/playbook_quarantine.yaml + lab nov 2025 SPY/QQQ 1m (voir doc D27 / EDGE_EXPERIMENT_PROTOCOL)
-    'Trend_Continuation_FVG_Retest',
+    'Trend_Continuation_FVG_Retest',           # -22R ❌
+    # --- Non-functional ---
+    'DAY_Aplus_1_Liquidity_Sweep_OB_Retest',   # Sweep/BOS non détectés ❌
+    'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # Quarantiné: 6 trades, 0 win, -1.399R
+    # --- Unfaithful originals (replaced by Phase 5a faithful versions) ---
+    'FVG_Fill_Scalp',                          # Replaced by FVG_Fill_V065
+    'Session_Open_Scalp',                      # Replaced by Range_FVG_V054
+    'IFVG_5m_Sweep',                           # Will be replaced by faithful V010 (Phase 5b)
+    'HTF_Bias_15m_BOS',                        # Will be replaced by faithful V070 (Phase 5b)
+    'Morning_Trap_Reversal',                   # Replaced by London_Fakeout_V066
+    'Liquidity_Sweep_Scalp',                   # Concept, not a strategy
 ]
 
 def _resolve_latest_aggressive_playbook_stats_file() -> Optional[Path]:

@@ -1,0 +1,8 @@
+# V004 — OB Retest + BOS (80-85% codable)
+# Pro-trend Order Block with FVG validation → BOS confirmation inside OB → entry.
+# OB must leave a FVG (non-negotiable). SL at swing low (tight).
+# TP cascade: 3R → 5R → HTF swing.
+name: "OB_Retest_V004"
+description: "V004 isolated test — pro-trend OB retest with BOS confirmation"
+selected_playbooks:
+  - "OB_Retest_V004"

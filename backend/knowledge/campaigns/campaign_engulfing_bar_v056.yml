@@ -1,0 +1,8 @@
+# V056 Model 1 — Engulfing Bar (85% codable)
+# Engulfing candle takes prior candle's H AND L, then close opposite.
+# Entry on 3rd candle retracement. SL at engulfing extreme.
+# TP at external range liquidity (next major swing H/L).
+name: "Engulfing_Bar_V056"
+description: "V056 M1 isolated test — engulfing bar pattern"
+selected_playbooks:
+  - "Engulfing_Bar_V056"

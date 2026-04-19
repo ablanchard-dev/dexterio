@@ -1,0 +1,132 @@
+# Smoke test — IFVG Flip 5m (Aplus_03)
+# Prototype minimal : FVG invalidé sur 5m → trade dans le sens du flip.
+# Dérivé de playbooks_Aplus_from_transcripts.yaml::Aplus_03_IFVG_Flip_from_FVG_Invalidation
+# Session : NY ouverture (09:30-11:30) — zone de forte volatilité post-open.
+# Deux variantes : BULL (FVG bearish invalidé → long) et BEAR (FVG bullish invalidé → short).
+# Objectif : smoke 1 jour → compter trades détectés, vérifier pipeline IFVG 5m actif.
+
+- playbook_name: "IFVG_Flip_5m_Bull"
+  category: "SCALP"
+  description: "FVG bearish invalidé sur 5m → long : bearish FVG close above → bullish IFVG signal"
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "IFVG_BULL@5m"
+
+  timefilters:
+    session: "NY"
+    time_range: ["09:30", "11:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "ranging"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "pattern_close"
+    confirmation_tf: "5m"
+
+  stop_loss_logic:
+    type: "SWING"
+    distance: "recent_swing"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: 3.0
+    breakeven_at_rr: 1.0
+
+  scoring:
+    weights:
+      liquidity_sweep: 0.10
+      ifvg_quality: 0.80
+      smt_divergence: 0.00
+      context_strength: 0.10
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.65
+      B: 0.50
+
+- playbook_name: "IFVG_Flip_5m_Bear"
+  category: "SCALP"
+  description: "FVG bullish invalidé sur 5m → short : bullish FVG close below → bearish IFVG signal"
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "IFVG_BEAR@5m"
+
+  timefilters:
+    session: "NY"
+    time_range: ["09:30", "11:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "ranging"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "pattern_close"
+    confirmation_tf: "5m"
+
+  stop_loss_logic:
+    type: "SWING"
+    distance: "recent_swing"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: 3.0
+    breakeven_at_rr: 1.0
+
+  scoring:
+    weights:
+      liquidity_sweep: 0.10
+      ifvg_quality: 0.80
+      smt_divergence: 0.00
+      context_strength: 0.10
+    grade_thresholds:
+      A_plus: 0.80
+      A: 0.65
+      B: 0.50

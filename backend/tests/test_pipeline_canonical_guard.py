@@ -132,10 +132,10 @@ class TestCanonicalGuardAllowlist:
         assert len(accepted) == 1
         assert len(blocked) == 0
 
-    def test_fvg_fill_scalp_passes(self, risk_engine_aggressive):
-        """FVG_Fill_Scalp is in ALLOWLIST → must NOT be blocked."""
-        assert "FVG_Fill_Scalp" in AGGRESSIVE_ALLOWLIST
-        setup = _make_setup(["FVG_Fill_Scalp"])
+    def test_fvg_fill_v065_passes(self, risk_engine_aggressive):
+        """FVG_Fill_V065 (faithful MASTER) is in ALLOWLIST → must NOT be blocked."""
+        assert "FVG_Fill_V065" in AGGRESSIVE_ALLOWLIST
+        setup = _make_setup(["FVG_Fill_V065"])
         accepted, blocked = _apply_canonical_guard([setup], risk_engine_aggressive)
         assert len(accepted) == 1
         assert len(blocked) == 0

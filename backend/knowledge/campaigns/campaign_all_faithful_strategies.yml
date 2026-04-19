@@ -1,0 +1,13 @@
+# ALL FAITHFUL STRATEGIES — Phase 5a Portfolio
+# 7 strategies with codability >= 80%, all faithful to MASTER source videos.
+# Use this campaign for full portfolio backtesting.
+name: "All_Faithful_Strategies"
+description: "Phase 5a portfolio — 7 faithful MASTER strategies (V065, V056 M2, V054, V051, V066, V056 M1, V004)"
+selected_playbooks:
+  - "FVG_Fill_V065"
+  - "Liquidity_Raid_V056"
+  - "Range_FVG_V054"
+  - "Asia_Sweep_V051"
+  - "London_Fakeout_V066"
+  - "Engulfing_Bar_V056"
+  - "OB_Retest_V004"

@@ -38,6 +38,7 @@ from engines.execution.paper_trading import ExecutionEngine
 from engines.timeframe_aggregator import TimeframeAggregator
 from engines.market_state_cache import MarketStateCache
 from engines.master_candle import calculate_master_candle, get_ny_rth_session_date, get_session_labels
+from engines.session_range import SessionRangeTracker
 from utils.timeframes import get_session_info, is_in_kill_zone
 from utils.volatility import volatility_score_from_1m
 
@@ -137,6 +138,9 @@ class BacktestEngine:
         # Historique des ranges de session pour calculer vol_regime (dernières N sessions) - PAR SYMBOL
         self._session_ranges_history: Dict[str, List[float]] = {}  # {symbol: [ranges]}
         self._last_session_label: Dict[str, Optional[str]] = {}  # {symbol: last_session_label}
+
+        # Phase 5a: Session Range Tracker (Asian/London/NY H/L for sweep validation)
+        self._session_range_trackers: Dict[str, SessionRangeTracker] = {}
 
         # PERF: cache incrémental pour Master Candle (évite un rescan O(n) des candles_1m par barre)
         # Structure: {symbol: {"session_date": str, "candles": [dict], "computed_len": int|None, "computed_window": int|None, "mc": MasterCandle|None}}
@@ -906,7 +910,17 @@ class BacktestEngine:
                     self._update_inter_session_state(symbol, current_time, candle_1m.close)
                 except Exception:
                     pass  # Ne pas faire crasher le backtest sur l'instrumentation
-                
+
+                # Phase 5a: Update session range tracker (Asian/London/NY H/L)
+                try:
+                    if symbol not in self._session_range_trackers:
+                        self._session_range_trackers[symbol] = SessionRangeTracker()
+                    self._session_range_trackers[symbol].update(
+                        current_time, candle_1m.high, candle_1m.low
+                    )
+                except Exception:
+                    pass  # Ne pas faire crasher le backtest sur l'instrumentation
+
                 # Ajouter à l'agrégateur et récupérer les flags de clôture HTF
                 events = self.tf_aggregator.add_1m_candle(candle_1m)
                 htf_events[symbol] = events

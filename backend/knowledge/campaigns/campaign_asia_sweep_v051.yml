@@ -1,0 +1,7 @@
+# V051 — 3-Step A+ Asia Sweep (86% codable)
+# Strictest S3 variant: daily bias + 15m alignment + Asia sweep + BOS.
+# London session only (02:00-05:00 EST). Min RR 5:1.
+name: "Asia_Sweep_V051"
+description: "V051 isolated test — strict Asia sweep with daily bias + 15m alignment"
+selected_playbooks:
+  - "Asia_Sweep_V051"
