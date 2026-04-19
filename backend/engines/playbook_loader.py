@@ -130,6 +130,8 @@ class PlaybookDefinition:
         ctx_r = data.get('context_requirements', {})
         self.adx_min: Optional[float] = ctx_r.get('adx_min')
         self.chop_max: Optional[float] = ctx_r.get('chop_max')
+        self.vwap_regime: bool = ctx_r.get('vwap_regime', False)
+        self.volume_gate_ratio: Optional[float] = ctx_r.get('volume_gate_ratio')
 
 
 class PlaybookLoader:
@@ -729,6 +731,25 @@ class PlaybookEvaluator:
             chop_val = market_state.get('chop_index_15m')
             if chop_val is not None and chop_val > playbook.chop_max:
                 return False, f"Chop {chop_val:.1f} > max {playbook.chop_max}"
+
+        # VWAP regime filter
+        if getattr(playbook, 'vwap_regime', False):
+            vwap_val = market_state.get('vwap')
+            current_price = market_state.get('current_price')
+            bias = market_state.get('bias', 'neutral')
+            if vwap_val is not None and vwap_val > 0 and current_price is not None:
+                if bias == 'bullish' and current_price < vwap_val:
+                    return False, "vwap_regime_bullish_below_vwap"
+                elif bias == 'bearish' and current_price > vwap_val:
+                    return False, "vwap_regime_bearish_above_vwap"
+
+        # Volume hard gate
+        if getattr(playbook, 'volume_gate_ratio', None) is not None:
+            current_volume = market_state.get('current_volume')
+            avg_volume = market_state.get('avg_volume_20')
+            if current_volume is not None and avg_volume is not None and avg_volume > 0:
+                if current_volume < playbook.volume_gate_ratio * avg_volume:
+                    return False, f"volume {current_volume:.0f} < {playbook.volume_gate_ratio}x avg {avg_volume:.0f}"
 
         return True, None
     
