@@ -152,7 +152,8 @@ class SetupEngineV2:
             direction = self._determine_direction(
                 match['playbook_name'],
                 market_state.bias,
-                candle_patterns
+                candle_patterns,
+                ict_patterns,
             )
             
             if not direction:
@@ -290,10 +291,11 @@ class SetupEngineV2:
         self,
         playbook_name: str,
         bias: str,
-        candle_patterns: List[CandlestickPattern]
+        candle_patterns: List[CandlestickPattern],
+        ict_patterns: Optional[List[ICTPattern]] = None,
     ) -> Optional[str]:
         """Détermine la direction du trade basée sur le playbook et les patterns"""
-        
+
         # Playbooks contrarian (reversal)
         contrarian_playbooks = [
             'NY_Open_Reversal',
@@ -301,25 +303,38 @@ class SetupEngineV2:
             'News_Fade',
             'Liquidity_Sweep_Scalp'
         ]
-        
+
         if playbook_name in contrarian_playbooks:
             # Direction opposée au bias ou au dernier mouvement
             # Pour simplifier, on prend la direction du pattern dominant
             bullish_patterns = [p for p in candle_patterns if p.direction == 'bullish']
             bearish_patterns = [p for p in candle_patterns if p.direction == 'bearish']
-            
+
             if len(bullish_patterns) > len(bearish_patterns):
                 return 'LONG'
             elif len(bearish_patterns) > len(bullish_patterns):
                 return 'SHORT'
-        
+
         else:
-            # Continuation playbooks
+            # Continuation playbooks: prefer HTF bias first
             if bias == 'bullish':
                 return 'LONG'
             elif bias == 'bearish':
                 return 'SHORT'
-        
+
+            # Fallback: use ICT pattern direction (indicator signals carry direction)
+            # This handles indicator-based playbooks (EMA cross, VWAP bounce, RSI, ORB)
+            # when HTF bias is neutral
+            if ict_patterns:
+                indicator_types = {'ema_cross', 'vwap_bounce', 'rsi_extreme', 'orb_break',
+                                   'bos', 'fvg', 'liquidity_sweep', 'ifvg', 'order_block'}
+                directional = [p for p in ict_patterns
+                               if p.pattern_type in indicator_types and p.direction in ('bullish', 'bearish')]
+                if directional:
+                    # Use the most recent signal's direction
+                    last_signal = directional[-1]
+                    return 'LONG' if last_signal.direction == 'bullish' else 'SHORT'
+
         return None
     
     def _calculate_price_levels(

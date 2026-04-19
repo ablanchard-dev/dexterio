@@ -773,6 +773,14 @@ class PlaybookEvaluator:
                     'BRKR': 'breaker_block',
                     'BRKRBLK': 'breaker_block',
                     'BRKRBLOCK': 'breaker_block',
+                    'EMA': 'ema_cross',
+                    'EMACROSS': 'ema_cross',
+                    'VWAP': 'vwap_bounce',
+                    'VWAPBOUNCE': 'vwap_bounce',
+                    'RSI': 'rsi_extreme',
+                    'RSIEXTREME': 'rsi_extreme',
+                    'ORB': 'orb_break',
+                    'ORBBREAK': 'orb_break',
                 }
                 p_type = type_map.get(base, base.lower())
                 dir_required = None
@@ -988,6 +996,15 @@ class PlaybookEvaluator:
             
             elif criterion == 'volume_spike':
                 criterion_score = 0.5  # Placeholder
+
+            elif criterion == 'indicator_strength':
+                # Use strength from indicator-based ICT patterns (EMA, VWAP, RSI, ORB)
+                indicator_types = {'ema_cross', 'vwap_bounce', 'rsi_extreme', 'orb_break'}
+                ind_pats = [p for p in effective_ict if p.pattern_type in indicator_types]
+                if ind_pats:
+                    criterion_score = max(p.strength for p in ind_pats)
+                else:
+                    criterion_score = 0.0
             
             details[criterion] = criterion_score
             score += criterion_score * weight

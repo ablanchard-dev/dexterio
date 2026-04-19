@@ -50,6 +50,11 @@ AGGRESSIVE_ALLOWLIST = [
     # --- 1m Scalping strategies ---
     'FVG_Scalp_1m',                            # 1m FVG scalp (fast in/out)
     'BOS_Scalp_1m',                            # 1m BOS + engulfing scalp
+    # --- 5m Indicator-based scalp strategies ---
+    'ORB_Breakout_5m',                         # Opening Range Breakout (classic, widely backtested)
+    'EMA_Cross_5m',                            # EMA 9/21 crossover + 50 EMA trend filter
+    'VWAP_Bounce_5m',                          # VWAP touch + RSI mean reversion
+    'RSI_MeanRev_5m',                          # RSI(2) extreme mean reversion (Connors-style)
     # --- Kept from legacy (not MASTER-sourced) ---
     'NY_Open_Reversal',                        # Only legacy playbook with non-negative signal
     'News_Fade',                               # User invention, not MASTER
