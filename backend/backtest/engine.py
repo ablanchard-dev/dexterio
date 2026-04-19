@@ -38,7 +38,7 @@ from engines.execution.paper_trading import ExecutionEngine
 from engines.timeframe_aggregator import TimeframeAggregator
 from engines.market_state_cache import MarketStateCache
 from engines.master_candle import calculate_master_candle, get_ny_rth_session_date, get_session_labels
-from engines.regime_filter import calculate_adx, calculate_chop_index
+from engines.regime_filter import calculate_adx, calculate_chop_index, calculate_vwap, calculate_avg_volume
 from engines.session_range import SessionRangeTracker
 from utils.timeframes import get_session_info, is_in_kill_zone
 from utils.volatility import volatility_score_from_1m
@@ -1121,6 +1121,12 @@ class BacktestEngine:
                 market_state.adx_15m = calculate_adx(candles_15m)
                 market_state.chop_index_15m = calculate_chop_index(candles_15m)
 
+            # VWAP and volume for regime/volume filters
+            if len(candles_1m) >= 5:
+                market_state.vwap = calculate_vwap(candles_1m)
+                market_state.avg_volume_20 = calculate_avg_volume(candles_1m, 20)
+                market_state.current_volume = float(candles_1m[-1].volume) if candles_1m[-1].volume > 0 else None
+
             # Mettre en cache
             self.market_state_cache.put(cache_key, market_state)
         else:
@@ -1152,6 +1158,12 @@ class BacktestEngine:
                 if len(candles_15m) >= 30:
                     market_state.adx_15m = calculate_adx(candles_15m)
                     market_state.chop_index_15m = calculate_chop_index(candles_15m)
+
+                # VWAP and volume
+                if len(candles_1m) >= 5:
+                    market_state.vwap = calculate_vwap(candles_1m)
+                    market_state.avg_volume_20 = calculate_avg_volume(candles_1m, 20)
+                    market_state.current_volume = float(candles_1m[-1].volume) if candles_1m[-1].volume > 0 else None
 
                 self.market_state_cache.put(cache_key, market_state)
         

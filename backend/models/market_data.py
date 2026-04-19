@@ -85,6 +85,11 @@ class MarketState(BaseModel):
     adx_15m: Optional[float] = None
     chop_index_15m: Optional[float] = None
 
+    # VWAP and volume (for regime/volume filters)
+    vwap: Optional[float] = None
+    current_volume: Optional[float] = None
+    avg_volume_20: Optional[float] = None
+
     # Contexte
     current_session: str = 'unknown'  # 'asia', 'london', 'ny'
     notes: str = ''

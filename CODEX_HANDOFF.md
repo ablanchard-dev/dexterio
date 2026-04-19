@@ -1067,3 +1067,60 @@ COMMANDES :
   python3 run_p2_ifvg_smoke.py               ← vérifier pipeline IFVG
   python3 scripts/backtest_data_preflight.py --start 2025-06-01 --end 2025-11-30
 ```
+
+---
+
+## Phase 5 — Full Playbook Audit + Engine Improvements (2026-04-19)
+
+### What was done
+
+**5a. Trailing stop wired to ALL 26 playbooks** (`playbooks.yml`)
+- Directional: `trail_rr`, trigger=1.0R, offset=0.5R
+- Sweep-based: `trail_rr`, trigger=0.8R, offset=0.3R
+- Mean-reversion (News_Fade, VWAP, RSI): `none` (TP fixe)
+- NY_Open_Reversal: NOT TOUCHED (per CLAUDE.md rule)
+
+**5b. ADX calibrated per type**
+- Directional: `adx_min: 20` (keep)
+- Sweep-based: `adx_min: 15` (lowered)
+- Mean-reversion: `adx_min` removed (range markets are fine)
+
+**5c. VWAP regime filter + Volume gate** (infrastructure only — NOT enabled in YAML yet)
+- `regime_filter.py`: `calculate_vwap()`, `calculate_avg_volume()`
+- `market_data.py`: `vwap`, `current_volume`, `avg_volume_20` fields
+- `playbook_loader.py`: `vwap_regime`, `volume_gate_ratio` filter logic
+- `setup_engine_v2.py` + `engine.py`: VWAP/volume computed and passed
+
+**5d. max_duration calibrated**
+- 1m scalps: 15min, 5m directional: 45min, mean-reversion: 30min, 15m: 60min
+
+### Comprehensive Audit Results (330 trades, 4 weeks, SPY+QQQ)
+
+| Verdict | Playbooks | Detail |
+|---------|-----------|--------|
+| MARGINAL | News_Fade (13 trades) | E[R]=+0.012, positive 3/4 weeks, session_end exits 85% |
+| WEAK | Liquidity_Sweep_Scalp (22), BOS_Scalp_1m (6) | Near-zero E[R], time_stop dominant |
+| POOR | NY_Open_Reversal (5), Session_Open_Scalp (6) | Negative but insufficient data |
+| KILL | London_Sweep(-0.44), Power_Hour(-0.32), Trend_Cont(-0.26), BOS_Momentum(-0.23), DAY_Aplus_1(-0.21), SCALP_Aplus_1(-0.16) | SL exits 80-92%, negative ALL weeks |
+| DEAD (0 trades) | 12 playbooks: FVG_Fill_Scalp, Lunch_Range, HTF_Bias_15m, FVG_Fill_V065, Liquidity_Raid, Range_FVG, Asia_Sweep, London_Fakeout, OB_Retest, EMA_Cross, VWAP_Bounce, RSI_MeanRev | Daily caps consumed by toxic playbooks |
+| INSUFFICIENT | Morning_Trap(4), IFVG(1), Engulfing(4), FVG_Scalp_1m(3), ORB(4) | Too few trades to judge |
+
+### Root Causes
+
+1. **London_Sweep + Power_Hour = 51% of all trades** but worst performers. They burn daily risk budget.
+2. **SL exits 83-92%** on KILL playbooks = entries systematically wrong direction.
+3. **12 playbooks DEAD** because daily caps (12 trades/symbol/day) are consumed by toxic playbooks.
+4. **Trailing stop barely active** — 75th percentile R=+0.11, trigger needs 0.8-1.0R.
+
+### Actions Taken
+
+- 6 KILL playbooks quarantined in `playbooks.yml` (LAB-only mode)
+- All already in risk_engine.py DENYLIST (confirmed)
+- VWAP/volume infrastructure ready but NOT enabled (needs KILL cleanup first)
+
+### Next Steps
+
+1. **Re-run audit with KILL playbooks removed** — the 12 DEAD playbooks should now get slots
+2. **Enable VWAP regime filter** on directional playbooks (`vwap_regime: true`)
+3. **Enable volume gate** on momentum playbooks (`volume_gate_ratio: 1.5`)
+4. **If still all negative** → the ICT signals fundamentally lack edge on 1m/5m SPY/QQQ

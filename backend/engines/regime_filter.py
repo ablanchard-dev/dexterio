@@ -152,3 +152,22 @@ def calculate_chop_index(candles: List[Candle], period: int = 14) -> float:
 
     # Clamp to 0-100
     return max(0.0, min(100.0, chop))
+
+
+def calculate_vwap(candles: List[Candle]) -> float:
+    """Calculate Volume Weighted Average Price from candle list."""
+    cum_tp_vol = 0.0
+    cum_vol = 0.0
+    for c in candles:
+        if c.volume > 0:
+            typical_price = (c.high + c.low + c.close) / 3.0
+            cum_tp_vol += typical_price * c.volume
+            cum_vol += c.volume
+    return cum_tp_vol / cum_vol if cum_vol > 0 else 0.0
+
+
+def calculate_avg_volume(candles: List[Candle], period: int = 20) -> float:
+    """Calculate average volume over the last `period` candles."""
+    window = candles[-period:] if len(candles) >= period else candles
+    volumes = [c.volume for c in window if c.volume > 0]
+    return sum(volumes) / len(volumes) if volumes else 0.0

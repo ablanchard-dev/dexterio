@@ -50,6 +50,14 @@ backtest crédible → campagnes comparables → portefeuille discipliné → pa
 Toutes les variantes sont négatives. E[R] de -0.027 à -0.039 selon variante.
 FVG_Fill_Scalp est le principal porteur de dérive. NY survit mieux en isolation (no-FVG s1).
 
+### Audit Phase 5 — 330 trades, 4 semaines, ALL 26 playbooks (2026-04-19)
+- Portfolio: E[R]=-0.261, WR=30%. Aucune semaine positive.
+- **MARGINAL: News_Fade** seul playbook E[R]>0 (+0.012, 13 trades).
+- **KILL confirmé (6):** London_Sweep, Power_Hour, Trend_Cont, BOS_Momentum, DAY_Aplus_1, SCALP_Aplus_1.
+- **12 playbooks DEAD (0 trades)** — daily caps consumed by toxic playbooks.
+- Trailing stop quasi inactif (75p R=+0.11, trigger=0.8-1.0R).
+- **Cause racine:** London_Sweep+Power_Hour = 51% des trades, pires performers, bloquent les autres.
+
 ---
 
 ## Vérité MASTER

@@ -90,6 +90,10 @@ class SetupEngineV2:
             'volatility': market_state.volatility,
             'adx_15m': market_state.adx_15m,
             'chop_index_15m': market_state.chop_index_15m,
+            'vwap': getattr(market_state, 'vwap', None),
+            'current_price': last_price,
+            'current_volume': getattr(market_state, 'current_volume', None),
+            'avg_volume_20': getattr(market_state, 'avg_volume_20', None),
         }
         
         # P0 ÉTAPE 3: Compter évaluation playbooks (via attribut externe si disponible)
