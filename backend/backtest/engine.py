@@ -2536,6 +2536,9 @@ class BacktestEngine:
                 mc_breakout_dir=mc_breakout_dir,
                 mc_window_minutes=mc_window_minutes,
                 mc_session_date=mc_session_date,
+                # Phase A: MAE/MFE excursions (for SL/TP calibration)
+                peak_r=getattr(trade, 'peak_r', 0.0),
+                mae_r=getattr(trade, 'mae_r', 0.0),
                 # PHASE B: Cost breakdown
                 entry_commission=entry_costs.commission,
                 entry_reg_fees=entry_costs.regulatory_fees,
@@ -2883,6 +2886,9 @@ class BacktestEngine:
                 "mc_breakout_dir": getattr(t, 'mc_breakout_dir', None),
                 "mc_window_minutes": getattr(t, 'mc_window_minutes', None),
                 "mc_session_date": getattr(t, 'mc_session_date', None),
+                # Phase A: MAE / MFE excursions (for SL/TP calibration)
+                "peak_r": getattr(t, 'peak_r', 0.0),
+                "mae_r": getattr(t, 'mae_r', 0.0),
             })
 
         trades_df = _pd.DataFrame(trades_records)

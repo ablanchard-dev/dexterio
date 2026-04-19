@@ -108,6 +108,7 @@ class Trade(BaseModel):
     trailing_trigger_rr: Optional[float] = None
     trailing_offset_rr: Optional[float] = None
     peak_r: float = 0.0
+    mae_r: float = 0.0
 
     # P1: Master Candle info (Sprint 2)
     mc_high: Optional[float] = None
