@@ -207,6 +207,13 @@ class RiskEngine:
         self.eval_relax_caps = _env_flag("RISK_EVAL_RELAX_CAPS", "false")
         # Audit long: ne pas désactiver les playbooks en cours de run (stats complètes)
         self.eval_disable_kill_switch = _env_flag("RISK_EVAL_DISABLE_KILL_SWITCH", "false")
+        # B0.4: allowlist restreinte pour corpus de calibration
+        # (combine avec RISK_EVAL_ALLOW_ALL_PLAYBOOKS=true pour ignorer denylist
+        # mais restreindre aux playbooks cibles).
+        calib_raw = os.environ.get("RISK_EVAL_CALIB_ALLOWLIST", "").strip()
+        self.eval_calib_allowlist = (
+            {s.strip() for s in calib_raw.split(",") if s.strip()} if calib_raw else None
+        )
         self._paper_wave1_allowlist = self._load_paper_wave1_allowlist()
         
         # P0 ÉTAPE 3: Attribut temporaire pour stocker rejets (accessible depuis engine.py)
@@ -309,6 +316,11 @@ class RiskEngine:
 
         # MODE AUDIT LONG: bypass complet pour observer la vraie perf
         if self.eval_allow_all_playbooks:
+            # B0.4 optional restriction: calib corpus uses CALIB_ALLOWLIST subset
+            if self.eval_calib_allowlist is not None:
+                if playbook_name in self.eval_calib_allowlist:
+                    return True, "RISK_EVAL_CALIB_ALLOWLIST=allowed"
+                return False, f"Playbook '{playbook_name}' not in RISK_EVAL_CALIB_ALLOWLIST"
             return True, "RISK_EVAL_ALLOW_ALL_PLAYBOOKS=true"
         
         # Check denylist globale (prioritaire)

@@ -42,10 +42,16 @@ def _build_data_paths(symbols: List[str]) -> List[str]:
     return [str(historical_data_path("1m", f"{sym}.parquet")) for sym in symbols]
 
 
-def _apply_lab_env(respect_allowlists: bool, *, bypass_dynamic_quarantine_lss_only: bool) -> None:
+def _apply_lab_env(
+    respect_allowlists: bool,
+    *,
+    bypass_dynamic_quarantine_lss_only: bool,
+    relax_caps: bool = True,
+    disable_kill_switch: bool = True,
+) -> None:
     os.environ["RISK_EVAL_ALLOW_ALL_PLAYBOOKS"] = "false" if respect_allowlists else "true"
-    os.environ["RISK_EVAL_RELAX_CAPS"] = "true"
-    os.environ["RISK_EVAL_DISABLE_KILL_SWITCH"] = "true"
+    os.environ["RISK_EVAL_RELAX_CAPS"] = "true" if relax_caps else "false"
+    os.environ["RISK_EVAL_DISABLE_KILL_SWITCH"] = "true" if disable_kill_switch else "false"
     if bypass_dynamic_quarantine_lss_only:
         os.environ["RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY"] = "true"
     else:
@@ -91,6 +97,22 @@ def main() -> int:
         "--no-bypass-lss-quarantine",
         action="store_true",
         help="Ne pas bypass la quarantaine LSS (défaut: bypass actif)",
+    )
+    parser.add_argument(
+        "--no-relax-caps",
+        action="store_true",
+        help="Caps anti-spam ACTIFS (cooldown + session cap). Défaut: RELAX_CAPS actif.",
+    )
+    parser.add_argument(
+        "--no-disable-kill-switch",
+        action="store_true",
+        help="Kill-switch ACTIF (circuit breakers). Défaut: kill-switch désactivé.",
+    )
+    parser.add_argument(
+        "--calib-allowlist",
+        type=str,
+        default=None,
+        help="Restreint les playbooks au sous-ensemble listé (CSV). Défaut: allowlist complète.",
     )
     parser.add_argument(
         "--playbooks-yaml",
@@ -167,10 +189,18 @@ def main() -> int:
         "RISK_EVAL_RELAX_CAPS",
         "RISK_EVAL_DISABLE_KILL_SWITCH",
         "RISK_BYPASS_DYNAMIC_QUARANTINE_LSS_ONLY",
+        "RISK_EVAL_CALIB_ALLOWLIST",
     )}
     try:
         run_started_at_utc = datetime.now(timezone.utc).isoformat()
-        _apply_lab_env(respect, bypass_dynamic_quarantine_lss_only=bypass_lss)
+        _apply_lab_env(
+            respect,
+            bypass_dynamic_quarantine_lss_only=bypass_lss,
+            relax_caps=not args.no_relax_caps,
+            disable_kill_switch=not args.no_disable_kill_switch,
+        )
+        if args.calib_allowlist:
+            os.environ["RISK_EVAL_CALIB_ALLOWLIST"] = args.calib_allowlist
         config = BacktestConfig(
             run_name=run_id,
             symbols=symbols,
