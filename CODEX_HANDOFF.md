@@ -737,24 +737,36 @@ Agent analysis: Pearson r=0.003 (p=0.96) entre score et performance. Aucun re-we
 
 ---
 
-## 11. Prochaine tâche recommandée
+## 11. Phase 5a — Faithful MASTER strategies (2026-04-19)
 
-**Phase 1 kill criteria atteint sur 6 mois (jun-nov 2025).** 4 configurations testées, toutes négatives. 3200 trades analysés au total.
+**Phase 2 COMPLETE:** 71 videos triaged, 12 strategies extracted, codability ranked.
+**Phase 5a COMPLETE:** 7 faithful strategies implemented (codability >= 80%).
 
-**Options par priorité :**
+### What changed
+- **7 new playbooks** in `playbooks.yml` with binary gates (`required_signals`) instead of composite scoring
+- **Old unfaithful playbooks** moved to DENYLIST (FVG_Fill_Scalp, Session_Open_Scalp, IFVG_5m_Sweep, HTF_Bias_15m_BOS, Morning_Trap_Reversal, Liquidity_Sweep_Scalp)
+- **SessionRangeTracker** (`engines/session_range.py`) wired into engine for Asian/London/NY H/L
+- **SWEEP** added to `type_map` in playbook_loader.py
+- All setup_tf = 5m (not 1m) — faithful to MASTER source videos
 
-1. **Polygon 18+ mois de données** → WF 4+ folds (dernière chance statistique). Si aucun playbook ne survit 4 folds sur 18+ mois, verdict définitif.
-   - Obtenir clé API Polygon (gratuit = 5 appels/min, suffisant pour historique)
-   - Télécharger SPY/QQQ 1m depuis jan 2024 via `backend/scripts/providers/polygon_provider.py`
-   - Walk-forward 4+ folds sur 18+ mois
+### Smoke test (5d SPY, Oct 2025)
+| Playbook | Trades | Note |
+|----------|--------|------|
+| FVG_Fill_V065 | 2 | Binary FVG@5m gate |
+| Liquidity_Raid_V056 | 3 | SWEEP@5m gate |
+| Range_FVG_V054 | 1 | FVG@5m + engulfing |
+| Engulfing_Bar_V056 | 4 | Engulfing pattern gate |
+| Asia_Sweep_V051 | 0 | London session, no SPY data 02:00-05:00 |
+| London_Fakeout_V066 | 0 | Needs pre-market data |
+| OB_Retest_V004 | 0 | Strict OB+BOS gate |
 
-2. **Désactiver scoring** — confirmé zéro pouvoir prédictif (r=0.003). Le scoring ajoute du bruit, pas du signal.
+### Prochaine tâche recommandée
 
-3. **Autres instruments** (ES/NQ futures) — structure de coûts différente, tick-size adapté aux concepts ICT.
+1. **Walk-forward full** — 6 mois (jun-nov 2025) SPY+QQQ avec les 7 nouvelles stratégies. Comparer E[R] vs les anciens unfaithful.
+2. **Polygon 18+ mois** pour WF 4+ folds si les résultats sont prometteurs.
+3. **Phase 5b** — EventChainTracker pour S2 (V022 full checklist, séquentiel).
 
-4. **Accepter que ICT discrétionnaire ≠ ICT systématique** si Polygon WF aussi négatif.
-
-**NE PAS passer à Phase 2+ (DecisionKernel, paper, live) sans edge prouvé.**
+**NE PAS passer à paper/live sans edge prouvé sur WF.**
 
 ---
 
