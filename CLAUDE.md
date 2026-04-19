@@ -28,23 +28,24 @@ backtest crédible → campagnes comparables → portefeuille discipliné → pa
 
 | Playbook | Statut | Verdict |
 |----------|--------|---------|
-| `NY_Open_Reversal` | **À RETIRER DE ALLOWLIST (B0.3)** | **Fair audit Phase A : E[R]=-0.21, 17 tr, WR=12% — contredit "seul noyau non-négatif". YAML intouché (règle).** |
+| `NY_Open_Reversal` | **DENYLIST (B0.3 done 2026-04-19)** | Fair audit Phase A : E[R]=-0.21, 17 tr, WR=12% — contredit "seul noyau non-négatif". Déplacé ALLOWLIST→DENYLIST ([risk_engine.py](backend/engines/risk_engine.py)). YAML intouché (règle). |
 | `News_Fade` | ALLOWLIST | Gate `REOPEN_1R_VS_1P5R` **CLOS UNRESOLVED** (2026-04-14). E[R]≈-0.05 sur aug/sep/oct. Session_end dominant (94-100%). Edge possible sur nov 2025 seulement. |
 | `FVG_Fill_Scalp` | ALLOWLIST | functional_but_limited — E[R] négatif OOS |
 | `Session_Open_Scalp` | ALLOWLIST | **LAB ONLY** — bloqué runtime edge (2026-04-09) |
-| `Morning_Trap_Reversal` | ALLOWLIST / quarantine YAML | **CALIBRATE B1** — fair audit : 24 tr, E[R]=-0.06, avg_peak_R=+1.39 (énorme MFE non capturé) |
-| `Liquidity_Sweep_Scalp` | ALLOWLIST / quarantine YAML | **CALIBRATE B1** — fair audit : 39 tr, E[R]=-0.04, time_stop 69% |
-| `Engulfing_Bar_V056` | (new, Phase 5a faithful) | **CALIBRATE B1** — fair audit : 26 tr, E[R]=+0.002 (près breakeven) |
-| `BOS_Scalp_1m` | legacy | **CALIBRATE B1** — fair audit : 42 tr, E[R]=-0.006, time_stop 57% |
-| `ORB_Breakout_5m` | **À RETIRER DE ALLOWLIST (B0.3)** | **Fair audit : E[R]=-0.10, 16 tr, WR=25% — trop tôt pour calibrer.** |
+| `Morning_Trap_Reversal` | ALLOWLIST / quarantine YAML | **CALIBRATE B1** (corpus: 34 tr, E[R]=-0.15, peak_R p60=1.11R) — patch proposé: BE 1.0→2.15R, max_dur→155m. Seul candidat "safe apply". |
+| `Liquidity_Sweep_Scalp` | ALLOWLIST / quarantine YAML | **B1 REVIEW** (corpus: 51 tr, E[R]=-0.03, peak_R p60=0.57R) — proposé TP1 1.5→0.28R, flag SIGNAL_QUALITY_SUSPECT. |
+| `Engulfing_Bar_V056` | (new, Phase 5a faithful) | **B1 REVIEW** (corpus: 34 tr, E[R]=-0.10, time_stop 53%) — proposé TP1 2.0→0.68R, LARGE_TP1_CUT flag. |
+| `BOS_Scalp_1m` | legacy | **B1 HOLD** (corpus: 51 tr, E[R]=-0.11, peak_R p60=0.40R) — DURATION_ANOMALY (YAML 15m mais wins 120m) + SIGNAL_QUALITY_SUSPECT. Investiguer avant apply. |
+| `ORB_Breakout_5m` | **DENYLIST (B0.3 done 2026-04-19)** | Fair audit : E[R]=-0.10, 16 tr, WR=25% — trop tôt pour calibrer. Déplacé ALLOWLIST→DENYLIST. |
 | `London_Sweep_NY_Continuation` | **DENYLIST** | -326R. Abandon. Silencieux en fair audit (0 tr). |
 | `Trend_Continuation_FVG_Retest` | **DENYLIST** | -22R. Abandon. Silencieux en fair audit (0 tr). |
 | `BOS_Momentum_Scalp` | **DENYLIST** | -142R. Abandon. Silencieux en fair audit (0 tr). |
 | `Power_Hour_Expansion` | **DENYLIST** | -31R. Abandon. Silencieux en fair audit (0 tr). |
 | `Lunch_Range_Scalp` | DISABLED | Toxique. Abandon. Silencieux en fair audit (0 tr). |
-| `DAY_Aplus_1_*` | **DENYLIST** (reconfirmé fair audit) | 2157 tr, E[R]=-0.20, total_R=-430R — confirmé destructeur. |
-| `SCALP_Aplus_1_*` | **DENYLIST** (reconfirmé fair audit) | 2868 tr, E[R]=-0.045, **85% time_stop**. Volume partiellement artefact RELAX_CAPS — verdict final après B0.1. |
-| `FVG_Fill_V065`, `Liquidity_Raid_V056`, `Range_FVG_V054`, `Asia_Sweep_V051`, `London_Fakeout_V066`, `OB_Retest_V004` | (Phase 5a faithful MASTER) | **SILENT fair audit (6/7 MASTER, 0 match sur 4 semaines)** — diagnostic B0.2 obligatoire avant fix |
+| `DAY_Aplus_1_*` | **DENYLIST** (SPAM confirmé B0.1) | 2157 tr, E[R]=-0.20, total_R=-430R. **B0.1 : 99% des trades bloqués par cooldown/cap normal → SPAM, pas calibration possible.** |
+| `SCALP_Aplus_1_*` | **DENYLIST** (SPAM confirmé B0.1) | 2868 tr, 85% time_stop sous RELAX_CAPS. **B0.1 : 97% bloqués sous caps normales + B0.1b normalcaps E[R] crashe -0.01→-0.14 → exclu calib.** |
+| `FVG_Fill_V065`, `Range_FVG_V054`, `Liquidity_Raid_V056`, `FVG_Scalp_1m` | (Phase 5a + legacy) | **EXECUTION_LAYER_ISSUE (B0.2)** — setups matchent + passent risk filter puis **0 trades**. Bug exécution (SL invalide / size=0 / reject silencieux). Blocker MASTER alignment. |
+| `Asia_Sweep_V051`, `London_Fakeout_V066`, `OB_Retest_V004` | (Phase 5a faithful MASTER) | **B0.2 classified** : Asia_Sweep=SESSION_WINDOW_MISMATCH, London_Fakeout=fonctionnel rare, OB_Retest=PATTERN_PRECONDITION_BUG — Phase C.0 |
 | `IFVG_5m_Sweep`, `VWAP_Bounce_5m`, `HTF_Bias_15m_BOS` | quarantine | **PROMOTE candidates** — E[R]>0 sur 3-11 trades. Besoin plus de data, pas calibration. |
 | A+ transcripts (`playbooks_Aplus_from_transcripts.yaml`) | Non chargé | **research_only** — jamais testé |
 
@@ -71,6 +72,14 @@ FVG_Fill_Scalp est le principal porteur de dérive. NY survit mieux en isolation
 - **SILENT (11)** dont 6/7 MASTER faithful (FVG_Fill_V065, Liquidity_Raid_V056, Range_FVG_V054, Asia_Sweep_V051, London_Fakeout_V066, OB_Retest_V004) → **détecteur silent, PAS famine de cap**. Diagnostic B0.2 obligatoire.
 - **Enseignement central :** l'hypothèse "famine de cap = seul blocker" est **fausse**. Le problème racine est **détecteur qui ne match jamais**.
 - **Artefact identifié :** `RISK_EVAL_RELAX_CAPS=true` désactive aussi le cooldown 5 min + cap 10/session/playbook ([risk_engine.py:379-380](backend/engines/risk_engine.py#L379-L380)). Volume 2868 SCALP_Aplus_1 + 2157 DAY_Aplus_1 partiellement artefact — B0.1 distinguera SPAM vs LEGITIMATE_VOLUME.
+
+### Phase B0 findings 2026-04-19 (diagnostic structurel, 4 sous-phases)
+
+- **B0.1 SPAM confirmé** (`spam_audit_report.md`) : SCALP_Aplus_1 97% bloqué par cooldown/cap, DAY_Aplus_1 99% bloqué. Re-run `fair_oct_w2_normalcaps` avec caps actives : SCALP_Aplus_1 E[R] -0.01→**-0.14** — "low negative" RELAX_CAPS était artefact d'averaging. Les deux **exclus de calibration**. Détails : [spam_audit_normalcaps_delta.md](backend/data/backtest_results/spam_audit_normalcaps_delta.md).
+- **B0.2 EXECUTION_LAYER_ISSUE découvert** (`silent_playbooks_diagnosis.md`) : 4 playbooks (`FVG_Fill_V065`, `Range_FVG_V054`, `Liquidity_Raid_V056`, `FVG_Scalp_1m`) produisent matches + setups passent risk filter **mais 0 trades**. Bug exécution, pas détecteur. Bloque MASTER alignment. Investigation avant Phase C.
+- **B0.3 opérationnel** : NY_Open_Reversal + ORB_Breakout_5m déplacés `AGGRESSIVE_ALLOWLIST` → `AGGRESSIVE_DENYLIST` avec commentaires de justification.
+- **B0.4 corpus production-like** : `calib_corpus_v1/` (170 trades, 4 semaines, caps actives, allowlist restreinte 4 candidats) — tous gates passent (≥20 tr/playbook, gap_p50 ≥ cooldown). Manifest complet ([manifest.json](backend/results/labs/mini_week/calib_corpus_v1/manifest.json)).
+- **B1 calibration proposée** ([calibration_report_v1.md](backend/data/backtest_results/calibration_report_v1.md)) : 3/4 targets flaggés SIGNAL_QUALITY_SUSPECT (peak_R p60 < 0.6R) — proposer des TP1 à 0.22-0.68R signale un problème signal, pas TP/SL. Seul `Morning_Trap_Reversal` safe apply (BE 1.0→2.15R, max_dur 155m). **Review humaine bloquante avant B2.**
 
 ---
 
@@ -112,13 +121,14 @@ WF 6 mois (8 playbooks) : tous négatifs. IFVG_5m_Sweep (MASTER) aussi négatif.
 **P2** — Polygon 18 mois — **DIFFÉRÉ post-B2** (rejeté avant Phase A comme prochaine étape, voir roadmap).
 
 **P3** ← **ACTIF (2026-04-19)** — Roadmap post-Phase A (plan : `/home/dexter/.claude/plans/parsed-nibbling-kettle.md`)
-- **A-Close** (en cours) : PHASE_A_VERDICT.md + CLAUDE.md sync + commit.
-- **B0.1** : spam_audit.py + re-run oct_w2 caps actives / kill-switch off (isoler anti-spam).
-- **B0.2** : diagnose_silent_playbooks.py + taxonomie 2 niveaux.
-- **B0.3** : retirer NY_Open_Reversal + ORB_Breakout_5m de `AGGRESSIVE_ALLOWLIST` ([risk_engine.py:51-59](backend/engines/risk_engine.py#L51-L59)).
-- **B0.4** : corpus calib production-like (`calib_corpus_v1/`, allowlist 5 playbooks, caps actives) — input unique de B1.
-- **B1** : `calibrate_sl_tp.py` sur calib_corpus_v1 → patch YAML ciblé (4-5 playbooks max, review humaine obligatoire).
-- **B2** : re-audit calibré avec caps normales + split train/test anti-overfit.
+- ✓ **A-Close** (commit `9958649`) : PHASE_A_VERDICT.md + CLAUDE.md sync.
+- ✓ **B0.1** (commit `38ffef3` + `a30d459`) : spam_audit.py + re-run normalcaps → SCALP/DAY Aplus SPAM confirmés.
+- ✓ **B0.2** (commit `38ffef3`) : diagnose_silent_playbooks.py → **EXECUTION_LAYER_ISSUE découvert** sur 4 playbooks.
+- ✓ **B0.3** (commit `38ffef3`) : NY_Open_Reversal + ORB_Breakout_5m déplacés AGGRESSIVE_ALLOWLIST → DENYLIST.
+- ✓ **B0.4** (commit `a30d459`) : `calib_corpus_v1/` (170 tr, 4 semaines, gates OK).
+- ⏸ **B1 REVIEW** : patch + report produits. 3/4 cibles flaggées signal-quality. **Décision humaine requise** : apply partiel (Morning_Trap only), apply total, skip vers C.1, ou investiguer BOS_Scalp_1m duration anomaly.
+- **B2** : re-audit calibré avec caps normales + split train/test anti-overfit (post-review).
+- **C.0** (nouveau) : triage EXECUTION_LAYER_ISSUE (FVG_Fill_V065, Range_FVG_V054, Liquidity_Raid_V056, FVG_Scalp_1m) avant Phase C.1.
 
 ---
 
