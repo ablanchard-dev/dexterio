@@ -53,7 +53,7 @@ DEFAULT_ALLOWLIST = [
     "Liquidity_Sweep_Scalp",
 ]
 
-OUTPUT_PARENT = "calib_corpus_v1"
+OUTPUT_PARENT_DEFAULT = "calib_corpus_v1"
 
 
 def _git_sha() -> str:
@@ -65,10 +65,10 @@ def _git_sha() -> str:
         return "unknown"
 
 
-def _run_week(start: str, end: str, label: str, allowlist_csv: str, skip_existing: bool) -> int:
+def _run_week(start: str, end: str, label: str, allowlist_csv: str, skip_existing: bool, output_parent: str) -> int:
     week_script = backend_dir / "scripts" / "run_mini_lab_week.py"
-    out_dir = Path(results_path("labs", "mini_week", OUTPUT_PARENT, label))
-    summary_path = out_dir / f"mini_lab_summary_{OUTPUT_PARENT}_{label}.json"
+    out_dir = Path(results_path("labs", "mini_week", output_parent, label))
+    summary_path = out_dir / f"mini_lab_summary_{output_parent}_{label}.json"
     if skip_existing and summary_path.is_file():
         print(f"[calib_corpus] skip existing {label}")
         return 0
@@ -79,18 +79,18 @@ def _run_week(start: str, end: str, label: str, allowlist_csv: str, skip_existin
         "--end", end,
         "--label", label,
         "--symbols", "SPY,QQQ",
-        "--output-parent", OUTPUT_PARENT,
+        "--output-parent", output_parent,
         "--no-respect-allowlists",
         "--no-relax-caps",
         "--calib-allowlist", allowlist_csv,
     ]
-    print(f"[calib_corpus] RUN {label} {start}..{end}")
+    print(f"[calib_corpus] RUN {label} {start}..{end} -> {output_parent}/")
     r = subprocess.run(cmd, cwd=str(backend_dir))
     return r.returncode
 
 
-def _collect_trade_counts(allowlist: List[str]) -> Dict[str, int]:
-    root = Path(results_path("labs", "mini_week", OUTPUT_PARENT))
+def _collect_trade_counts(allowlist: List[str], output_parent: str) -> Dict[str, int]:
+    root = Path(results_path("labs", "mini_week", output_parent))
     counts: Dict[str, int] = {pb: 0 for pb in allowlist}
     for label_dir in sorted(root.iterdir() if root.exists() else []):
         if not label_dir.is_dir():
@@ -102,8 +102,8 @@ def _collect_trade_counts(allowlist: List[str]) -> Dict[str, int]:
     return counts
 
 
-def _inter_trade_gap_p50(allowlist: List[str]) -> Dict[str, float]:
-    root = Path(results_path("labs", "mini_week", OUTPUT_PARENT))
+def _inter_trade_gap_p50(allowlist: List[str], output_parent: str) -> Dict[str, float]:
+    root = Path(results_path("labs", "mini_week", output_parent))
     dfs: List[pd.DataFrame] = []
     for label_dir in sorted(root.iterdir() if root.exists() else []):
         if not label_dir.is_dir():
@@ -128,13 +128,14 @@ def _inter_trade_gap_p50(allowlist: List[str]) -> Dict[str, float]:
     return out
 
 
-def _write_manifest(allowlist: List[str], period_start: str, period_end: str) -> Path:
-    root = Path(results_path("labs", "mini_week", OUTPUT_PARENT))
+def _write_manifest(allowlist: List[str], period_start: str, period_end: str, output_parent: str) -> Path:
+    root = Path(results_path("labs", "mini_week", output_parent))
     root.mkdir(parents=True, exist_ok=True)
-    trade_counts = _collect_trade_counts(allowlist)
-    gap_p50 = _inter_trade_gap_p50(allowlist)
+    trade_counts = _collect_trade_counts(allowlist, output_parent)
+    gap_p50 = _inter_trade_gap_p50(allowlist, output_parent)
     manifest = {
         "schema_version": "CalibCorpusV1",
+        "output_parent": output_parent,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "git_sha": _git_sha(),
         "env_flags": {
@@ -180,20 +181,23 @@ def main() -> int:
     ap.add_argument("--skip-existing", action="store_true")
     ap.add_argument("--manifest-only", action="store_true",
                     help="Only regenerate manifest.json from existing runs")
+    ap.add_argument("--output-parent", type=str, default=OUTPUT_PARENT_DEFAULT,
+                    help="Output directory name under results/labs/mini_week/ (default: calib_corpus_v1)")
     args = ap.parse_args()
 
     allowlist = [s.strip() for s in args.playbooks.split(",") if s.strip()]
+    output_parent = args.output_parent
 
     if not args.manifest_only:
         for start, end, label in WINDOWS:
-            rc = _run_week(start, end, label, ",".join(allowlist), args.skip_existing)
+            rc = _run_week(start, end, label, ",".join(allowlist), args.skip_existing, output_parent)
             if rc != 0:
                 print(f"[calib_corpus] FAIL {label} exit={rc}", file=sys.stderr)
                 return rc
 
     period_start = min(s for s, _, _ in WINDOWS)
     period_end = max(e for _, e, _ in WINDOWS)
-    manifest_path = _write_manifest(allowlist, period_start, period_end)
+    manifest_path = _write_manifest(allowlist, period_start, period_end, output_parent)
     manifest = json.loads(manifest_path.read_text())
     print(f"\n[calib_corpus] Wrote {manifest_path}")
     print(json.dumps(manifest["playbooks_included"], indent=2))
