@@ -1143,40 +1143,52 @@ class BacktestEngine:
                 )
                 self.market_state_cache.put(cache_key, market_state)
         
-        # Patterns : calculer seulement sur clôture 5m ou supérieure (pas à chaque 1m)
-        # Phase 1C fix: persist last-known patterns between bars instead of resetting to []
-        if not hasattr(self, '_last_ict_patterns'):
-            self._last_ict_patterns: List[ICTPattern] = []
-            self._last_candle_patterns: List[CandlestickPattern] = []
+        # Patterns : detect per TF on their close events
+        # Each TF has its own cache so patterns don't bleed between timeframes
+        if not hasattr(self, '_ict_by_tf'):
+            self._ict_by_tf: Dict[str, List[ICTPattern]] = {}
+            self._candle_by_tf: Dict[str, List[CandlestickPattern]] = {}
 
-        if htf_events.get("is_close_5m") or htf_events.get("is_close_15m"):
-            new_ict: List[ICTPattern] = []
-            new_candle: List[CandlestickPattern] = []
+        # 1m detection: every bar (for 1m scalping playbooks)
+        if len(candles_1m) > 20:
+            ict_1m: List[ICTPattern] = []
+            candle_1m_patterns: List[CandlestickPattern] = []
+            raw_1m = self.candlestick_engine.detect_patterns(candles_1m[-100:], timeframe="1m")
+            candle_1m_patterns = self._convert_candlestick_patterns(raw_1m)
+            det_1m = detect_custom_patterns(candles_1m[-100:], "1m")
+            for plist in det_1m.values():
+                if plist:
+                    ict_1m.extend(plist)
+            self._ict_by_tf["1m"] = ict_1m
+            self._candle_by_tf["1m"] = candle_1m_patterns
 
-            # Détecter patterns candlesticks
-            if len(candles_5m) > 10:
-                raw_candle_patterns = self.candlestick_engine.detect_patterns(candles_5m[-100:], timeframe="5m")
-                new_candle = self._convert_candlestick_patterns(raw_candle_patterns)
+        # 5m detection: on 5m close
+        if htf_events.get("is_close_5m") and len(candles_5m) > 10:
+            ict_5m: List[ICTPattern] = []
+            raw_5m = self.candlestick_engine.detect_patterns(candles_5m[-100:], timeframe="5m")
+            self._candle_by_tf["5m"] = self._convert_candlestick_patterns(raw_5m)
+            det_5m = detect_custom_patterns(candles_5m[-100:], "5m")
+            for plist in det_5m.values():
+                if plist:
+                    ict_5m.extend(plist)
+            self._ict_by_tf["5m"] = ict_5m
 
-            # ICT patterns via unified custom detectors (BOS/FVG + IFVG/OB/EQ/BB)
-            if len(candles_5m) > 10:
-                detections_5m = detect_custom_patterns(candles_5m[-100:], "5m")
-                for plist in detections_5m.values():
-                    if plist:
-                        new_ict.extend(plist)
+        # 15m detection: on 15m close
+        if htf_events.get("is_close_15m") and len(candles_15m) > 10:
+            ict_15m: List[ICTPattern] = []
+            det_15m = detect_custom_patterns(candles_15m[-100:], "15m")
+            for plist in det_15m.values():
+                if plist:
+                    ict_15m.extend(plist)
+            self._ict_by_tf["15m"] = ict_15m
 
-            if len(candles_15m) > 10 and htf_events.get("is_close_15m"):
-                detections_15m = detect_custom_patterns(candles_15m[-100:], "15m")
-                for plist in detections_15m.values():
-                    if plist:
-                        new_ict.extend(plist)
-
-            # Update persistent cache
-            self._last_ict_patterns = new_ict
-            self._last_candle_patterns = new_candle
-
-        ict_patterns = self._last_ict_patterns
-        candle_patterns = self._last_candle_patterns
+        # Merge all TF patterns for the setup engine (it filters by playbook.setup_tf)
+        ict_patterns: List[ICTPattern] = []
+        candle_patterns: List[CandlestickPattern] = []
+        for tf_pats in self._ict_by_tf.values():
+            ict_patterns.extend(tf_pats)
+        for tf_pats in self._candle_by_tf.values():
+            candle_patterns.extend(tf_pats)
         
         # P0 ÉTAPE 2: Instrumentation - Log évaluation playbooks (rate limit)
         bar_num = self.debug_counts.get("bars_processed", 0)
@@ -1202,7 +1214,18 @@ class BacktestEngine:
             logger.error(f"[P0] No last_price available for {symbol} at {current_time}, skipping setup generation")
             return None
         
-        # Générer setup via SetupEngine
+        # Build set of TFs that just closed — playbooks are only evaluated on their setup_tf close
+        active_tf_closes = {"1m"}  # 1m always closes (we're on a 1m loop)
+        if htf_events.get("is_close_5m"):
+            active_tf_closes.add("5m")
+        if htf_events.get("is_close_10m"):
+            active_tf_closes.add("10m")
+        if htf_events.get("is_close_15m"):
+            active_tf_closes.add("15m")
+        if htf_events.get("is_close_1h"):
+            active_tf_closes.add("1h")
+
+        # Générer setup via SetupEngine (TF-gated)
         setups = self.setup_engine.generate_setups(
             symbol=symbol,
             current_time=current_time,
@@ -1211,7 +1234,8 @@ class BacktestEngine:
             candle_patterns=candle_patterns,
             liquidity_levels=[],  # Liquidity levels désactivés temporairement
             trading_mode=self.config.trading_mode,
-            last_price=last_close  # P0 FIX: Transmettre le vrai prix
+            last_price=last_close,  # P0 FIX: Transmettre le vrai prix
+            active_tf_closes=active_tf_closes,
         )
         
         # P0 FIX: Compter matches (après génération, matches stockés dans _last_matches)

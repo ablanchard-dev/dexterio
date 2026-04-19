@@ -85,6 +85,7 @@ class ICTPatternEngine:
                 timeframe=timeframe,
                 pattern_type='bos',
                 direction='bullish',
+                price_level=last_pivot_high,  # structural level for SL placement
                 details={
                     'pivot_high_broken': last_pivot_high,
                     'close_price': current_candle.close,
@@ -124,6 +125,7 @@ class ICTPatternEngine:
                 timeframe=timeframe,
                 pattern_type='bos',
                 direction='bearish',
+                price_level=last_pivot_low,  # structural level for SL placement
                 details={
                     'pivot_low_broken': last_pivot_low,
                     'close_price': current_candle.close,
@@ -211,6 +213,7 @@ class ICTPatternEngine:
                     timeframe=timeframe,
                     pattern_type='fvg',
                     direction='bullish',
+                    price_level=c1.high,  # bottom of FVG = SL level for longs
                     details={
                         'top': c3.low,
                         'bottom': c1.high,
@@ -256,6 +259,7 @@ class ICTPatternEngine:
                     timeframe=timeframe,
                     pattern_type='fvg',
                     direction='bearish',
+                    price_level=c1.low,  # top of FVG = SL level for shorts
                     details={
                         'top': c1.low,
                         'bottom': c3.high,
@@ -361,6 +365,7 @@ class ICTPatternEngine:
                 timeframe=timeframe,
                 pattern_type='liquidity_sweep',
                 direction='bearish',  # bearish after sweep high
+                price_level=current_candle.high,  # sweep extreme = SL level for shorts
                 details={
                     'sweep_level': last_swing_high,
                     'high_reached': current_candle.high,
@@ -402,6 +407,7 @@ class ICTPatternEngine:
                 timeframe=timeframe,
                 pattern_type='liquidity_sweep',
                 direction='bullish',  # bullish after sweep low
+                price_level=current_candle.low,  # sweep extreme = SL level for longs
                 details={
                     'sweep_level': last_swing_low,
                     'low_reached': current_candle.low,

@@ -61,6 +61,7 @@ def detect_order_blocks(candles: List[Candle], timeframe: str, config: Dict[str,
                 timeframe=timeframe,
                 pattern_type='order_block',
                 direction='bullish',
+                price_level=zone_low,  # OB low = SL level for longs
                 details={
                     'bos_level': swing_high,
                     'zone_low': zone_low,
@@ -89,6 +90,7 @@ def detect_order_blocks(candles: List[Candle], timeframe: str, config: Dict[str,
                 timeframe=timeframe,
                 pattern_type='order_block',
                 direction='bearish',
+                price_level=zone_high,  # OB high = SL level for shorts
                 details={
                     'bos_level': swing_low,
                     'zone_low': zone_low,

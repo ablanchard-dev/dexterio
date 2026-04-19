@@ -1429,3 +1429,151 @@
       A_plus: 0.60
       A: 0.30
       B: 0.0
+
+# ============================================================================
+# PHASE 5a+ — SCALP 1m STRATEGIES
+# Fast trades on 1m timeframe. Tighter SL, lower RR, higher frequency.
+# ============================================================================
+
+# --- FVG_Scalp_1m — FVG on 1m chart → limit 50% → TP 1.5:1 ---
+# Concept: V065/V054 adapted to 1m — same logic, faster execution
+# Trade duration: 5-30 min typical
+- playbook_name: "FVG_Scalp_1m"
+  category: "SCALP"
+  description: "1m FVG scalp: FVG on 1m → limit 50% → TP 1.5:1 (fast in/out)"
+  max_setups_per_session: 3
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "FVG@1m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:35", "11:30"]
+      - ["14:00", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families: []
+    direction: "any"
+
+  entry_logic:
+    type: "LIMIT"
+    zone: "fvg_50"
+    confirmation_tf: "1m"
+  setup_tf: "1m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "fvg_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: null
+    breakeven_at_rr: 999.0
+
+  max_duration_minutes: 30
+
+  scoring:
+    weights:
+      fvg_quality: 1.0
+      pattern_quality: 0.0
+      trend_alignment: 0.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0
+
+# --- BOS_Scalp_1m — BOS on 1m + engulfing → market entry → TP 1.5:1 ---
+# Concept: momentum break on 1m with candlestick confirmation
+# Trade duration: 5-20 min typical
+- playbook_name: "BOS_Scalp_1m"
+  category: "SCALP"
+  description: "1m BOS scalp: BOS + engulfing on 1m → MARKET entry → TP 1.5:1"
+  max_setups_per_session: 3
+
+  enabled_in_modes:
+    - "AGGRESSIVE"
+
+  instruments:
+    - "SPY"
+    - "QQQ"
+
+  required_signals:
+    - "BOS@1m"
+
+  timefilters:
+    session: "NY"
+    time_windows:
+      - ["09:35", "11:30"]
+      - ["14:00", "15:30"]
+
+  context_requirements:
+    htf_bias_allowed: ["bullish", "bearish", "neutral"]
+    day_type_allowed: ["trend", "manipulation_reversal", "range", "unknown"]
+    structure_htf: ["uptrend", "downtrend", "range", "unknown"]
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: false
+    require_bos: true
+    smt_bonus: false
+
+  candlestick_patterns:
+    required_families:
+      - "engulfing"
+    direction: "any"
+
+  entry_logic:
+    type: "MARKET"
+    zone: "pattern_close"
+    confirmation_tf: "1m"
+  setup_tf: "1m"
+
+  stop_loss_logic:
+    type: "FIXED"
+    distance: "pattern_extreme"
+    padding_ticks: 1
+
+  take_profit_logic:
+    min_rr: 1.5
+    tp1_rr: 1.5
+    tp2_rr: null
+    breakeven_at_rr: 999.0
+
+  max_duration_minutes: 20
+
+  scoring:
+    weights:
+      bos_strength: 0.6
+      pattern_quality: 0.4
+      trend_alignment: 0.0
+    grade_thresholds:
+      A_plus: 0.50
+      A: 0.01
+      B: 0.0

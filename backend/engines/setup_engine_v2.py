@@ -55,6 +55,7 @@ class SetupEngineV2:
         current_time: datetime = None,
         trading_mode: str = None,
         last_price: Optional[float] = None,
+        active_tf_closes: Optional[set] = None,
     ) -> List[Setup]:
         """
         Génère des setups basés sur les playbooks
@@ -93,14 +94,15 @@ class SetupEngineV2:
         # Note: On ne peut pas accéder directement à debug_counts depuis ici,
         # donc on log et on comptera dans engine.py
         
-        # Évaluer tous les playbooks
+        # Évaluer tous les playbooks (TF-gated: only evaluate when setup_tf bar closes)
         playbook_matches = self.playbook_evaluator.evaluate_all_playbooks(
             symbol=symbol,
             market_state=market_context,
             ict_patterns=ict_patterns,
             candle_patterns=candle_patterns,
             current_time=current_time,
-            trading_mode=trading_mode
+            trading_mode=trading_mode,
+            active_tf_closes=active_tf_closes,
         )
         
         # P0 FIX: Stocker matches pour instrumentation (accessible depuis engine.py)
