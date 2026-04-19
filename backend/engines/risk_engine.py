@@ -51,12 +51,12 @@ AGGRESSIVE_ALLOWLIST = [
     'FVG_Scalp_1m',                            # 1m FVG scalp (fast in/out)
     'BOS_Scalp_1m',                            # 1m BOS + engulfing scalp
     # --- 5m Indicator-based scalp strategies ---
-    'ORB_Breakout_5m',                         # Opening Range Breakout (classic, widely backtested)
+    # 'ORB_Breakout_5m' -> DENYLIST (B0.3, fair audit 4w: E[R]=-0.10, 16 tr, WR=25%)
     'EMA_Cross_5m',                            # EMA 9/21 crossover + 50 EMA trend filter
     'VWAP_Bounce_5m',                          # VWAP touch + RSI mean reversion
     'RSI_MeanRev_5m',                          # RSI(2) extreme mean reversion (Connors-style)
     # --- Kept from legacy (not MASTER-sourced) ---
-    'NY_Open_Reversal',                        # Only legacy playbook with non-negative signal
+    # 'NY_Open_Reversal' -> DENYLIST (B0.3, fair audit 4w: E[R]=-0.21, 17 tr, WR=12%)
     'News_Fade',                               # User invention, not MASTER
 ]
 
@@ -71,6 +71,9 @@ AGGRESSIVE_DENYLIST = [
     # --- Non-functional ---
     'DAY_Aplus_1_Liquidity_Sweep_OB_Retest',   # Sweep/BOS non détectés ❌
     'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # Quarantiné: 6 trades, 0 win, -1.399R
+    # --- Phase A fair audit KILL (B0.3, 2026-04-19) ---
+    'NY_Open_Reversal',                        # fair audit 4w: E[R]=-0.21, 17 tr, WR=12% ❌
+    'ORB_Breakout_5m',                         # fair audit 4w: E[R]=-0.10, 16 tr, WR=25% (too early to calibrate)
     # --- Unfaithful originals (replaced by Phase 5a faithful versions) ---
     'FVG_Fill_Scalp',                          # Replaced by FVG_Fill_V065
     'Session_Open_Scalp',                      # Replaced by Range_FVG_V054
