@@ -368,18 +368,30 @@ class PlaybookEvaluator:
         ict_patterns: List[ICTPattern],
         candle_patterns: List[CandlestickPattern],
         current_time: datetime,
-        trading_mode: str
+        trading_mode: str,
+        active_tf_closes: Optional[set] = None,
     ) -> List[Dict]:
         """
         Évalue tous les playbooks pour un contexte donné
-        
+
+        Args:
+            active_tf_closes: Set of TFs that just closed (e.g. {"1m", "5m"}).
+                If provided, only playbooks whose setup_tf matches are evaluated.
+                Playbooks without setup_tf default to "1m".
+
         Returns:
             Liste de matches avec playbook_name, score, grade
         """
         playbooks = self.loader.get_playbooks_for_mode(trading_mode)
         matches = []
-        
+
         for playbook in playbooks:
+            # TF-gate: only evaluate playbook when its setup_tf bar closes
+            if active_tf_closes is not None:
+                pb_tf = getattr(playbook, 'setup_tf', None) or '1m'
+                if pb_tf.lower() not in active_tf_closes:
+                    continue
+
             # Vérifier si le playbook est applicable
             basic_pass, basic_reason = self._check_basic_filters(playbook, symbol, current_time, market_state)
             if not basic_pass:

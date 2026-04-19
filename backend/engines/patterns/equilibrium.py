@@ -47,6 +47,7 @@ def detect_equilibrium(candles: List[Candle], timeframe: str, config: Dict[str, 
             timeframe=timeframe,
             pattern_type='equilibrium',
             direction='touch',
+            price_level=midpoint,  # equilibrium midpoint
             details={
                 'eq_price': midpoint,
                 'impulse_high': swing_high,

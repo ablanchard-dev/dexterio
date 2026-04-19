@@ -47,6 +47,9 @@ AGGRESSIVE_ALLOWLIST = [
     'Engulfing_Bar_V056',                      # S7: V056 M1 Engulfing Bar (85%)
     'London_Fakeout_V066',                     # S3a: V066 London fakeout (83%)
     'OB_Retest_V004',                          # S7: V004 OB Retest + BOS (80-85%)
+    # --- 1m Scalping strategies ---
+    'FVG_Scalp_1m',                            # 1m FVG scalp (fast in/out)
+    'BOS_Scalp_1m',                            # 1m BOS + engulfing scalp
     # --- Kept from legacy (not MASTER-sourced) ---
     'NY_Open_Reversal',                        # Only legacy playbook with non-negative signal
     'News_Fade',                               # User invention, not MASTER

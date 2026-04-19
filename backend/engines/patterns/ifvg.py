@@ -72,6 +72,7 @@ def detect_ifvg(candles: List[Candle], timeframe: str, config: Dict[str, Any]) -
                         timeframe=timeframe,
                         pattern_type='ifvg',
                         direction='bearish',
+                        price_level=zone_high,  # SL above invalidated FVG
                         details={
                             'fvg_direction': 'bullish',
                             'zone_low': zone_low,
@@ -93,6 +94,7 @@ def detect_ifvg(candles: List[Candle], timeframe: str, config: Dict[str, Any]) -
                         timeframe=timeframe,
                         pattern_type='ifvg',
                         direction='bullish',
+                        price_level=zone_low,  # SL below invalidated FVG
                         details={
                             'fvg_direction': 'bearish',
                             'zone_low': zone_low,

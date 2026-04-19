@@ -75,6 +75,7 @@ def detect_breaker_blocks(candles: List[Candle], timeframe: str, config: Dict[st
             timeframe=timeframe,
             pattern_type='breaker_block',
             direction='bearish',
+            price_level=zone_high,  # SL above broken OB
             details={
                 'source_ob_direction': 'bullish',
                 'zone_low': zone_low,
@@ -92,6 +93,7 @@ def detect_breaker_blocks(candles: List[Candle], timeframe: str, config: Dict[st
             timeframe=timeframe,
             pattern_type='breaker_block',
             direction='bullish',
+            price_level=zone_low,  # SL below broken OB
             details={
                 'source_ob_direction': 'bearish',
                 'zone_low': zone_low,
