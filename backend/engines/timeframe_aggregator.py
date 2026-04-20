@@ -102,16 +102,36 @@ class TimeframeAggregator:
         }
     
     def _update_htf_candle(self, symbol: str, candle_1m: Candle, tf: str, is_close: bool):
-        """Met à jour une bougie HTF (5m, 10m, 15m, 1h, 4h, 1d)"""
+        """Met à jour une bougie HTF (5m, 10m, 15m, 1h, 4h, 1d).
+
+        Gap handling: if the incoming 1m bar belongs to a different HTF window
+        than the one currently in progress (e.g. the :%4 closing 1m bar was
+        missing from the feed), close the stale in-progress bar before starting
+        a fresh one. Without this, TFA would silently merge consecutive 5m/15m
+        windows whenever a close-trigger bar is missing.
+        """
         current_dict = getattr(self, f"current_{tf}")
         candles_list = getattr(self, f"candles_{tf}")[symbol]
-        
-        if symbol not in current_dict or current_dict[symbol] is None:
+
+        expected_ts = self._floor_timestamp(candle_1m.timestamp, tf)
+        current = current_dict.get(symbol)
+
+        # Gap detection: the current in-progress bar never saw its close trigger
+        # because the %N-close 1m bar was missing. Flush it to history before
+        # starting the new window.
+        if current is not None and current.timestamp != expected_ts:
+            candles_list.append(current)
+            if len(candles_list) > self.WINDOW_SIZES[tf]:
+                candles_list[:] = candles_list[-self.WINDOW_SIZES[tf]:]
+            current_dict[symbol] = None
+            current = None
+
+        if current is None:
             # Commencer une nouvelle bougie HTF
             current_dict[symbol] = Candle(
                 symbol=symbol,
                 timeframe=tf,
-                timestamp=self._floor_timestamp(candle_1m.timestamp, tf),
+                timestamp=expected_ts,
                 open=candle_1m.open,
                 high=candle_1m.high,
                 low=candle_1m.low,
@@ -120,12 +140,11 @@ class TimeframeAggregator:
             )
         else:
             # Mettre à jour la bougie en cours
-            current = current_dict[symbol]
             current.high = max(current.high, candle_1m.high)
             current.low = min(current.low, candle_1m.low)
             current.close = candle_1m.close
             current.volume += candle_1m.volume
-        
+
         if is_close:
             # Finaliser et ajouter à l'historique
             candles_list.append(current_dict[symbol])

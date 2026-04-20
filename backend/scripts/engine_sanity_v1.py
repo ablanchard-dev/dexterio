@@ -301,9 +301,12 @@ def test_resample(candles_1m: list[Candle]) -> dict:
     TimeframeAggregator is the path the backtest engine actually uses
     (backtest/engine.py:91, 524 comment). It fires is_close_5m at minute%5==4
     so the "first 5m bar" covers :00-:04 (same convention as pandas label='left').
+
+    TFA caps history at WINDOW_SIZES["5m"] (200 bars) by design — we compare
+    the last N bars where N = min(len(engine), len(gt)).
     """
     # Ground truth: pandas resample (label='left' is default; matches TFA's
-    # floor_timestamp convention where the bar is tagged at :00, :05, :10...).
+    # floor_timestamp convention).
     df = pd.DataFrame(
         [
             {
@@ -321,53 +324,56 @@ def test_resample(candles_1m: list[Candle]) -> dict:
         {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
     ).dropna()
 
-    # Engine (production) path
     engine_5m = aggregate_with_tfa(candles_1m)
 
-    # Index engine_5m by timestamp for alignment
     eng_by_ts = {c.timestamp: c for c in engine_5m}
+    gt_by_ts = {ts.to_pydatetime(): row for ts, row in gt_5m.iterrows()}
+
+    # TFA keeps only the last WINDOW_SIZES bars. Align comparison to engine's
+    # actual history window.
+    if engine_5m:
+        window_start = engine_5m[0].timestamp
+        gt_in_window = {ts: row for ts, row in gt_by_ts.items() if ts >= window_start}
+    else:
+        gt_in_window = {}
 
     mismatches = []
-    only_in_gt = 0
-    only_in_engine = 0
+    only_in_gt = []
+    only_in_engine = []
 
-    # Check engine bars against ground-truth
-    for ts, row in gt_5m.iterrows():
-        # TFA tags closed bars with _floor_timestamp (:00,:05,:10,…). pandas
-        # index is tz-aware datetime; TFA keeps the incoming tz → align tz.
-        ts_py = ts.to_pydatetime()
-        c = eng_by_ts.get(ts_py)
+    for ts, row in gt_in_window.items():
+        c = eng_by_ts.get(ts)
         if c is None:
-            only_in_gt += 1
+            only_in_gt.append(ts.isoformat())
             continue
         for field in ("open", "high", "low", "close"):
-            if abs(getattr(c, field) - float(row[field])) > 1e-9:
-                mismatches.append(
-                    (ts_py.isoformat(), field, getattr(c, field), float(row[field]))
-                )
+            eng_val = getattr(c, field)
+            gt_val = float(row[field])
+            if abs(eng_val - gt_val) > 1e-9:
+                mismatches.append((ts.isoformat(), field, eng_val, gt_val))
                 if len(mismatches) >= 5:
                     break
         if len(mismatches) >= 5:
             break
 
-    gt_ts = {ts.to_pydatetime() for ts in gt_5m.index}
-    only_in_engine = len([c for c in engine_5m if c.timestamp not in gt_ts])
+    for c in engine_5m:
+        if c.timestamp not in gt_in_window:
+            only_in_engine.append(c.timestamp.isoformat())
 
-    # TFA only emits a bar when is_close fires (minute%5==4). The LAST partial
-    # 5m bar of the week may still be "current" in TFA and not yet in
-    # get_candles(). pandas emits it anyway. So 1 bar delta is acceptable.
-    row_delta = abs(len(engine_5m) - len(gt_5m))
-    acceptable_edge_delta = 1  # at most one partial trailing bar
+    # TFA may trail by 1 partial bar (current bar not yet closed at EOD).
+    acceptable_trailing_delta = 1
+    overlap_delta = abs(len(engine_5m) - len(gt_in_window))
 
     return {
         "pass": (len(mismatches) == 0
-                 and only_in_engine == 0
-                 and row_delta <= acceptable_edge_delta),
+                 and len(only_in_engine) == 0
+                 and len(only_in_gt) <= acceptable_trailing_delta),
         "engine_bars": len(engine_5m),
-        "ground_truth_bars": len(gt_5m),
-        "row_delta": row_delta,
-        "only_in_ground_truth": only_in_gt,
-        "only_in_engine": only_in_engine,
+        "ground_truth_total_bars": len(gt_5m),
+        "ground_truth_in_tfa_window": len(gt_in_window),
+        "overlap_delta": overlap_delta,
+        "only_in_ground_truth": only_in_gt[:5],
+        "only_in_engine": only_in_engine[:5],
         "mismatches_ohlc": mismatches[:5],
     }
 
