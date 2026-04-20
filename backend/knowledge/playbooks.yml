@@ -1813,9 +1813,9 @@
       A_plus: 0.5
       A: 0.01
       B: 0.0
-- playbook_name: Aplus_03_IFVG_Flip_5m_LAB
+- playbook_name: Aplus_03_IFVG_Flip_5m
   category: SCALP
-  description: 'Aplus_03 LAB (MASTER faithful): 5m FVG invalidé par close → IFVG flip → entry direction du flip (Trigger A). Profile LAB permissif pour exploration.'
+  description: 'Aplus_03 (MASTER Family A faithful): 5m FVG invalidé par close → IFVG flip → entry direction du flip (Trigger A). Lives in LAB until promoted to SAFE.'
   max_setups_per_session: 3
   enabled_in_modes:
   - AGGRESSIVE
@@ -1883,68 +1883,3 @@
       A_plus: 0.7
       A: 0.5
       B: 0.3
-- playbook_name: Aplus_03_IFVG_Flip_5m_SAFE
-  category: SCALP
-  description: 'Aplus_03 SAFE (MASTER faithful): 5m FVG invalidé → IFVG flip → entry, HTF bias gate ON + structure gate ON + session 09:45-12:00 + RR 2.5. Profile live-ready.'
-  max_setups_per_session: 1
-  enabled_in_modes:
-  - AGGRESSIVE
-  instruments:
-  - SPY
-  - QQQ
-  required_signals:
-  - IFVG@5m
-  timefilters:
-    session: NY
-    time_windows:
-    - - 09:45
-      - '12:00'
-  context_requirements:
-    htf_bias_allowed:
-    - bullish
-    - bearish
-    day_type_allowed:
-    - trend
-    - manipulation_reversal
-    structure_htf:
-    - uptrend
-    - downtrend
-    london_sweep_required: false
-    volatility_min: null
-    volatility_max: null
-    adx_min: 20
-  ict_confluences:
-    require_sweep: false
-    allow_fvg: true
-    require_bos: false
-    smt_bonus: false
-  candlestick_patterns:
-    required_families: []
-    direction: any
-  entry_logic:
-    type: MARKET
-    zone: signal_close
-    confirmation_tf: 5m
-  setup_tf: 5m
-  stop_loss_logic:
-    type: SWING
-    distance: fvg_extreme
-    padding_ticks: 2
-  take_profit_logic:
-    min_rr: 2.5
-    tp1_rr: 2.5
-    tp2_rr: 5.0
-    breakeven_at_rr: 1.5
-    trailing_mode: trail_rr
-    trailing_trigger_rr: 1.0
-    trailing_offset_rr: 0.5
-  max_duration_minutes: 45
-  scoring:
-    weights:
-      fvg_quality: 0.5
-      context_strength: 0.3
-      pattern_quality: 0.2
-    grade_thresholds:
-      A_plus: 0.75
-      A: 0.55
-      B: 0.35
