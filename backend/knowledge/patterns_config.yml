@@ -7,11 +7,12 @@
 # timefilter are also declared here to avoid duplication.
 
 ifvg:
-  # Minimum displacement required to confirm an inverse FVG in percent of the
-  # closing price.  When the price crosses the FVG zone by at least this
-  # percentage, the IFVG signal is considered valid.  Lower values make the
-  # detector more sensitive.
-  min_displacement_pct: 0.05
+  # Minimum displacement (fraction of closing price) required to confirm an
+  # inverse FVG. Code compares displacement = |close - zone_edge| / close to
+  # this threshold. Previous default 0.05 = 5% which is unreachable on SPY/QQQ
+  # 5m bars (typical wick is 5-50 bps). Set to 5 bps so the detector actually
+  # fires; tighten per-playbook later if noise is too high.
+  min_displacement_pct: 0.0005
   # Length of the ATR lookback (in candles) used to compute displacement.
   atr_length: 14
 
