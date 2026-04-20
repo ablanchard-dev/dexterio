@@ -36,8 +36,10 @@ def detect_order_blocks(candles: List[Candle], timeframe: str, config: Dict[str,
     range_type = config.get('range_type', 'body').lower()
     # Limiter lookback pour éviter de dépasser l'index
     lb = min(lookback, n - 1)
-    # Déterminer swing high et low sur la fenêtre
-    window = candles[-lb:]
+    # Swing high/low computed on the window EXCLUDING the breakout bar itself.
+    # If window included last_candle, swing_high >= last.high >= last.close
+    # and `close > swing_high` would be mathematically impossible.
+    window = candles[-(lb + 1):-1]
     swing_high = max(c.high for c in window)
     swing_low = min(c.low for c in window)
     last_candle = candles[-1]
@@ -45,7 +47,7 @@ def detect_order_blocks(candles: List[Candle], timeframe: str, config: Dict[str,
     if last_candle.close > swing_high:
         # Rechercher la dernière bougie bearish dans la fenêtre (avant la cassure)
         ob_candle = None
-        for c in reversed(window[:-1]):
+        for c in reversed(window):
             if c.close < c.open:  # bearish
                 ob_candle = c
                 break
@@ -74,7 +76,7 @@ def detect_order_blocks(candles: List[Candle], timeframe: str, config: Dict[str,
     # Vérifier cassure baissière
     if last_candle.close < swing_low:
         ob_candle = None
-        for c in reversed(window[:-1]):
+        for c in reversed(window):
             if c.close > c.open:  # bullish
                 ob_candle = c
                 break

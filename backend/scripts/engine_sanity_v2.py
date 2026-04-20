@@ -65,6 +65,7 @@ from engines.patterns.indicators import (
 )
 from engines.timeframe_aggregator import TimeframeAggregator
 from backtest.costs import calculate_total_execution_costs
+from engines.execution.fill_model import IdealFillModel, ConservativeFillModel
 
 
 # ============================================================================
@@ -349,6 +350,181 @@ def test_A_costs() -> dict:
                                "reg": exit_c.regulatory_fees, "spread": exit_c.spread_cost}}
 
 
+def test_A12_fill_model_protocol() -> dict:
+    """IdealFillModel fills at target; ConservativeFillModel fills at next_bar.open
+    with adverse slippage. Both must implement the same contract."""
+    ideal = IdealFillModel()
+    conservative = ConservativeFillModel(extra_slippage_pct=0.0005)
+
+    tr = make_long_trade(entry=450.0, sl=449.0, tp1=452.0, tp2=None, size=100.0)
+    # Bar hits SL (low=448.5)
+    bar = make_candle(datetime(2025, 10, 8, 14, 0, 0, tzinfo=timezone.utc),
+                      o=449.5, h=450.0, l=448.5, c=449.0)
+    # Next bar opens lower — adverse for LONG
+    next_bar = make_candle(bar.timestamp + timedelta(minutes=1),
+                            o=448.0, h=448.5, l=447.5, c=448.2)
+
+    # Ideal: fill at stop_loss exactly (449.0), no extra slippage
+    ideal_res = ideal.fill_stop(tr, bar)
+    ideal_ok = (ideal_res.filled and abs(ideal_res.fill_price - 449.0) < 1e-9
+                and ideal_res.slippage_adjustment == 0.0 and ideal_res.reason == "SL")
+
+    # Conservative: fill at next_bar.open (448.0) minus adverse slippage (0.05%)
+    cons_res = conservative.fill_stop(tr, bar, next_bar=next_bar)
+    # Expected price = 448.0 - 448.0 * 0.0005 = 448.0 - 0.224 = 447.776
+    expected_cons_price = 448.0 * (1 - 0.0005)
+    cons_ok = (cons_res.filled
+               and abs(cons_res.fill_price - expected_cons_price) < 1e-6
+               and cons_res.slippage_adjustment > 0
+               and cons_res.fill_time == next_bar.timestamp
+               and cons_res.reason == "SL")
+
+    # Conservative without next_bar: fall back to stop_loss (adverse-adjusted)
+    cons_fallback = conservative.fill_stop(tr, bar, next_bar=None)
+    expected_fallback = 449.0 * (1 - 0.0005)
+    fallback_ok = (cons_fallback.filled
+                   and abs(cons_fallback.fill_price - expected_fallback) < 1e-6)
+
+    # Bar that does NOT hit stop → both models return None
+    bar_nohit = make_candle(bar.timestamp, o=450.0, h=450.5, l=449.5, c=450.0)
+    miss_ok = (ideal.fill_stop(tr, bar_nohit) is None
+               and conservative.fill_stop(tr, bar_nohit, next_bar=next_bar) is None)
+
+    # TP path: LONG hits TP1=452, ideal fills at 452, conservative fills at next.open with adverse
+    bar_tp = make_candle(bar.timestamp, o=451.0, h=452.5, l=450.5, c=452.1)
+    next_tp = make_candle(bar_tp.timestamp + timedelta(minutes=1),
+                          o=451.7, h=452.2, l=451.5, c=451.9)
+    tp_ideal = ideal.fill_take_profit(tr, bar_tp, 452.0, reason="TP1")
+    tp_cons = conservative.fill_take_profit(tr, bar_tp, 452.0, reason="TP1", next_bar=next_tp)
+    tp_ideal_ok = tp_ideal.filled and abs(tp_ideal.fill_price - 452.0) < 1e-9
+    expected_tp_cons = 451.7 * (1 - 0.0005)
+    tp_cons_ok = tp_cons.filled and abs(tp_cons.fill_price - expected_tp_cons) < 1e-6
+
+    ok = ideal_ok and cons_ok and fallback_ok and miss_ok and tp_ideal_ok and tp_cons_ok
+    return {"pass": ok,
+            "ideal_sl_price": ideal_res.fill_price,
+            "conservative_sl_price": round(cons_res.fill_price, 4),
+            "conservative_expected": round(expected_cons_price, 4),
+            "conservative_fallback_price": round(cons_fallback.fill_price, 4),
+            "no_hit_returns_none": miss_ok,
+            "ideal_tp_price": tp_ideal.fill_price,
+            "conservative_tp_price": round(tp_cons.fill_price, 4),
+            "note": "Ideal reproduces current ExecutionEngine; Conservative adds next-bar slippage for reconcile harness"}
+
+
+def test_A11_trailing_plus_breakeven() -> dict:
+    """Trailing + BE on the SAME trade. Expected sequence:
+      - BE trigger 1.0R: first bar reaching r=1.0 sets SL ← entry (100.0).
+      - Trail trigger 1.5R, offset 0.5R: once peak_r >= 1.5R, SL ratchets to entry + (peak-offset)*risk.
+      - Ratchet invariant: new_sl only adopted if strictly above current SL (direction=LONG).
+    """
+    ex, _ = get_exec_engine()
+    tr = make_long_trade(entry=100.0, sl=99.0, tp1=999.0, tp2=None,
+                         trailing_mode="trail_rr",
+                         trailing_trigger_rr=1.5,
+                         trailing_offset_rr=0.5,
+                         breakeven_trigger_rr=1.0)
+    inject_trade(ex, tr)
+
+    # Bar 1: price climbs to 101.2 → r=1.2R at close. peak_r=1.2 (below trail_trigger 1.5).
+    # → BE fires (r>=1.0), SL becomes 100. Trailing does NOT fire yet.
+    ex.update_open_trades({"SPY": make_bar_dict(high=101.2, low=100.0, close=101.0)},
+                          current_time=tr.time_entry + timedelta(minutes=2))
+    if tr.id not in ex.open_trades:
+        return {"pass": False, "step": "bar1", "reason": "trade closed prematurely",
+                "exit_reason": ex.closed_trades[-1].exit_reason}
+    be_ok = tr.breakeven_moved and abs(tr.stop_loss - 100.0) < 1e-9
+    trail_not_fired_yet = not (tr.peak_r >= 1.5)
+    if not (be_ok and trail_not_fired_yet):
+        return {"pass": False, "step": "bar1",
+                "be_moved": tr.breakeven_moved, "sl_after_bar1": tr.stop_loss,
+                "peak_r_after_bar1": tr.peak_r,
+                "reason": "BE should fire, trail should not"}
+
+    # Bar 2: price climbs to 102.0 → peak_r=2.0R ≥ trail_trigger 1.5 → trail fires.
+    # Expected new_sl = entry + (peak - offset) * risk = 100 + (2.0-0.5)*1.0 = 101.5.
+    # This must be > current SL (100.0) → ratchet up OK.
+    ex.update_open_trades({"SPY": make_bar_dict(high=102.0, low=101.0, close=101.8)},
+                          current_time=tr.time_entry + timedelta(minutes=4))
+    if tr.id not in ex.open_trades:
+        return {"pass": False, "step": "bar2", "reason": "trade closed prematurely on bar2",
+                "exit_reason": ex.closed_trades[-1].exit_reason}
+    trail_ratcheted = abs(tr.stop_loss - 101.5) < 1e-6
+    peak_ok = abs(tr.peak_r - 2.0) < 1e-6
+    if not (trail_ratcheted and peak_ok):
+        return {"pass": False, "step": "bar2",
+                "sl_after_bar2": tr.stop_loss, "peak_r": tr.peak_r,
+                "expected_sl": 101.5, "expected_peak_r": 2.0,
+                "reason": "trail ratchet incorrect"}
+
+    # Bar 3: shallow pullback to low 101.6 (above trailed SL 101.5) → stays open.
+    ex.update_open_trades({"SPY": make_bar_dict(high=101.9, low=101.6, close=101.7)},
+                          current_time=tr.time_entry + timedelta(minutes=6))
+    if tr.id not in ex.open_trades:
+        return {"pass": False, "step": "bar3", "reason": "closed on bar3 even though low > trailed SL"}
+    # Invariant: SL did not regress
+    if tr.stop_loss < 101.5 - 1e-6:
+        return {"pass": False, "step": "bar3", "reason": "SL regressed",
+                "sl": tr.stop_loss}
+
+    # Bar 4: deeper pullback to low 101.4 (below trailed SL 101.5) → close at trailed SL.
+    ex.update_open_trades({"SPY": make_bar_dict(high=101.7, low=101.4, close=101.45)},
+                          current_time=tr.time_entry + timedelta(minutes=8))
+    if tr.id in ex.open_trades:
+        return {"pass": False, "step": "bar4", "reason": "did not close on trailed SL"}
+    closed = ex.closed_trades[-1]
+    ok = closed.exit_reason == "SL" and abs(closed.exit_price - 101.5) < 1e-6
+    return {"pass": ok, "exit_reason": closed.exit_reason,
+            "exit_price": closed.exit_price, "expected_close_at": 101.5,
+            "peak_r_final": tr.peak_r, "sl_trajectory": "99.0 → 100.0 (BE) → 101.5 (trail)"}
+
+
+def test_A10_costs_flow_into_pnl() -> dict:
+    """Contract: close_trade sets trade.pnl_dollars = GROSS; backtest/engine.py:2447-2451
+    applies total_costs to produce pnl_net_dollars = pnl_gross_dollars - total_costs.
+    Both halves verified here without booting full BacktestEngine."""
+    ex, _ = get_exec_engine()
+    shares = 100
+    entry_price = 450.0
+    tp1 = 452.0  # +2.0 point move
+    tr = make_long_trade(entry=entry_price, sl=449.0, tp1=tp1, tp2=None, size=float(shares))
+    inject_trade(ex, tr)
+    # Bar reaches TP1 → close at TP1 exactly
+    ex.update_open_trades({"SPY": make_bar_dict(high=452.2, low=449.8, close=451.9)},
+                          current_time=tr.time_entry + timedelta(minutes=3))
+    if tr.id in ex.open_trades:
+        return {"pass": False, "reason": "trade did not close on TP1"}
+
+    # Part 1: close_trade writes GROSS to trade.pnl_dollars (no cost deduction at Trade level)
+    expected_gross = (tp1 - entry_price) * shares  # 2.0 × 100 = 200.0
+    actual_gross = tr.pnl_dollars
+    gross_ok = abs(actual_gross - expected_gross) < 1e-6
+
+    # Part 2: reproduce the arithmetic the backtest engine applies at engine.py:2447-2451
+    entry_c, exit_c = calculate_total_execution_costs(
+        shares=shares, entry_price=entry_price, exit_price=tp1,
+        commission_model="ibkr_fixed",
+    )
+    total_costs = entry_c.total + exit_c.total
+    pnl_net = actual_gross - total_costs  # same formula as engine.py:2451
+    # For 100 SPY @ $450: gross=200, costs ≈ $45-60 round-trip → net in [140, 160]
+    net_positive = pnl_net > 0
+    net_less_than_gross = pnl_net < actual_gross
+    net_in_band = 130.0 < pnl_net < 175.0
+
+    ok = gross_ok and net_positive and net_less_than_gross and net_in_band
+    return {"pass": ok,
+            "expected_gross": expected_gross,
+            "actual_gross": actual_gross,
+            "total_costs_dollars": round(total_costs, 2),
+            "pnl_net_dollars": round(pnl_net, 2),
+            "gross_ok": gross_ok,
+            "net_positive": net_positive,
+            "net_less_than_gross": net_less_than_gross,
+            "net_in_band_130_175": net_in_band,
+            "note": "Validates engine.py:2447-2451 contract: net = gross - (entry.total + exit.total)"}
+
+
 # ============================================================================
 # Bloc B — Detectors
 # ============================================================================
@@ -386,21 +562,13 @@ def test_B1_ifvg() -> dict:
 
 
 def test_B2_order_block() -> dict:
-    """Order-block detector regression: detector is STRUCTURALLY BROKEN.
+    """Bullish OB: clear range, bearish OB candle near the top, decisive breakout close.
 
-    Bug (order_block.py:40-45): `window = candles[-lb:]` includes the last candle,
-    so `swing_high = max(c.high for c in window) >= last.high >= last.close`.
-    The bullish trigger `last.close > swing_high` is therefore mathematically
-    impossible (same logic for bearish). Empirically verified: detect_order_blocks
-    fires 0 signals over oct_w2 (1999 SPY 1m bars).
-
-    This test asserts the *current* broken behavior (0 signals) so the sanity
-    suite will break loudly once the detector is fixed (window should be
-    `candles[-lb:-1]` to exclude the breakout bar itself).
+    After the 2026-04-20 fix (order_block.py), swing_high is computed on
+    `candles[-(lb+1):-1]` — excludes the breakout bar itself — so the trigger
+    `last.close > swing_high` is now satisfiable by a genuine breakout close.
     """
     base_ts = datetime(2025, 10, 8, 14, 0, 0, tzinfo=timezone.utc)
-    # Construction intended to fire a bullish OB if detector were correct:
-    # clear range, last bearish candle, then a decisive breakout close > prior-window high.
     prices = [
         (99.8, 100.1, 99.7, 99.9), (99.9, 100.0, 99.6, 99.8), (99.8, 100.2, 99.8, 100.1),
         (100.1, 100.2, 99.9, 100.0), (100.0, 100.3, 99.9, 100.2), (100.2, 100.4, 100.1, 100.3),
@@ -410,22 +578,19 @@ def test_B2_order_block() -> dict:
         (100.2, 100.5, 100.1, 100.4), (100.4, 100.5, 100.2, 100.3),
         (100.3, 100.4, 99.5, 99.6),   # idx 17: bearish OB candidate (close<open)
         (99.6, 99.8, 99.5, 99.7),     # idx 18: retrace
-        # idx 19: intended breakout — close 102.0 > prior-window max high 100.5
-        (99.7, 102.0, 99.7, 102.0),
+        # idx 19: breakout — close 101.2 > prior-window max high 100.5
+        (99.7, 101.5, 99.7, 101.2),
     ]
     candles = [make_candle(base_ts + timedelta(minutes=5 * i), o, h, l, c)
                for i, (o, h, l, c) in enumerate(prices)]
 
     config = {"lookback_bos": 20, "range_type": "body"}
     results = detect_order_blocks(candles, "5m", config)
-    # Regression: assert current broken behavior (0 signals).
-    ok = len(results) == 0
+    bullish = [r for r in results if r.direction == "bullish"]
+    ok = len(bullish) >= 1
+    ob_zone = bullish[0].details if bullish else {}
     return {"pass": ok, "n_signals": len(results),
-            "detector_bug": "order_block.py:40 — swing_high window includes last candle, "
-                            "makes bullish/bearish OB trigger mathematically impossible. "
-                            "Empirical oct_w2 SPY 1m: 0 signals over 1999 bars.",
-            "fix_hint": "Change `window = candles[-lb:]` to `window = candles[-(lb+1):-1]` "
-                        "so swing_high excludes the breakout bar itself."}
+            "bullish_ob_zone": {k: v for k, v in ob_zone.items() if k in ("zone_low", "zone_high", "bos_level")}}
 
 
 def test_B3_bos() -> dict:
@@ -632,6 +797,86 @@ def test_C1_position_sizing() -> dict:
             "trading_mode": rs.state.trading_mode}
 
 
+def test_C1b_multi_symbol_sizing() -> dict:
+    """Multi-symbol position sizing interaction.
+
+    Documents current behavior: calculate_position_size treats each setup in isolation —
+    SPY sizing does NOT reserve risk budget that would reduce QQQ sizing. Each symbol
+    gets its own cap (100k × factor / price).
+
+    Also verifies update_open_trades handles multi-symbol bars concurrently — SPY trade
+    closes on TP while QQQ trade closes on SL in the same call.
+    """
+    from engines.risk_engine import RiskEngine
+    rs = RiskEngine(initial_capital=100_000.0)
+    rs.state.trading_mode = "AGGRESSIVE"
+
+    # Part 1: size SPY + QQQ back-to-back, no close in between
+    setup_spy = Setup(
+        id="s1", symbol="SPY", quality="A", final_score=0.7,
+        trade_type="SCALP", direction="LONG",
+        entry_price=450.0, stop_loss=449.0, take_profit_1=452.0, risk_reward=2.0,
+        market_bias="bullish", session="NY", playbook_name="Test_PB",
+    )
+    setup_qqq = Setup(
+        id="s2", symbol="QQQ", quality="A", final_score=0.7,
+        trade_type="SCALP", direction="LONG",
+        entry_price=400.0, stop_loss=399.0, take_profit_1=402.0, risk_reward=2.0,
+        market_bias="bullish", session="NY", playbook_name="Test_PB",
+    )
+    res_spy = rs.calculate_position_size(setup_spy)
+    res_qqq = rs.calculate_position_size(setup_qqq)
+    if not (res_spy.valid and res_qqq.valid):
+        return {"pass": False, "reason": "one of the sizings failed",
+                "spy_valid": res_spy.valid, "qqq_valid": res_qqq.valid,
+                "spy_reason": getattr(res_spy, "reason", None),
+                "qqq_reason": getattr(res_qqq, "reason", None)}
+    # Each should cap on its own price (100k × 1.5 / price)
+    expected_spy = int(100_000 * 1.5 / 450.0)  # 333
+    expected_qqq = int(100_000 * 1.5 / 400.0)  # 375
+    spy_ok = abs(res_spy.position_size - expected_spy) <= 1
+    qqq_ok = abs(res_qqq.position_size - expected_qqq) <= 1
+
+    # Part 2: multi-symbol intrabar execution
+    ex, _ = get_exec_engine()
+    tr_spy = make_long_trade(entry=450.0, sl=449.0, tp1=452.0, tp2=None,
+                              size=float(res_spy.position_size))
+    tr_spy.symbol = "SPY"
+    tr_qqq = make_long_trade(entry=400.0, sl=399.0, tp1=402.0, tp2=None,
+                              size=float(res_qqq.position_size))
+    tr_qqq.symbol = "QQQ"
+    inject_trade(ex, tr_spy)
+    inject_trade(ex, tr_qqq)
+
+    # Feed both bars in the same update: SPY reaches TP1, QQQ drops to SL
+    ex.update_open_trades({
+        "SPY": make_bar_dict(high=452.2, low=449.8, close=451.9),
+        "QQQ": make_bar_dict(high=400.5, low=398.9, close=399.2),
+    }, current_time=tr_spy.time_entry + timedelta(minutes=3))
+
+    spy_closed = tr_spy.id not in ex.open_trades
+    qqq_closed = tr_qqq.id not in ex.open_trades
+    if not (spy_closed and qqq_closed):
+        return {"pass": False, "reason": "multi-symbol update did not close both",
+                "spy_closed": spy_closed, "qqq_closed": qqq_closed}
+    # Find each in closed_trades by id
+    by_id = {t.id: t for t in ex.closed_trades}
+    spy_done = by_id.get(tr_spy.id)
+    qqq_done = by_id.get(tr_qqq.id)
+    spy_exec_ok = (spy_done.exit_reason == "TP1" and abs(spy_done.exit_price - 452.0) < 1e-9)
+    qqq_exec_ok = (qqq_done.exit_reason == "SL" and abs(qqq_done.exit_price - 399.0) < 1e-9)
+
+    ok = spy_ok and qqq_ok and spy_exec_ok and qqq_exec_ok
+    return {"pass": ok,
+            "sizing": {"spy": res_spy.position_size, "qqq": res_qqq.position_size,
+                       "expected_spy": expected_spy, "expected_qqq": expected_qqq,
+                       "spy_ok": spy_ok, "qqq_ok": qqq_ok},
+            "execution": {"spy_exit": spy_done.exit_reason, "spy_price": spy_done.exit_price,
+                          "qqq_exit": qqq_done.exit_reason, "qqq_price": qqq_done.exit_price,
+                          "spy_ok": spy_exec_ok, "qqq_ok": qqq_exec_ok},
+            "note": "Engine sizes each setup independently; no cross-symbol risk deduction (documented behavior)"}
+
+
 def test_C2_cooldown() -> dict:
     """2nd trade same (symbol, playbook) within 4 min → rejected."""
     from engines.risk_engine import RiskEngine
@@ -787,6 +1032,9 @@ TESTS = [
     ("A7_time_stop", test_A7_time_stop_scalp),
     ("A8_short_mirror", test_A8_short_mirror),
     ("A_costs", test_A_costs),
+    ("A10_costs_flow_into_pnl", test_A10_costs_flow_into_pnl),
+    ("A11_trailing_plus_be", test_A11_trailing_plus_breakeven),
+    ("A12_fill_model", test_A12_fill_model_protocol),
     ("B1_ifvg", test_B1_ifvg),
     ("B2_order_block", test_B2_order_block),
     ("B3_bos", test_B3_bos),
@@ -795,6 +1043,7 @@ TESTS = [
     ("B6_rsi_extreme", test_B6_rsi_extreme),
     ("B7_orb_breakout", test_B7_orb_breakout),
     ("C1_position_sizing", test_C1_position_sizing),
+    ("C1b_multi_symbol", test_C1b_multi_symbol_sizing),
     ("C2_cooldown", test_C2_cooldown),
     ("C3_session_cap", test_C3_session_cap),
     ("C4_kill_switch", test_C4_kill_switch),
