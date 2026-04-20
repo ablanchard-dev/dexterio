@@ -52,6 +52,17 @@ __pycache__/
 venv/
 .venv/
 
+# Claude Code local state (machine-specific, not app code)
+.claude/
+
+# Local video assets (too large for GitHub)
+videos/
+
+# Large validity reports (>100MB, debug artifacts)
+backend/results/**/validity_report_*.jsonl
+backend/results/**/bt_*.log
+backend/results/bt_*.log
+
 # Development tools
 chainlit.md
 .chainlit
