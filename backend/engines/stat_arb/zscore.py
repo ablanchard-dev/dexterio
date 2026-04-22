@@ -10,16 +10,23 @@ import numpy as np
 
 
 def rolling_mean(x: np.ndarray, window: int) -> np.ndarray:
-    """Simple rolling mean; first window-1 entries are NaN."""
+    """Rolling mean; first window-1 entries are NaN.
+
+    A segment containing any NaN yields NaN for that position (matches
+    rolling_std semantics, avoids cumsum NaN propagation past the first
+    NaN in the series).
+    """
     if window < 1:
         raise ValueError(f"window must be >= 1, got {window}")
     n = x.size
     out = np.full(n, np.nan, dtype=float)
     if n < window:
         return out
-    cumsum = np.cumsum(x, dtype=float)
-    out[window - 1] = cumsum[window - 1] / window
-    out[window:] = (cumsum[window:] - cumsum[:-window]) / window
+    for i in range(window - 1, n):
+        segment = x[i - window + 1 : i + 1]
+        if np.isnan(segment).any():
+            continue
+        out[i] = segment.mean()
     return out
 
 
