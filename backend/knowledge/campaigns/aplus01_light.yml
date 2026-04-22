@@ -1,0 +1,107 @@
+# Aplus_01 light — Family A composition test.
+#
+# Bet 1 (0.5 jour, YAML seul, 0 code) : compose l'existant pour trancher
+# "est-ce que sweep + IFVG + breaker ensemble porte edge sur 5m ?"
+#
+# Derive de aplus03_v2.yml (schema alpha'' stable) avec :
+#   - required_signals: [SWEEP, IFVG, BRKR] (presence, pas sequence)
+#   - tp_logic_params enrichis : significant + ceiling 3.0 + reject_on_fallback true
+#   - structure_alignment k3 (conserve)
+#   - SL : swing structurel (pas fvg_extreme — breaker impose swing vrai)
+#
+# Hypothese : si la simple PRESENCE des 3 patterns 5m (sweep + IFVG + breaker)
+# ne produit pas E[R] > 0 nov_w4, le probleme est fondamental (signal ICT
+# isole plafonne structurellement, peak_R p60 < 0.7R sur tous signaux testes).
+# Pas la peine d'investir 3-5 jours dans 1m confirm state machine + sequence
+# enforcement + breaker retest modelisation.
+#
+# Si Bet 1 montre signe de vie (n >= 10, peak_R p80 > 1R, E[R] > 0 gross) ->
+# Bet 2 = 1m confirm state machine + sequence enforcement (3-5j dev).
+# Si Bet 1 quasi-BE ou negatif -> bear ferme ICT isole, pivot non-ICT.
+- playbook_name: Aplus_01_light
+  category: SCALP
+  description: "Aplus_01 light: SWEEP+IFVG+BRKR presence 5m + alpha'' schema + structure k3."
+  max_setups_per_session: 3
+  enabled_in_modes:
+  - AGGRESSIVE
+  instruments:
+  - SPY
+  - QQQ
+  required_signals:
+  - SWEEP@5m
+  - IFVG@5m
+  - BRKR@5m
+  timefilters:
+    session: NY
+    time_windows:
+    - - 09:30
+      - '15:00'
+  context_requirements:
+    htf_bias_allowed:
+    - bullish
+    - bearish
+    - neutral
+    day_type_allowed:
+    - trend
+    - manipulation_reversal
+    - range
+    - unknown
+    structure_htf:
+    - uptrend
+    - downtrend
+    - range
+    - unknown
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+    adx_min: null
+    require_htf_alignment: D
+    require_structure_alignment: k3
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+  candlestick_patterns:
+    required_families: []
+    direction: any
+  entry_logic:
+    type: MARKET
+    zone: signal_close
+    confirmation_tf: 5m
+  setup_tf: 5m
+  stop_loss_logic:
+    type: SWING
+    distance: recent_swing
+    padding_ticks: 3
+  take_profit_logic:
+    min_rr: 1.0
+    tp1_rr: 2.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 0.40
+    trailing_mode: trail_rr
+    trailing_trigger_rr: 0.5
+    trailing_offset_rr: 0.25
+    tp_logic: liquidity_draw
+    tp_logic_params:
+      draw_type: swing_k3
+      lookback_bars: 60
+      min_rr_floor: 0.5
+      fallback_rr: 2.0
+      pool_selection: significant
+      max_rr_ceiling: 3.0
+      reject_on_fallback: true
+  max_duration_minutes: 60
+  scoring:
+    weights:
+      liquidity_sweep: 0.30
+      fvg_quality: 0.25
+      bos_strength: 0.15
+      pattern_quality: 0.10
+      context_strength: 0.20
+    grade_thresholds:
+      A_plus: 0.70
+      A: 0.50
+      B: 0.30
+  require_close_above_trigger: true
+  entry_buffer_bps: 2.0

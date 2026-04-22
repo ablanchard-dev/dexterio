@@ -35,6 +35,11 @@ from engines.patterns.custom_detectors import (
 from engines.setup_engine_v2 import SetupEngineV2, filter_setups_by_mode
 from engines.risk_engine import RiskEngine
 from engines.execution.paper_trading import ExecutionEngine
+from engines.execution.entry_gates import (
+    check_entry_confirmation,
+    GATE_REASON_NO_CANDLES,
+    GATE_REASON_NO_COMMIT,
+)
 from engines.timeframe_aggregator import TimeframeAggregator
 from engines.market_state_cache import MarketStateCache
 from engines.master_candle import calculate_master_candle, get_ny_rth_session_date, get_session_labels
@@ -90,6 +95,12 @@ class BacktestEngine:
         # OPTIMISATION: Timeframe aggregator et caches
         self.tf_aggregator = TimeframeAggregator()
         self.market_state_cache = MarketStateCache()
+
+        # Aplus_01 Family A sequential cascade (Sprint 1, 2026-04-22).
+        # Driver injects a synthetic ICTPattern when sweep→BOS→touch→1m-confirm
+        # fires; standard playbook_evaluator picks it up via APLUS01@1m.
+        from engines.aplus01_driver import Aplus01Driver
+        self.aplus01_driver = Aplus01Driver()
         
         # Data (M1 Parquet -> Candles multi-TF)
         self.data: Dict[str, pd.DataFrame] = {}
@@ -1196,6 +1207,23 @@ class BacktestEngine:
                 if plist:
                     ict_5m.extend(plist)
             self._ict_by_tf["5m"] = ict_5m
+            # Aplus_01 cascade — feed 5m sweep/BOS/zones to the state machine.
+            try:
+                self.aplus01_driver.on_5m_close(symbol, current_time, candles_5m, det_5m)
+            except Exception as e:
+                logger.warning(f"[APLUS01] on_5m_close failed for {symbol}: {e}")
+
+        # Aplus_01 1m confirm — runs every bar; emits a synthetic ICTPattern when
+        # the cascade fires. The synthetic pattern joins ict_1m so the standard
+        # playbook_evaluator path picks it up via APLUS01@1m required_signal.
+        if len(candles_1m) > 20:
+            try:
+                synthetic = self.aplus01_driver.on_1m_bar(symbol, current_time, candles_1m)
+            except Exception as e:
+                logger.warning(f"[APLUS01] on_1m_bar failed for {symbol}: {e}")
+                synthetic = None
+            if synthetic is not None:
+                self._ict_by_tf.setdefault("1m", []).append(synthetic)
 
         # 15m detection: on 15m close
         if htf_events.get("is_close_15m") and len(candles_15m) > 10:
@@ -1249,6 +1277,28 @@ class BacktestEngine:
         if htf_events.get("is_close_1h"):
             active_tf_closes.add("1h")
 
+        # Option A v2 — compute k1/k3/k9 structural pivots once per 5m bar close
+        # and hand them to SetupEngine. Reuses the LRU cache inside
+        # detect_structure_multi_scale so repeated 1m ticks within the same
+        # 5m bar reuse the previous result.
+        structure_pivots = None
+        bars_for_struct = None
+        if candles_5m and len(candles_5m) >= 20:
+            try:
+                from engines.features.directional_change import detect_structure_multi_scale
+                # Bound the window so the ATR-adaptive zigzag stays local.
+                bars_for_struct = candles_5m[-400:]
+                structure_pivots = detect_structure_multi_scale(
+                    bars_for_struct,
+                    kappas=(1.0, 3.0, 9.0),
+                    atr_period=14,
+                    cache_symbol=symbol,
+                )
+            except Exception as e:
+                logger.warning(f"[STRUCT] pivot compute failed for {symbol}: {e}")
+                structure_pivots = None
+                bars_for_struct = None
+
         # Générer setup via SetupEngine (TF-gated)
         setups = self.setup_engine.generate_setups(
             symbol=symbol,
@@ -1260,6 +1310,8 @@ class BacktestEngine:
             trading_mode=self.config.trading_mode,
             last_price=last_close,  # P0 FIX: Transmettre le vrai prix
             active_tf_closes=active_tf_closes,
+            bars_5m=bars_for_struct,
+            structure_pivots=structure_pivots,
         )
         
         # P0 FIX: Compter matches (après génération, matches stockés dans _last_matches)
@@ -1802,7 +1854,56 @@ class BacktestEngine:
             logger.debug(f"⚠️ Setup refusé: {reason}")
             self._increment_reject_reason("stop_run_triggered")
             return False
-        
+
+        # Phase C.3 / W.1 — Entry confirmation gate. Logic lives in
+        # engines/execution/entry_gates.py so backtest and paper share the same
+        # check. Instrumentation (debug_counts + reject reasons + logging) is
+        # kept here since it is backtest-engine state.
+        try:
+            pb_def = None
+            if hasattr(self.setup_engine, 'playbook_loader'):
+                pb_def = self.setup_engine.playbook_loader.get_playbook_by_name(playbook_name)
+            if pb_def is not None and getattr(pb_def, 'require_close_above_trigger', False):
+                ec_stats = self.debug_counts.get("entry_confirm_stats")
+                if not isinstance(ec_stats, dict):
+                    ec_stats = {}
+                    self.debug_counts["entry_confirm_stats"] = ec_stats
+                if playbook_name not in ec_stats:
+                    ec_stats[playbook_name] = {
+                        "checked": 0,
+                        "passed": 0,
+                        "rejected_no_commit": 0,
+                        "rejected_no_candles": 0,
+                    }
+                ec_stats[playbook_name]["checked"] += 1
+
+                candles_1m = self.tf_aggregator.get_candles(setup.symbol, "1m")
+                result = check_entry_confirmation(pb_def, setup, candles_1m)
+
+                if not result.passed:
+                    if result.reason == GATE_REASON_NO_CANDLES:
+                        ec_stats[playbook_name]["rejected_no_candles"] += 1
+                        self._increment_reject_reason("entry_confirm_no_candles")
+                        self._emit_ec_audit(setup, current_time, "rejected_no_candles", result)
+                    elif result.reason == GATE_REASON_NO_COMMIT:
+                        ec_stats[playbook_name]["rejected_no_commit"] += 1
+                        self._increment_reject_reason("entry_confirm_no_commit")
+                        logger.debug(
+                            f"[entry_confirm] {playbook_name} "
+                            f"{(setup.direction or '').upper()} rejected: "
+                            f"close_now={result.close_now:.4f} "
+                            f"close_prev={result.close_prev:.4f} "
+                            f"buffer={result.buffer_abs:.4f}"
+                        )
+                        self._emit_ec_audit(setup, current_time, "rejected_no_commit", result)
+                    return False
+
+                ec_stats[playbook_name]["passed"] += 1
+                self._emit_ec_audit(setup, current_time, "passed", result)
+        except Exception as _ec_err:
+            # Fail-open on instrumentation errors: never crash a run over the gate
+            logger.debug(f"[entry_confirm] gate error (fail-open): {_ec_err}")
+
         # Vérifier si le setup peut être pris (circuit breakers, quotas, etc.)
         can_take = self.risk_engine.can_take_setup(setup)
         if not can_take['allowed']:
@@ -2539,6 +2640,10 @@ class BacktestEngine:
                 # Phase A: MAE/MFE excursions (for SL/TP calibration)
                 peak_r=getattr(trade, 'peak_r', 0.0),
                 mae_r=getattr(trade, 'mae_r', 0.0),
+                # Option A v2 — tp_resolver + structure_alignment instrumentation
+                tp_reason=getattr(trade, 'tp_reason', None),
+                structure_alignment_tf=getattr(trade, 'structure_alignment_tf', None),
+                structure_alignment_last_pivot_type=getattr(trade, 'structure_alignment_last_pivot_type', None),
                 # PHASE B: Cost breakdown
                 entry_commission=entry_costs.commission,
                 entry_reg_fees=entry_costs.regulatory_fees,
@@ -2889,6 +2994,10 @@ class BacktestEngine:
                 # Phase A: MAE / MFE excursions (for SL/TP calibration)
                 "peak_r": getattr(t, 'peak_r', 0.0),
                 "mae_r": getattr(t, 'mae_r', 0.0),
+                # Option A v2 — tp_resolver + structure_alignment instrumentation
+                "tp_reason": getattr(t, 'tp_reason', None),
+                "structure_alignment_tf": getattr(t, 'structure_alignment_tf', None),
+                "structure_alignment_last_pivot_type": getattr(t, 'structure_alignment_last_pivot_type', None),
             })
 
         trades_df = _pd.DataFrame(trades_records)
@@ -3295,6 +3404,42 @@ class BacktestEngine:
             # Fail-safe absolu : ne jamais faire crasher le backtest sur l'instrumentation
             logger.exception("Failed to increment reject reason (ignored).")
     
+    def _emit_ec_audit(self, setup, current_time, event: str, gate_result):
+        """Append one JSONL record per entry_confirm gate event (rejected + passed).
+
+        Post-hoc replay script reads this file + 1m bars to compute forward
+        peak_R/mae_R for rejected vs passed setups. Answers whether the gate
+        is destructive or protective.
+        """
+        try:
+            import json as _json
+            output_dir = Path(self.config.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            path = output_dir / f"ec_audit_{self.run_id}.jsonl"
+
+            ts = current_time.isoformat() if current_time is not None else None
+            record = {
+                "run_id": self.run_id,
+                "event": event,
+                "ts": ts,
+                "symbol": getattr(setup, "symbol", None),
+                "playbook": getattr(setup, "playbook_name", None),
+                "direction": (getattr(setup, "direction", "") or "").upper(),
+                "entry": float(getattr(setup, "entry_price", 0.0) or 0.0),
+                "sl": float(getattr(setup, "stop_loss", 0.0) or 0.0),
+                "tp1": float(getattr(setup, "take_profit_1", 0.0) or 0.0),
+                "tp2": float(getattr(setup, "take_profit_2", 0.0) or 0.0) if getattr(setup, "take_profit_2", None) else None,
+                "match_score": getattr(setup, "match_score", None),
+                "match_grade": getattr(setup, "match_grade", None),
+                "close_now": getattr(gate_result, "close_now", None),
+                "close_prev": getattr(gate_result, "close_prev", None),
+                "buffer_abs": getattr(gate_result, "buffer_abs", None),
+            }
+            with open(path, "a") as f:
+                f.write(_json.dumps(record, default=str) + "\n")
+        except Exception:
+            logger.debug("ec_audit emit failed (ignored)", exc_info=True)
+
     def _export_debug_counts(self):
         """Export debug_counts.json pour diagnostic"""
         try:
@@ -3313,6 +3458,17 @@ class BacktestEngine:
                     "symbols": self.config.symbols,
                 },
                 "counts": self.debug_counts.copy(),
+                # Option A v2 — gate/TP instrumentation (O5.2 verdict items #7-9).
+                "structure_alignment_stats": dict(
+                    getattr(self.setup_engine, "_structure_gate_stats", {}) or {}
+                ),
+                "tp_reason_stats": dict(
+                    getattr(self.setup_engine, "_tp_reason_stats", {}) or {}
+                ),
+                # Phase C.4 HTF alignment gate (already collected, surfaced here for parity).
+                "htf_alignment_stats": dict(
+                    getattr(self.setup_engine, "_htf_gate_stats", {}) or {}
+                ),
             }
             
             # Convertir les dict en dict simples pour JSON

@@ -75,6 +75,16 @@ class PlaybookDefinition:
         self.london_sweep_required = ctx.get('london_sweep_required', False)
         self.volatility_min = ctx.get('volatility_min')
         self.volatility_max = ctx.get('volatility_max')
+        # Phase C.4: selective HTF alignment gate.
+        # Accepted values: 'D' (require daily_structure to agree with direction),
+        # '4H' (require h4_structure agreement), 'none'/None (no gate).
+        # Enforced at setup-creation in setup_engine_v2 AFTER _determine_direction.
+        self.require_htf_alignment = ctx.get('require_htf_alignment')  # 'D' | '4H' | None
+        # Option A v2 — structure alignment via directional-change multi-scale pivots.
+        # Accepted values: 'k1' | 'k3' | 'k9' | None. Only 'k3' is exercised in this
+        # sprint (Aplus_03_v2); 'k1'/'k9' are parse-only for forward compatibility.
+        # Enforced in setup_engine_v2 alongside require_htf_alignment.
+        self.require_structure_alignment = ctx.get('require_structure_alignment')
         
         # ICT confluences
         ict = data['ict_confluences']
@@ -97,6 +107,12 @@ class PlaybookDefinition:
         self.tp1_rr = data['take_profit_logic']['tp1_rr']
         self.tp2_rr = data['take_profit_logic']['tp2_rr']
         self.breakeven_at_rr = data['take_profit_logic']['breakeven_at_rr']
+
+        # Option A v2 — dynamic TP logic (rétrocompatible, default = fixed_rr).
+        # Sprint scope locked: only 'fixed_rr' and 'liquidity_draw' are wired.
+        # `tp_logic_params` is an opaque dict passed to tp_resolver.
+        self.tp_logic: str = data['take_profit_logic'].get('tp_logic', 'fixed_rr')
+        self.tp_logic_params: Dict[str, Any] = data['take_profit_logic'].get('tp_logic_params', {}) or {}
         
         # Scoring
         self.scoring_weights = data['scoring']['weights']
@@ -132,6 +148,22 @@ class PlaybookDefinition:
         self.chop_max: Optional[float] = ctx_r.get('chop_max')
         self.vwap_regime: bool = ctx_r.get('vwap_regime', False)
         self.volume_gate_ratio: Optional[float] = ctx_r.get('volume_gate_ratio')
+
+        # Phase C.3 — Entry confirmation gate (premature intrabar trigger filter).
+        # require_close_above_trigger: if True, require last 1m bar CLOSE to have
+        #   moved in trade direction by entry_buffer_bps relative to the PRIOR 1m
+        #   bar's close (LONG: close_now > close_prev + price*bps/10000, SHORT: mirror).
+        #   Rejects setups fired on bars that did not commit through the trigger.
+        # entry_buffer_bps: basis points (1 bp = 0.01%) required beyond prior close.
+        #   Default 2.0 bps = 0.02%. Ignored when require_close_above_trigger is False.
+        # Both fields default to False/0.0 → no-op for playbooks that don't opt in.
+        self.require_close_above_trigger: bool = bool(
+            data.get('require_close_above_trigger', False)
+        )
+        try:
+            self.entry_buffer_bps: float = float(data.get('entry_buffer_bps', 2.0))
+        except (TypeError, ValueError):
+            self.entry_buffer_bps = 2.0
 
 
 class PlaybookLoader:
@@ -825,6 +857,11 @@ class PlaybookEvaluator:
                     'RSIEXTREME': 'rsi_extreme',
                     'ORB': 'orb_break',
                     'ORBBREAK': 'orb_break',
+                    # Aplus_01 — Family A sequential cascade synthetic emit
+                    # (sweep → BOS → confluence touch → 1m confirm). Driver
+                    # injects an ICTPattern with pattern_type='aplus01_sequence'
+                    # when the state machine fires.
+                    'APLUS01': 'aplus01_sequence',
                 }
                 p_type = type_map.get(base, base.lower())
                 dir_required = None

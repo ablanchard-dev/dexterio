@@ -1,0 +1,106 @@
+# Aplus_01_full_v1 — Family A séquentielle (sweep → BOS → confluence touch → 1m confirm).
+#
+# Dossier playbook : backend/knowledge/playbooks/aplus_01_full_v1/dossier.md
+# Statut : IMPLEMENTED (Sprint 1 S1.2.4, 2026-04-22) — SMOKE_PENDING.
+#
+# 1ère vraie instanciation MASTER Family A. La cascade vit dans
+# `Aplus01Driver` + `Aplus01Tracker` ; quand le state machine émet, un
+# ICTPattern synthétique (`pattern_type='aplus01_sequence'`, tf 1m,
+# `price_level = sweep extreme`) est injecté dans `ict_patterns`. Ce
+# playbook est gated par `required_signals: [APLUS01@1m]` — il ne fire
+# que sur émission cascade, le détecteur EST le filtre.
+#
+# Schéma TP α'' : `liquidity_draw` swing_k3 + pool_selection significant
+# + ceiling 3.0 + min_floor 0.5. `reject_on_fallback: false` — premier
+# data point Family A complet, on ne veut pas couper le sample en plus
+# de la rareté structurelle de la cascade.
+#
+# SL : SWING via le sweep extreme (carried by synthetic.price_level), avec
+# clamp 0.2%–2.0% appliqué par `_calculate_price_levels`.
+#
+# Run : scripts/run_mini_lab_week.py --calib-allowlist Aplus_01_full_v1
+#       --playbooks-yaml backend/knowledge/campaigns/aplus01_full_v1.yml
+- playbook_name: Aplus_01_full_v1
+  category: SCALP
+  description: "Aplus_01 Family A full: sweep → 5m BOS → confluence touch (FVG/OB/breaker) → 1m confirm. Synthetic emit gate via APLUS01@1m. TP liquidity_draw swing_k3 α'' (significant + ceiling 3.0)."
+  max_setups_per_session: 3
+  enabled_in_modes:
+  - AGGRESSIVE
+  instruments:
+  - SPY
+  - QQQ
+  required_signals:
+  - APLUS01@1m
+  timefilters:
+    session: NY
+    time_windows:
+    - - 09:30
+      - '15:00'
+  context_requirements:
+    htf_bias_allowed:
+    - bullish
+    - bearish
+    - neutral
+    day_type_allowed:
+    - trend
+    - manipulation_reversal
+    - range
+    - unknown
+    structure_htf:
+    - uptrend
+    - downtrend
+    - range
+    - unknown
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+    adx_min: null
+    require_htf_alignment: D
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+  candlestick_patterns:
+    required_families: []
+    direction: any
+  entry_logic:
+    type: MARKET
+    zone: signal_close
+    confirmation_tf: 1m
+  setup_tf: 1m
+  stop_loss_logic:
+    type: SWING
+    distance: sweep_extreme
+    padding_ticks: 1
+  take_profit_logic:
+    min_rr: 1.0
+    tp1_rr: 2.0
+    tp2_rr: 3.0
+    breakeven_at_rr: 0.5
+    trailing_mode: trail_rr
+    trailing_trigger_rr: 0.7
+    trailing_offset_rr: 0.3
+    tp_logic: liquidity_draw
+    tp_logic_params:
+      draw_type: swing_k3
+      lookback_bars: 60
+      min_rr_floor: 0.5
+      fallback_rr: 2.0
+      pool_selection: significant
+      max_rr_ceiling: 3.0
+      reject_on_fallback: false
+  max_duration_minutes: 60
+  scoring:
+    weights:
+      bos_strength: 0.25
+      liquidity_sweep: 0.25
+      fvg_quality: 0.20
+      pattern_quality: 0.15
+      context_strength: 0.15
+    grade_thresholds:
+      A_plus: 0.7
+      A: 0.5
+      B: 0.3
+  require_close_above_trigger: false
+  entry_buffer_bps: 0.0

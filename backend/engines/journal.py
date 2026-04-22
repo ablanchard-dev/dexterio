@@ -81,6 +81,11 @@ class TradeJournalEntry(BaseModel):
     notes: str = ''
     screenshots: List[str] = []
     
+    # Option A v2 — tp_resolver + structure_alignment instrumentation
+    tp_reason: Optional[str] = None  # fixed_rr | liquidity_draw_swing_k3 | fallback_rr_no_pool | fallback_rr_min_floor_binding
+    structure_alignment_tf: Optional[str] = None  # 'k1' | 'k3' | 'k9' when require_structure_alignment enforced
+    structure_alignment_last_pivot_type: Optional[str] = None  # 'high' | 'low'
+
     # Metadata
     trading_mode: str
     backtest_run_id: str | None = None
@@ -166,9 +171,13 @@ class TradeJournal:
             
             backtest_run_id=context.get('backtest_run_id'),
 
-            
+            # Option A v2 — tp_resolver + structure_alignment instrumentation
+            tp_reason=getattr(trade, 'tp_reason', None),
+            structure_alignment_tf=getattr(trade, 'structure_alignment_tf', None),
+            structure_alignment_last_pivot_type=getattr(trade, 'structure_alignment_last_pivot_type', None),
+
             notes=trade.notes if hasattr(trade, 'notes') else '',
-            
+
             trading_mode=context.get('trading_mode', 'SAFE')
         )
         
