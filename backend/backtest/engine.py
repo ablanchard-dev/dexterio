@@ -35,6 +35,10 @@ from engines.patterns.custom_detectors import (
 from engines.setup_engine_v2 import SetupEngineV2, filter_setups_by_mode
 from engines.risk_engine import RiskEngine
 from engines.execution.paper_trading import ExecutionEngine
+from engines.execution.fill_model import (
+    IdealFillModel,
+    ConservativeFillModel,
+)
 from engines.execution.entry_gates import (
     check_entry_confirmation,
     GATE_REASON_NO_CANDLES,
@@ -88,7 +92,21 @@ class BacktestEngine:
         )
         assert self.risk_engine.state.trading_mode == config.trading_mode, \
             f"RiskEngine mode mismatch: {self.risk_engine.state.trading_mode} != {config.trading_mode}"
-        self.execution_engine = ExecutionEngine(self.risk_engine)
+        # §0.7 G1 (plan v3.1.2) — fill_model piloté par config.fill_model_mode.
+        # "realistic" (défaut) → ConservativeFillModel (next-bar-open + adverse
+        # slippage). "ideal" → IdealFillModel (target price, exploration rapide
+        # --ideal / E[R]_gross only per §0.6.0).
+        _fm_mode = (config.fill_model_mode or "realistic").lower()
+        if _fm_mode == "ideal":
+            _fill_model = IdealFillModel()
+        elif _fm_mode == "realistic":
+            _fill_model = ConservativeFillModel()
+        else:
+            raise ValueError(
+                f"BacktestConfig.fill_model_mode must be 'realistic' or 'ideal', got {config.fill_model_mode!r}"
+            )
+        logger.warning(f"[§0.7 G1] BacktestEngine fill_model={type(_fill_model).__name__} (mode={_fm_mode})")
+        self.execution_engine = ExecutionEngine(self.risk_engine, fill_model=_fill_model)
         # PATCH 3: Transmettre max_scalp_minutes à ExecutionEngine
         self.execution_engine.risk_engine._max_scalp_minutes = config.max_scalp_minutes
         
@@ -2183,6 +2201,10 @@ class BacktestEngine:
 
         # Récupérer prix actuels à partir des données historiques déjà chargées (full OHLC)
         market_data: Dict[str, dict] = {}
+        # §0.7 G1 (plan v3.1.2) — next_bars nourrit ConservativeFillModel
+        # (fill @ next-bar-open + adverse slippage). Absent en fin de données →
+        # Conservative dégrade sur target price (comportement Ideal).
+        next_bars: Dict[str, dict] = {}
         for symbol in self.config.symbols:
             symbol_data = self.data[symbol]
             current_bars = symbol_data[symbol_data["datetime"] <= current_time]
@@ -2194,10 +2216,26 @@ class BacktestEngine:
                     'high': float(last_bar["high"]) if "high" in symbol_data.columns else close_val,
                     'low': float(last_bar["low"]) if "low" in symbol_data.columns else close_val,
                     'close': close_val,
+                    'timestamp': last_bar["datetime"],
+                }
+            future_bars = symbol_data[symbol_data["datetime"] > current_time]
+            if not future_bars.empty:
+                nb = future_bars.iloc[0]
+                nb_close = float(nb["close"])
+                next_bars[symbol] = {
+                    'open': float(nb["open"]) if "open" in symbol_data.columns else nb_close,
+                    'high': float(nb["high"]) if "high" in symbol_data.columns else nb_close,
+                    'low': float(nb["low"]) if "low" in symbol_data.columns else nb_close,
+                    'close': nb_close,
+                    'timestamp': nb["datetime"],
                 }
 
         # Mettre à jour les positions (SL/TP/BE) via ExecutionEngine
-        self.execution_engine.update_open_trades(market_data, current_time=current_time)  # P0 FIX: Transmettre current_time
+        self.execution_engine.update_open_trades(
+            market_data,
+            current_time=current_time,
+            next_bars=next_bars,
+        )
 
         # Ingestion des trades nouvellement fermés
         self._ingest_closed_trades(current_time)

@@ -273,24 +273,58 @@ class ExecutionEngine:
         else:
             return ideal_price - self.slippage_ticks
     
-    def update_open_trades(self, market_data: Dict[str, float], current_time: Optional[datetime] = None) -> List[Dict]:
+    def update_open_trades(
+        self,
+        market_data: Dict[str, Any],
+        current_time: Optional[datetime] = None,
+        next_bars: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict]:
         """
-        Met à jour toutes les positions avec nouveaux prix
-        
+        Met à jour toutes les positions avec nouveaux prix.
+
+        §0.7 G1 (plan v3.1.2) — fill_price / fill_time sont calculés via
+        `self.fill_model` (Ideal: target price, Conservative: next-bar-open +
+        adverse slippage). `next_bars` est optionnel et typiquement fourni par
+        le bar-loop backtest ; si absent, ConservativeFillModel dégrade sur
+        target price (edge case fin de données).
+
         Args:
-            market_data: {symbol: current_price}
-            current_time: Timestamp actuel (pour calculer duration_minutes)
-        
-        Returns:
-            Liste d'events: {'trade_id', 'event_type', 'details'}
+            market_data: {symbol: price_or_ohlc_dict}
+            current_time: Timestamp du bar courant (pour duration_minutes).
+            next_bars:    {symbol: {open, high, low, close, timestamp}} du bar
+                          immédiatement suivant — consommé par
+                          ConservativeFillModel.
         """
+        from types import SimpleNamespace
+
         events = []
         trades_to_close = []
-        
+
+        def _to_bar(symbol: str, raw_data: Any, ts: Optional[datetime]) -> SimpleNamespace:
+            """Build a Candle-compatible object (attribute access) from
+            raw market_data / next_bars value (float or dict)."""
+            if isinstance(raw_data, dict):
+                return SimpleNamespace(
+                    symbol=symbol,
+                    timestamp=raw_data.get('timestamp', ts),
+                    open=raw_data.get('open', raw_data.get('close', 0.0)),
+                    high=raw_data.get('high', raw_data.get('close', 0.0)),
+                    low=raw_data.get('low', raw_data.get('close', 0.0)),
+                    close=raw_data.get('close', 0.0),
+                )
+            return SimpleNamespace(
+                symbol=symbol,
+                timestamp=ts,
+                open=raw_data,
+                high=raw_data,
+                low=raw_data,
+                close=raw_data,
+            )
+
         for trade_id, trade in list(self.open_trades.items()):
             if trade.symbol not in market_data:
                 continue
-            
+
             raw = market_data[trade.symbol]
             if isinstance(raw, dict):
                 current_price = raw['close']
@@ -300,6 +334,10 @@ class ExecutionEngine:
                 current_price = raw
                 candle_high = raw
                 candle_low = raw
+
+            bar = _to_bar(trade.symbol, raw, current_time)
+            next_raw = next_bars.get(trade.symbol) if next_bars else None
+            next_bar = _to_bar(trade.symbol, next_raw, None) if next_raw is not None else None
 
             # Calculer P&L unrealized
             if trade.direction == 'LONG':
@@ -330,25 +368,14 @@ class ExecutionEngine:
                 adverse_r = adverse_pnl / risk_distance if risk_distance > 0 else 0
                 trade.mae_r = min(trade.mae_r, adverse_r)
 
-            # 1. Vérifier Stop Loss (intrabar: use candle extremes)
-            if trade.direction == 'LONG' and candle_low <= trade.stop_loss:
+            # 1. Vérifier Stop Loss (intrabar: fill_model décide fill_price / fill_time).
+            sl_fill = self.fill_model.fill_stop(trade, bar, next_bar)
+            if sl_fill is not None:
                 trades_to_close.append({
                     'trade_id': trade_id,
                     'reason': 'SL',
-                    'close_price': trade.stop_loss
-                })
-                events.append({
-                    'trade_id': trade_id,
-                    'event_type': 'SL_HIT',
-                    'r_multiple': r_multiple
-                })
-                continue
-            
-            elif trade.direction == 'SHORT' and candle_high >= trade.stop_loss:
-                trades_to_close.append({
-                    'trade_id': trade_id,
-                    'reason': 'SL',
-                    'close_price': trade.stop_loss
+                    'close_price': sl_fill.fill_price,
+                    'close_time': sl_fill.fill_time,
                 })
                 events.append({
                     'trade_id': trade_id,
@@ -358,24 +385,18 @@ class ExecutionEngine:
                 continue
 
             def try_take_profits() -> bool:
-                """TP2 > TP1 ; retourne True si une clôture TP est programmée ce tick."""
-                tp1_hit = False
-                tp2_hit = False
+                """TP2 > TP1 (priorité TP2) ; retourne True si clôture programmée."""
+                tp2_fill = None
                 if trade.take_profit_2:
-                    if trade.direction == 'LONG' and candle_high >= trade.take_profit_2:
-                        tp2_hit = True
-                    elif trade.direction == 'SHORT' and candle_low <= trade.take_profit_2:
-                        tp2_hit = True
-                if not tp2_hit and trade.take_profit_1:
-                    if trade.direction == 'LONG' and candle_high >= trade.take_profit_1:
-                        tp1_hit = True
-                    elif trade.direction == 'SHORT' and candle_low <= trade.take_profit_1:
-                        tp1_hit = True
-                if tp2_hit:
+                    tp2_fill = self.fill_model.fill_take_profit(
+                        trade, bar, trade.take_profit_2, "TP2", next_bar
+                    )
+                if tp2_fill is not None:
                     trades_to_close.append({
                         'trade_id': trade_id,
                         'reason': 'TP2',
-                        'close_price': trade.take_profit_2
+                        'close_price': tp2_fill.fill_price,
+                        'close_time': tp2_fill.fill_time,
                     })
                     events.append({
                         'trade_id': trade_id,
@@ -391,11 +412,17 @@ class ExecutionEngine:
                                 f"TP1 ({trade.take_profit_1:.2f}) also hit but skipped (priority TP2)"
                             )
                     return True
-                if tp1_hit:
+                tp1_fill = None
+                if trade.take_profit_1:
+                    tp1_fill = self.fill_model.fill_take_profit(
+                        trade, bar, trade.take_profit_1, "TP1", next_bar
+                    )
+                if tp1_fill is not None:
                     trades_to_close.append({
                         'trade_id': trade_id,
                         'reason': 'TP1',
-                        'close_price': trade.take_profit_1
+                        'close_price': tp1_fill.fill_price,
+                        'close_time': tp1_fill.fill_time,
                     })
                     events.append({
                         'trade_id': trade_id,
@@ -411,10 +438,12 @@ class ExecutionEngine:
                     continue
                 if current_time and trade.trade_type == "DAILY" and trade.session_window_end_utc is not None:
                     if current_time >= trade.session_window_end_utc:
+                        se_fill = self.fill_model.fill_market(trade, bar, next_bar)
                         trades_to_close.append({
                             'trade_id': trade_id,
                             'reason': 'session_end',
-                            'close_price': current_price
+                            'close_price': se_fill.fill_price,
+                            'close_time': se_fill.fill_time,
                         })
                         events.append({
                             'trade_id': trade_id,
@@ -425,10 +454,12 @@ class ExecutionEngine:
             else:
                 if current_time and trade.trade_type == "DAILY" and trade.session_window_end_utc is not None:
                     if current_time >= trade.session_window_end_utc:
+                        se_fill = self.fill_model.fill_market(trade, bar, next_bar)
                         trades_to_close.append({
                             'trade_id': trade_id,
                             'reason': 'session_end',
-                            'close_price': current_price
+                            'close_price': se_fill.fill_price,
+                            'close_time': se_fill.fill_time,
                         })
                         events.append({
                             'trade_id': trade_id,
@@ -449,10 +480,11 @@ class ExecutionEngine:
                 )
                 if elapsed_minutes >= max_scalp_minutes:
                     close_time = trade.time_entry + timedelta(minutes=max_scalp_minutes)
+                    ts_fill = self.fill_model.fill_market(trade, bar, next_bar)
                     trades_to_close.append({
                         'trade_id': trade_id,
                         'reason': 'time_stop',
-                        'close_price': current_price,  # Close au prix actuel
+                        'close_price': ts_fill.fill_price,
                         'close_time': close_time,
                     })
                     events.append({

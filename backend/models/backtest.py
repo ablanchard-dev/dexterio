@@ -39,7 +39,12 @@ class BacktestConfig(BaseModel):
     
     # Execution
     slippage_pct: float = 0.0002  # 0.02% slippage (legacy, kept for compat)
-    
+
+    # §0.7 G1 (plan v3.1.2) — ConservativeFillModel default backtest-realistic.
+    # "realistic" → ConservativeFillModel (next-bar-open + adverse slippage).
+    # "ideal"     → IdealFillModel (target price, exploration / E[R]_gross only).
+    fill_model_mode: str = "realistic"
+
     # PHASE B: Execution costs model (realistic backtest)
     commission_model: str = "ibkr_fixed"  # ibkr_fixed, ibkr_tiered, none
     enable_reg_fees: bool = True
