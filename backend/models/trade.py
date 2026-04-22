@@ -122,6 +122,10 @@ class Trade(BaseModel):
     tp_reason: Optional[str] = None  # fixed_rr | liquidity_draw_swing_k3 | fallback_rr_no_pool | fallback_rr_min_floor_binding
     structure_alignment_tf: Optional[str] = None  # 'k1'|'k3'|'k9' when require_structure_alignment enforced
     structure_alignment_last_pivot_type: Optional[str] = None  # 'high'|'low' at the aligned TF
+
+    # §0.7 G2 — simulated broker/network latency sampled at place_order.
+    # Logged on every trade for backtest→paper→live reconcile comparability.
+    latency_ms_simulated: Optional[float] = None
     
     def get_quality(self) -> str:
         """TASK 2: Retourne setup_quality avec fallback UNKNOWN (compatibilité avec TradeResult)"""

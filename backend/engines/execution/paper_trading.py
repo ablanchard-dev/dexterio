@@ -17,6 +17,7 @@ from engines.execution.entry_gates import (
     GateResult,
 )
 from engines.execution.fill_model import FillModel, IdealFillModel
+from engines.execution.latency_model import LatencyModel, IdealLatency
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class ExecutionEngine:
         self,
         risk_engine: RiskEngine,
         fill_model: Optional[FillModel] = None,
+        latency_model: Optional[LatencyModel] = None,
         clock_mode: ClockMode = ClockMode.BACKTEST,
     ):
         self.risk_engine = risk_engine
@@ -58,13 +60,18 @@ class ExecutionEngine:
         # exactly. Callers wanting paper/live realism can inject
         # ConservativeFillModel.
         self.fill_model: FillModel = fill_model if fill_model is not None else IdealFillModel()
+        # §0.7 G2 — LatencyModel sampled at place_order, logged on trade for
+        # backtest→paper→live reconcile. Default IdealLatency (0 ms) keeps
+        # byte-identity with pre-G2 behavior.
+        self.latency_model: LatencyModel = latency_model if latency_model is not None else IdealLatency()
         # Phase W.3 — clock_mode distinguishes replay from live feed.
         # Default BACKTEST keeps existing callers behavior unchanged.
         self.clock_mode: ClockMode = clock_mode
 
         logger.info(
             f"ExecutionEngine initialized (clock_mode={self.clock_mode.value}, "
-            f"fill_model={type(self.fill_model).__name__})"
+            f"fill_model={type(self.fill_model).__name__}, "
+            f"latency_model={type(self.latency_model).__name__})"
         )
 
     def check_entry_confirmation_gate(self, setup: Setup, candles_1m: Optional[list]) -> GateResult:
@@ -251,6 +258,13 @@ class ExecutionEngine:
             exit_price=0.0
         )
         
+        # §0.7 G2 — sample broker/network latency per order (0 ms IdealLatency,
+        # 200±50 ms RealisticLatency). Logged on trade for backtest→paper→live
+        # reconcile comparability. On 1m bars the 200 ms figure is a structural
+        # no-op for bar-level fill shift; scaffold allows future tick-grain
+        # calibration.
+        trade.latency_ms_simulated = self.latency_model.sample_ms()
+
         # 5. Enregistrer
         self.open_trades[trade.id] = trade
         
