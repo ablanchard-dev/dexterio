@@ -153,6 +153,16 @@ def main() -> int:
         action="store_true",
         help="Sort en erreur (code 4) si la couverture parquet ne couvre pas la fenêtre (avant run long)",
     )
+    parser.add_argument(
+        "--ideal",
+        action="store_true",
+        help=(
+            "§0.7 G1 (plan v3.1.2) — bascule sur IdealFillModel (target price). "
+            "Défaut = ConservativeFillModel (next-bar-open + adverse slippage). "
+            "N'utiliser --ideal que pour exploration rapide E[R]_gross (§0.6.0) ; "
+            "interdit pour toute promotion Stage 1+."
+        ),
+    )
     args = parser.parse_args()
     respect = not args.no_respect_allowlists
     bypass_lss = not args.no_bypass_lss_quarantine
@@ -218,6 +228,7 @@ def main() -> int:
             slippage_cost_pct=0.0005,
             spread_model="fixed_bps",
             spread_bps=2.0,
+            fill_model_mode="ideal" if args.ideal else "realistic",
         )
         engine = BacktestEngine(config)
         engine.trade_journal.journal_path = str(out / f"trade_journal_{run_id}.parquet")

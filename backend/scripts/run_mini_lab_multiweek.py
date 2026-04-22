@@ -107,6 +107,14 @@ def main() -> int:
         default="summary_r,exit_reason_mix,playbook_counts",
         help="Transmis avec --write-trades-analyzer-report (liste CSV)",
     )
+    parser.add_argument(
+        "--ideal",
+        action="store_true",
+        help=(
+            "§0.7 G1 — transmet --ideal à chaque run_mini_lab_week. "
+            "Défaut = ConservativeFillModel ; --ideal réservé exploration E[R]_gross."
+        ),
+    )
     args = parser.parse_args()
 
     week_script = backend_dir / "scripts" / "run_mini_lab_week.py"
@@ -160,6 +168,8 @@ def main() -> int:
         if args.write_trades_analyzer_report:
             cmd.append("--write-trades-analyzer-report")
             cmd.extend(["--trades-analyzer-names", args.trades_analyzer_names])
+        if args.ideal:
+            cmd.append("--ideal")
         print(f"[multiweek] RUN {label} {start}..{end}", flush=True)
         r = subprocess.run(cmd, cwd=str(backend_dir))
         if r.returncode != 0:
