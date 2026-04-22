@@ -1,0 +1,88 @@
+# Option A v2 — Aplus_03 IFVG Flip 5m, rewritten with:
+#   take_profit_logic.tp_logic: liquidity_draw (swing_k3)
+#   context_requirements.require_structure_alignment: k3
+#
+# Derived from r3_aplus03_tpcalib_v1.yml (Aplus_03_IFVG_Flip_5m block).
+# Same signal/session/SL/trailing config; only TP logic + structure gate are new.
+# Used via scripts/run_mini_lab_week.py --calib-allowlist Aplus_03_v2
+# --playbooks-yaml backend/knowledge/campaigns/aplus03_v2.yml.
+- playbook_name: Aplus_03_v2
+  category: SCALP
+  description: "Aplus_03 v2 (Option A v2): 5m IFVG flip + TP liquidity_draw swing_k3 + structure_alignment k3. Tests new schema on known Family A setup."
+  max_setups_per_session: 3
+  enabled_in_modes:
+  - AGGRESSIVE
+  instruments:
+  - SPY
+  - QQQ
+  required_signals:
+  - IFVG@5m
+  timefilters:
+    session: NY
+    time_windows:
+    - - 09:30
+      - '15:00'
+  context_requirements:
+    htf_bias_allowed:
+    - bullish
+    - bearish
+    - neutral
+    day_type_allowed:
+    - trend
+    - manipulation_reversal
+    - range
+    - unknown
+    structure_htf:
+    - uptrend
+    - downtrend
+    - range
+    - unknown
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+    adx_min: null
+    require_htf_alignment: D
+    require_structure_alignment: k3
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+  candlestick_patterns:
+    required_families: []
+    direction: any
+  entry_logic:
+    type: MARKET
+    zone: signal_close
+    confirmation_tf: 5m
+  setup_tf: 5m
+  stop_loss_logic:
+    type: SWING
+    distance: fvg_extreme
+    padding_ticks: 2
+  take_profit_logic:
+    min_rr: 2.0
+    tp1_rr: 2.0
+    tp2_rr: 5.0
+    breakeven_at_rr: 0.40
+    trailing_mode: trail_rr
+    trailing_trigger_rr: 0.5
+    trailing_offset_rr: 0.25
+    tp_logic: liquidity_draw
+    tp_logic_params:
+      draw_type: swing_k3
+      lookback_bars: 60
+      min_rr_floor: 0.5
+      fallback_rr: 2.0
+  max_duration_minutes: 60
+  scoring:
+    weights:
+      fvg_quality: 0.6
+      context_strength: 0.2
+      pattern_quality: 0.2
+    grade_thresholds:
+      A_plus: 0.7
+      A: 0.5
+      B: 0.3
+  require_close_above_trigger: true
+  entry_buffer_bps: 2.0

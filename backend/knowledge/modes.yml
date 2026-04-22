@@ -1,0 +1,65 @@
+# Phase W.4 — playbook mode constants sourced from YAML (no hardcoded names in code).
+#
+# The three lists below drive runtime gating across the engine. Historically
+# they lived as literal Python lists inside `backend/engines/risk_engine.py`
+# and `backend/engines/execution/phase3b_execution.py`. Extracting them here
+# makes operational changes (add/remove a playbook) editable without code diff.
+#
+# Safety: `backend/engines/modes_loader.py` falls back to hardcoded defaults
+# (mirroring this file) if parsing fails, so a broken YAML never crashes boot.
+#
+# Order matters for logging readability only. AGGRESSIVE_ALLOWLIST / DENYLIST
+# are used by `risk_engine.py`; PHASE3B_PLAYBOOKS by `phase3b_execution.py`.
+
+aggressive_allowlist:
+  # --- Faithful MASTER strategies (Phase 5a) ---
+  - FVG_Fill_V065                           # S1a: V065 15m Range FVG
+  # Liquidity_Raid_V056 moved to DENYLIST (M verdict 2026-04-21: 2 matches / 4 weeks)
+  - Range_FVG_V054                          # S1b: V054 5m Range FVG + Engulfing
+  - Asia_Sweep_V051                         # S3b: V051 strict Asia sweep
+  - Engulfing_Bar_V056                      # S7: V056 M1 Engulfing Bar
+  - London_Fakeout_V066                     # S3a: V066 London fakeout
+  - OB_Retest_V004                          # S7: V004 OB Retest + BOS
+  # --- 1m Scalping strategies ---
+  - FVG_Scalp_1m                            # 1m FVG scalp
+  - BOS_Scalp_1m                            # 1m BOS + engulfing scalp
+  # --- 5m Indicator-based scalp strategies ---
+  # ORB_Breakout_5m moved to DENYLIST (B0.3)
+  - EMA_Cross_5m                            # EMA 9/21 crossover
+  - VWAP_Bounce_5m                          # VWAP touch + RSI mean reversion
+  - RSI_MeanRev_5m                          # RSI(2) extreme mean reversion
+  # --- Kept from legacy (not MASTER-sourced) ---
+  # NY_Open_Reversal moved to DENYLIST (B0.3)
+  - News_Fade
+  # --- Sprint 1 LAB candidate REMOVED post-smoke (2026-04-22) ---
+  # - Aplus_01_full_v1                      # SMOKE_FAIL nov_w4 (n=1 < 10, peak_R 0.89 < 1R, E[R]=-0.003)
+  #                                         # → ARCHIVED, see aplus01_full_v1_smoke_nov_w4_verdict.md
+
+aggressive_denylist:
+  # --- Destructive / proven negative ---
+  - London_Sweep_NY_Continuation            # -326R
+  - BOS_Momentum_Scalp                      # -142R
+  - Power_Hour_Expansion                    # -31R
+  - Lunch_Range_Scalp                       # Toxique
+  - Trend_Continuation_FVG_Retest           # -22R
+  # --- Non-functional ---
+  - DAY_Aplus_1_Liquidity_Sweep_OB_Retest   # Sweep/BOS non détectés
+  - SCALP_Aplus_1_Mini_FVG_Retest_NY_Open   # 6 trades, 0 win, -1.399R
+  # --- Phase A fair audit KILL (B0.3, 2026-04-19) ---
+  - NY_Open_Reversal                        # fair audit 4w: E[R]=-0.21
+  - ORB_Breakout_5m                         # fair audit 4w: E[R]=-0.10
+  # --- Phase M KILL (2026-04-21) ---
+  - Liquidity_Raid_V056                     # M 4w: 2 matches total, detector broken/rare
+  # --- Unfaithful originals (replaced by Phase 5a faithful versions) ---
+  - FVG_Fill_Scalp
+  - Session_Open_Scalp
+  - IFVG_5m_Sweep
+  - HTF_Bias_15m_BOS
+  - Morning_Trap_Reversal
+  - Liquidity_Sweep_Scalp
+
+phase3b_playbooks:
+  - NY_Open_Reversal
+  - News_Fade
+  - Liquidity_Sweep_Scalp
+  - BOS_Scalp_1m

@@ -131,5 +131,10 @@ class Setup(BaseModel):
     mc_breakout_dir: Optional[str] = None  # LONG, SHORT, NONE
     mc_window_minutes: Optional[int] = None
     mc_session_date: Optional[str] = None  # YYYY-MM-DD
-    
+
+    # Option A v2 — tp_resolver + structure_alignment instrumentation
+    tp_reason: Optional[str] = None  # stable vocab: fixed_rr | liquidity_draw_swing_k3 | fallback_rr_no_pool | fallback_rr_min_floor_binding
+    structure_alignment_tf: Optional[str] = None  # 'k1' | 'k3' | 'k9' when require_structure_alignment enforced
+    structure_alignment_last_pivot_type: Optional[str] = None  # 'high' | 'low' at the aligned TF
+
     notes: str = ''

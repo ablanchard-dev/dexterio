@@ -1,0 +1,104 @@
+# Aplus_04_v2 epsilon — Family B (HTF_15m_BOS) avec schema alpha'' + reject_on_fallback.
+# Derive de aplus04_v2_alpha_pp.yml. SEULE difference :
+#   take_profit_logic.tp_logic_params.reject_on_fallback : absent (false) -> true
+#
+# Hypothese testee : en rejetant les setups ou le resolver ne trouve pas de pool k3
+# dans la band [min_rr_floor, max_rr_ceiling], obtient-on un subset liquidity_draw
+# isole dont E[R] > 0 ? Si oui, schema debloque edge -> base Aplus_01/Family A full.
+# Si non (E[R] <= 0), 3e data point convergent negatif sur le schema -> bear ferme
+# -> pivot vers infra Aplus_01 Family A full (sweep+IFVG+breaker, 1m confirm).
+#
+# Rappel des 2 data points precedents :
+#   - Aplus_03_v2 alpha'' (Family A IFVG 5m isole)  : n=22, E[R]=-0.019, 27% schema -> Case B.
+#   - Aplus_04_v2 alpha'' (Family B HTF+15m BOS)   : n=15, E[R]=-0.057, 53% schema -> Case C borderline.
+# Subset liquidity_draw Aplus_04_v2 alpha'' : E[R]=-0.012 (n=8, quasi-BE).
+# reject_on_fallback isole ce subset : on attend E[R] proche de -0.012 a marge de CI pres.
+- playbook_name: Aplus_04_HTF_15m_BOS_v1
+  category: DAYTRADE
+  description: "Aplus_04 v2 epsilon: Family B + alpha'' + reject_on_fallback=true pour isoler le subset liquidity_draw."
+  max_setups_per_session: 3
+  enabled_in_modes:
+  - AGGRESSIVE
+  instruments:
+  - SPY
+  - QQQ
+  timefilters:
+    session: NY
+    time_range:
+    - 09:30
+    - '12:00'
+  context_requirements:
+    htf_bias_allowed:
+    - bullish
+    - bearish
+    day_type_allowed:
+    - trend
+    - manipulation_reversal
+    structure_htf:
+    - uptrend
+    - downtrend
+    london_sweep_required: false
+    adx_min: null
+    require_structure_alignment: k3
+  triggers:
+  - type: ICT
+    ict_pattern: bos
+    direction: with_bias
+    min_quality: 0.3
+  conditions:
+    require_sweep: true
+    require_bos: true
+    allow_fvg: true
+    require_fvg: false
+    pattern_confirmations: 1
+    volatility_min: null
+    volatility_max: null
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: true
+    require_bos: true
+    smt_bonus: false
+  candlestick_patterns:
+    required_families: []
+    direction: with_bias
+  entry_logic:
+    type: LIMIT
+    zone: fvg_retest
+    confirmation_tf: 1m
+  setup_tf: 15m
+  stop_loss_logic:
+    type: SWING
+    distance: recent_swing
+    padding_ticks: 3
+  take_profit_logic:
+    min_rr: 1.0
+    tp1_rr: 1.0
+    tp2_rr: 2.0
+    breakeven_at_rr: 0.5
+    trailing_mode: trail_rr
+    trailing_trigger_rr: 0.7
+    trailing_offset_rr: 0.3
+    tp_logic: liquidity_draw
+    tp_logic_params:
+      draw_type: swing_k3
+      lookback_bars: 60
+      min_rr_floor: 0.5
+      fallback_rr: 2.0
+      pool_selection: significant
+      max_rr_ceiling: 3.0
+      reject_on_fallback: true
+  scoring:
+    weights:
+      bos_strength: 0.3
+      liquidity_sweep: 0.25
+      fvg_quality: 0.2
+      pattern_quality: 0.1
+      context_strength: 0.15
+    grade_thresholds:
+      A_plus: 0.8
+      A: 0.65
+      B: 0.5
+  max_duration_minutes: 60
+  require_htf_alignment: D
+  require_close_above_trigger: true
+  entry_buffer_bps: 2.0

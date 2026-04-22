@@ -139,6 +139,11 @@ class TradeResult(BaseModel):
     peak_r: float = 0.0   # Max Favorable Excursion in R (>= 0)
     mae_r: float = 0.0    # Max Adverse Excursion in R (<= 0)
 
+    # Option A v2 — tp_resolver + structure_alignment instrumentation
+    tp_reason: Optional[str] = None
+    structure_alignment_tf: Optional[str] = None
+    structure_alignment_last_pivot_type: Optional[str] = None
+
 
 class BacktestResult(BaseModel):
     """Résultats complets d'un backtest"""

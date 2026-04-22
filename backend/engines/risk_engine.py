@@ -21,6 +21,10 @@ from models.risk import (
 )
 from models.setup import Setup
 from config.settings import settings
+from engines.modes_loader import (
+    get_aggressive_allowlist,
+    get_aggressive_denylist,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,54 +38,12 @@ def _env_flag(name: str, default: str = "false") -> bool:
 # P0 COMMIT 1: ALLOWLIST/DENYLIST PLAYBOOKS
 # ============================================================================
 
-# Playbooks AUTORISÉS en mode AGGRESSIVE
-# Phase 5a (2026-04-19): Faithful MASTER strategies replace unfaithful originals.
-# Old playbooks moved to DENYLIST — they are unfaithful approximations
-# that mix concepts from multiple videos with composite scoring.
-AGGRESSIVE_ALLOWLIST = [
-    # --- Faithful MASTER strategies (Phase 5a) ---
-    'FVG_Fill_V065',                           # S1a: V065 15m Range FVG (100% codable)
-    'Liquidity_Raid_V056',                     # S7: V056 M2 Liquidity Raid (90% codable)
-    'Range_FVG_V054',                          # S1b: V054 5m Range FVG + Engulfing (95%)
-    'Asia_Sweep_V051',                         # S3b: V051 strict Asia sweep (86%)
-    'Engulfing_Bar_V056',                      # S7: V056 M1 Engulfing Bar (85%)
-    'London_Fakeout_V066',                     # S3a: V066 London fakeout (83%)
-    'OB_Retest_V004',                          # S7: V004 OB Retest + BOS (80-85%)
-    # --- 1m Scalping strategies ---
-    'FVG_Scalp_1m',                            # 1m FVG scalp (fast in/out)
-    'BOS_Scalp_1m',                            # 1m BOS + engulfing scalp
-    # --- 5m Indicator-based scalp strategies ---
-    # 'ORB_Breakout_5m' -> DENYLIST (B0.3, fair audit 4w: E[R]=-0.10, 16 tr, WR=25%)
-    'EMA_Cross_5m',                            # EMA 9/21 crossover + 50 EMA trend filter
-    'VWAP_Bounce_5m',                          # VWAP touch + RSI mean reversion
-    'RSI_MeanRev_5m',                          # RSI(2) extreme mean reversion (Connors-style)
-    # --- Kept from legacy (not MASTER-sourced) ---
-    # 'NY_Open_Reversal' -> DENYLIST (B0.3, fair audit 4w: E[R]=-0.21, 17 tr, WR=12%)
-    'News_Fade',                               # User invention, not MASTER
-]
-
-# Playbooks DÉSACTIVÉS (destructeurs, non calibrés, ou unfaithful originals)
-AGGRESSIVE_DENYLIST = [
-    # --- Destructive / proven negative ---
-    'London_Sweep_NY_Continuation',            # -326R ❌
-    'BOS_Momentum_Scalp',                      # -142R ❌
-    'Power_Hour_Expansion',                    # -31R ❌
-    'Lunch_Range_Scalp',                       # Toxique ❌
-    'Trend_Continuation_FVG_Retest',           # -22R ❌
-    # --- Non-functional ---
-    'DAY_Aplus_1_Liquidity_Sweep_OB_Retest',   # Sweep/BOS non détectés ❌
-    'SCALP_Aplus_1_Mini_FVG_Retest_NY_Open',   # Quarantiné: 6 trades, 0 win, -1.399R
-    # --- Phase A fair audit KILL (B0.3, 2026-04-19) ---
-    'NY_Open_Reversal',                        # fair audit 4w: E[R]=-0.21, 17 tr, WR=12% ❌
-    'ORB_Breakout_5m',                         # fair audit 4w: E[R]=-0.10, 16 tr, WR=25% (too early to calibrate)
-    # --- Unfaithful originals (replaced by Phase 5a faithful versions) ---
-    'FVG_Fill_Scalp',                          # Replaced by FVG_Fill_V065
-    'Session_Open_Scalp',                      # Replaced by Range_FVG_V054
-    'IFVG_5m_Sweep',                           # Will be replaced by faithful V010 (Phase 5b)
-    'HTF_Bias_15m_BOS',                        # Will be replaced by faithful V070 (Phase 5b)
-    'Morning_Trap_Reversal',                   # Replaced by London_Fakeout_V066
-    'Liquidity_Sweep_Scalp',                   # Concept, not a strategy
-]
+# Phase W.4 — sourced from `backend/knowledge/modes.yml` via modes_loader.
+# The module-level names are preserved so existing imports continue to work.
+# If the YAML is missing or malformed, modes_loader returns hardcoded fallbacks
+# that mirror the pre-W.4 literals (guarantees zero breaking change at boot).
+AGGRESSIVE_ALLOWLIST = get_aggressive_allowlist()
+AGGRESSIVE_DENYLIST = get_aggressive_denylist()
 
 def _resolve_latest_aggressive_playbook_stats_file() -> Optional[Path]:
     """

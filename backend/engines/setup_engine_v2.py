@@ -3,13 +3,15 @@ Setup Engine V2 - Intégration complète des Playbooks DAYTRADE & SCALP
 Phase 2.2 - Architecture basée sur playbooks.yml
 """
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Mapping, Sequence, Any
 from datetime import datetime
 from uuid import uuid4
 
-from models.market_data import MarketState, LiquidityLevel
+from models.market_data import MarketState, LiquidityLevel, Candle
 from models.setup import Setup, ICTPattern, CandlestickPattern, PlaybookMatch, PatternDetection
 from engines.playbook_loader import get_playbook_loader, PlaybookEvaluator
+from engines.execution.tp_resolver import resolve_tp_price
+from engines.features.pivot import Pivot
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -43,6 +45,15 @@ class SetupEngineV2:
         self.playbook_evaluator = PlaybookEvaluator(self.playbook_loader)
         # P0 FIX: Attribut temporaire pour stocker matches (accessible depuis engine.py)
         self._last_matches = []
+        # Phase C.4: HTF alignment gate instrumentation
+        # Maps playbook_name -> {'evaluated': int, 'rejected': int, 'reasons': {...}}
+        self._htf_gate_stats: Dict[str, Dict[str, int]] = {}
+        # Option A v2 — structure_alignment gate instrumentation (k1/k3/k9).
+        # Parallel to _htf_gate_stats; feeds aplus03_v2_verdict items #9 + long/short split.
+        self._structure_gate_stats: Dict[str, Dict[str, int]] = {}
+        # Option A v2 — tp_reason counter, keyed by playbook_name → reason → count.
+        # Feeds verdict items #7-8 (liquidity_draw vs fallback share).
+        self._tp_reason_stats: Dict[str, Dict[str, int]] = {}
         logger.info("SetupEngineV2 initialized with playbooks")
     
     def generate_setups(
@@ -56,6 +67,8 @@ class SetupEngineV2:
         trading_mode: str = None,
         last_price: Optional[float] = None,
         active_tf_closes: Optional[set] = None,
+        bars_5m: Optional[Sequence[Candle]] = None,
+        structure_pivots: Optional[Mapping[str, Sequence[Pivot]]] = None,
     ) -> List[Setup]:
         """
         Génère des setups basés sur les playbooks
@@ -133,6 +146,8 @@ class SetupEngineV2:
                 liquidity_levels=liquidity_levels,
                 current_time=current_time,
                 last_price=last_price,
+                bars_5m=bars_5m,
+                structure_pivots=structure_pivots,
             )
             
             if setup:
@@ -150,6 +165,8 @@ class SetupEngineV2:
         liquidity_levels: List[LiquidityLevel],
         current_time: datetime,
         last_price: Optional[float] = None,
+        bars_5m: Optional[Sequence[Candle]] = None,
+        structure_pivots: Optional[Mapping[str, Sequence[Pivot]]] = None,
     ) -> Optional[Setup]:
         """Crée un Setup object depuis un playbook match"""
         
@@ -161,12 +178,71 @@ class SetupEngineV2:
                 candle_patterns,
                 ict_patterns,
             )
-            
+
             if not direction:
                 return None
+
+            # Phase C.4: selective HTF alignment gate (preflight filter).
+            # If the playbook declares `require_htf_alignment: D` (or '4H'),
+            # reject setups whose direction contradicts the chosen HTF
+            # structure. Uses market_state.daily_structure / h4_structure
+            # already computed by MarketStateEngine (no re-derivation).
+            playbook_obj = self.playbook_loader.get_playbook_by_name(match['playbook_name'])
+            htf_gate = getattr(playbook_obj, 'require_htf_alignment', None) if playbook_obj else None
+            if htf_gate:
+                tf_key = str(htf_gate).upper()
+                if tf_key == 'D':
+                    struct = getattr(market_state, 'daily_structure', 'unknown')
+                elif tf_key == '4H':
+                    struct = getattr(market_state, 'h4_structure', 'unknown')
+                else:
+                    struct = 'unknown'
+                stats = self._htf_gate_stats.setdefault(
+                    match['playbook_name'],
+                    {'evaluated': 0, 'rejected': 0, 'reject_long_vs_bear': 0,
+                     'reject_short_vs_bull': 0, 'pass_unknown_or_range': 0,
+                     'pass_aligned': 0, 'tf': tf_key},
+                )
+                stats['evaluated'] += 1
+                # Reject on explicit contradiction; let 'unknown'/'range' pass.
+                if direction == 'LONG' and struct == 'downtrend':
+                    stats['rejected'] += 1
+                    stats['reject_long_vs_bear'] += 1
+                    logger.debug(
+                        f"[HTF_GATE] reject {match['playbook_name']} LONG vs {tf_key}={struct}"
+                    )
+                    return None
+                if direction == 'SHORT' and struct == 'uptrend':
+                    stats['rejected'] += 1
+                    stats['reject_short_vs_bull'] += 1
+                    logger.debug(
+                        f"[HTF_GATE] reject {match['playbook_name']} SHORT vs {tf_key}={struct}"
+                    )
+                    return None
+                if struct in ('uptrend', 'downtrend'):
+                    stats['pass_aligned'] += 1
+                else:
+                    stats['pass_unknown_or_range'] += 1
             
+            # Option A v2 — structure_alignment gate (k1/k3/k9 directional-change pivots).
+            # Runs *after* HTF alignment, *before* price-level resolution so we
+            # don't waste TP compute on rejected setups. Only 'k3' is exercised
+            # in this sprint; 'k1'/'k9' parse through but are never set in YAML.
+            align_tf = getattr(playbook_obj, 'require_structure_alignment', None) if playbook_obj else None
+            last_aligned_pivot_type: Optional[str] = None
+            if align_tf:
+                gate_result = self._apply_structure_alignment_gate(
+                    playbook_name=match['playbook_name'],
+                    direction=direction,
+                    align_tf=str(align_tf),
+                    structure_pivots=structure_pivots,
+                )
+                if gate_result is None:
+                    return None
+                last_aligned_pivot_type = gate_result
+
             # Calculer entry/SL/TP basés sur les patterns et market state
-            entry_price, stop_loss, tp1, tp2 = self._calculate_price_levels(
+            entry_price, stop_loss, tp1, tp2, tp_reason = self._calculate_price_levels(
                 symbol=symbol,
                 direction=direction,
                 candle_patterns=candle_patterns,
@@ -176,12 +252,29 @@ class SetupEngineV2:
                 tp1_rr=match['tp1_rr'],
                 tp2_rr=match.get('tp2_rr'),
                 last_price=last_price,
+                playbook=playbook_obj,
+                bars_5m=bars_5m,
+                structure_pivots=structure_pivots,
             )
-            
+
             if not all([entry_price, stop_loss, tp1]):
                 logger.warning(f"Could not calculate price levels for {match['playbook_name']}")
                 return None
-            
+
+            # Record tp_reason distribution for verdict instrumentation (O5.2 items #7-8).
+            if tp_reason:
+                self._tp_reason_stats.setdefault(match['playbook_name'], {})
+                self._tp_reason_stats[match['playbook_name']][tp_reason] = (
+                    self._tp_reason_stats[match['playbook_name']].get(tp_reason, 0) + 1
+                )
+
+            # Option ε (2026-04-22): resolver signals a hard reject when no
+            # liquidity_draw pool is available in the acceptable band and the
+            # playbook opts into reject_on_fallback=true. Counter above already
+            # records the reject bucket for verdict breakdown; drop the setup.
+            if tp_reason and tp_reason.startswith("reject_"):
+                return None
+
             # Calculer RR
             risk = abs(entry_price - stop_loss)
             reward = abs(tp1 - entry_price)
@@ -275,6 +368,10 @@ class SetupEngineV2:
                     )
                 ],
                 confluences_count=self._count_confluences(ict_patterns, candle_patterns),
+                # Option A v2 — tp_resolver + structure_alignment instrumentation.
+                tp_reason=tp_reason,
+                structure_alignment_tf=str(align_tf) if align_tf else None,
+                structure_alignment_last_pivot_type=last_aligned_pivot_type,
                 notes=f"Playbook: {playbook_name} | Score: {match['score']:.2f}"
             )
             
@@ -292,7 +389,92 @@ class SetupEngineV2:
         except Exception as e:
             logger.error(f"Error creating setup from playbook match: {e}", exc_info=True)
             return None
-    
+
+    def _apply_structure_alignment_gate(
+        self,
+        *,
+        playbook_name: str,
+        direction: str,
+        align_tf: str,
+        structure_pivots: Optional[Mapping[str, Sequence[Pivot]]],
+    ) -> Optional[str]:
+        """Option A v2 O2.3 — reject setups that trade against the last
+        confirmed directional-change pivot at the requested scale.
+
+        Semantics (mirror of require_htf_alignment):
+            last pivot = LOW  → structure bullish → accept LONG, reject SHORT
+            last pivot = HIGH → structure bearish → accept SHORT, reject LONG
+
+        Returns:
+            `"low"` or `"high"` on accept (to store on the Setup for audit);
+            None on reject (caller must drop the setup and log a funnel).
+
+        Instrumentation (self._structure_gate_stats[playbook_name]) records
+        evaluated / rejected / long/short split, consumed by O5.2 verdict item
+        #9 and the pre/post gate distribution.
+        """
+        tf_key = align_tf.lower().strip()
+        stats = self._structure_gate_stats.setdefault(
+            playbook_name,
+            {
+                'evaluated': 0,
+                'rejected': 0,
+                'reject_long_vs_bear': 0,
+                'reject_short_vs_bull': 0,
+                'pass_aligned': 0,
+                'long_evaluated': 0,
+                'short_evaluated': 0,
+                'tf': tf_key,
+            },
+        )
+        stats['evaluated'] += 1
+        if direction == 'LONG':
+            stats['long_evaluated'] += 1
+        else:
+            stats['short_evaluated'] += 1
+
+        if structure_pivots is None:
+            # Upstream didn't wire pivots this tick (e.g. cold cache pre-warmup).
+            # Fail-closed on a mandatory gate — but count separately so the
+            # verdict can distinguish "gate rejecting" from "pipeline not wired".
+            stats['rejected_no_pivot_cache'] = stats.get('rejected_no_pivot_cache', 0) + 1
+            stats['rejected'] += 1
+            logger.debug(
+                f"[STRUCT_GATE] {playbook_name} {direction} reject (no pivot cache)"
+            )
+            return None
+
+        pivots = structure_pivots.get(tf_key)
+        if not pivots:
+            # Pivots requested but none detected yet at this scale — genuine
+            # no-alignment state, fail-closed.
+            stats['rejected_no_pivots_at_tf'] = stats.get('rejected_no_pivots_at_tf', 0) + 1
+            stats['rejected'] += 1
+            logger.debug(
+                f"[STRUCT_GATE] {playbook_name} {direction} reject (0 {tf_key} pivots)"
+            )
+            return None
+
+        last_pivot = pivots[-1]
+        pivot_type = last_pivot.type
+        if direction == 'LONG' and pivot_type == 'high':
+            stats['rejected'] += 1
+            stats['reject_long_vs_bear'] += 1
+            logger.debug(
+                f"[STRUCT_GATE] reject {playbook_name} LONG vs {tf_key}=high"
+            )
+            return None
+        if direction == 'SHORT' and pivot_type == 'low':
+            stats['rejected'] += 1
+            stats['reject_short_vs_bull'] += 1
+            logger.debug(
+                f"[STRUCT_GATE] reject {playbook_name} SHORT vs {tf_key}=low"
+            )
+            return None
+
+        stats['pass_aligned'] += 1
+        return pivot_type
+
     def _determine_direction(
         self,
         playbook_name: str,
@@ -333,7 +515,8 @@ class SetupEngineV2:
             # when HTF bias is neutral
             if ict_patterns:
                 indicator_types = {'ema_cross', 'vwap_bounce', 'rsi_extreme', 'orb_break',
-                                   'bos', 'fvg', 'liquidity_sweep', 'ifvg', 'order_block'}
+                                   'bos', 'fvg', 'liquidity_sweep', 'ifvg', 'order_block',
+                                   'aplus01_sequence'}
                 directional = [p for p in ict_patterns
                                if p.pattern_type in indicator_types and p.direction in ('bullish', 'bearish')]
                 if directional:
@@ -357,23 +540,25 @@ class SetupEngineV2:
         tp1_rr: float,
         tp2_rr: Optional[float],
         last_price: Optional[float] = None,
+        playbook: Any = None,
+        bars_5m: Optional[Sequence[Candle]] = None,
+        structure_pivots: Optional[Mapping[str, Sequence[Pivot]]] = None,
     ) -> tuple:
-        """Calcule les niveaux entry/SL/TP à partir des VRAIS prix de marché.
+        """Calcule entry/SL/TP + tp_reason.
 
-        Logique simple mais réaliste pour AGGRESSIVE_LAB :
-        - entry = dernier close (M1) si disponible, sinon dernier close du pattern
-        - SL = low du pattern pour un LONG, high du pattern pour un SHORT
-        - TP1 = entry ± (entry - SL) * tp1_rr
-        - TP2 optionnel selon tp2_rr
+        Returns tuple (entry_price, stop_loss, tp1, tp2, tp_reason). SL comes
+        from ICT pattern levels (structural) with 0.2%/2.0% clamp. TP routing
+        is delegated to `tp_resolver.resolve_tp_price` — setup_engine_v2 no
+        longer owns the fixed-RR arithmetic directly (Option A v2 O1.3).
         """
 
         if not candle_patterns and not ict_patterns:
-            return None, None, None, None
+            return None, None, None, None, None
 
         # P0 FIX: Rejeter si last_price est None (pas de placeholder en backtest)
         if last_price is None:
             logger.error(f"[P0] _calculate_price_levels: last_price is None for {symbol}, rejecting setup")
-            return None, None, None, None
+            return None, None, None, None, None
 
         # Prix d'entrée: utiliser le dernier close réel (obligatoire)
         entry_price = float(last_price)
@@ -410,15 +595,25 @@ class SetupEngineV2:
             else:
                 stop_loss = entry_price * 1.005
 
-        # TP1 basé sur le RR cible
-        if direction == 'LONG':
-            risk = entry_price - stop_loss
-            tp1 = entry_price + risk * tp1_rr
-        else:
-            risk = stop_loss - entry_price
-            tp1 = entry_price - risk * tp1_rr
+        # TP1 via tp_resolver (Option A v2 O1.3). Default = fixed_rr, byte-identical
+        # to the legacy inline branch below. For `liquidity_draw`, the resolver
+        # consumes pre-computed k3 pivots (cache shared across evaluations).
+        tp_logic = getattr(playbook, 'tp_logic', 'fixed_rr') or 'fixed_rr'
+        tp_logic_params = getattr(playbook, 'tp_logic_params', {}) or {}
+        tp1, tp_reason = resolve_tp_price(
+            tp_logic=tp_logic,
+            tp_logic_params=tp_logic_params,
+            tp1_rr=float(tp1_rr),
+            entry_price=entry_price,
+            sl_price=stop_loss,
+            direction=direction,
+            bars=bars_5m or (),
+            structure_pivots=structure_pivots,
+        )
+        risk = abs(entry_price - stop_loss)
 
-        # TP2 optionnel
+        # TP2 optionnel (fixed-RR only for now; liquidity_draw drives TP1 alone
+        # since pools are specific levels, not RR multiples).
         if tp2_rr:
             if direction == 'LONG':
                 tp2 = entry_price + risk * tp2_rr
@@ -427,7 +622,7 @@ class SetupEngineV2:
         else:
             tp2 = None
 
-        return entry_price, stop_loss, tp1, tp2
+        return entry_price, stop_loss, tp1, tp2, tp_reason
     
     def _count_confluences(
         self,

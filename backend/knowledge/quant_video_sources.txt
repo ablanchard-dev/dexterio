@@ -1,0 +1,26 @@
+# Quant video sources — retranscribed into ~/Documents/videos/quant/
+# One URL per line. Comments start with '#'. Blank lines ignored.
+# Regeneration script: backend/scripts/fetch_quant_videos.py (standalone, not imported by bot)
+# Idempotent: re-runs skip already-transcribed video_ids.
+# No runtime bot integration until Phase Q gate is cleared (CLAUDE.md Bloc C).
+
+https://youtu.be/NLBXgSmRBgU
+https://youtu.be/9HD6xo2iO1g
+https://youtu.be/9Y3yaoi9rUQ
+https://youtu.be/EuFakzlBLOA
+https://youtu.be/n2mY86S01fg
+https://youtu.be/BM3KZPg6zic
+https://youtu.be/jCBnbQ1PUkE
+https://youtu.be/W8kfC0NhKEw
+https://youtu.be/bA1I4Upzxgc
+https://youtu.be/FmPThiXtLYc
+https://youtu.be/ODHlC9YuowY
+https://youtu.be/wdsiZBIhAFw
+https://youtu.be/mNWPSFOVoYA
+https://youtu.be/PsQbKJvpGDU
+https://youtu.be/P4u5drToePM
+https://youtu.be/6iFqjd5BOHw
+https://youtu.be/2XQ3PsZActM
+https://youtu.be/wbFoefnidTU
+https://youtu.be/Lb5SPCTp4uY
+https://youtu.be/X31hyMhB-3s

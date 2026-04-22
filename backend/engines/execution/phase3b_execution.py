@@ -9,12 +9,14 @@ from __future__ import annotations
 from datetime import datetime, time, timezone
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from engines.modes_loader import get_phase3b_playbooks
+
 if TYPE_CHECKING:
     from engines.playbook_loader import PlaybookDefinition
 
-PHASE3B_PLAYBOOKS = frozenset(
-    {"NY_Open_Reversal", "News_Fade", "Liquidity_Sweep_Scalp", "BOS_Scalp_1m"}
-)
+# Phase W.4 — sourced from `backend/knowledge/modes.yml`. The name is kept as a
+# module-level frozenset so existing callers (imports, `in` checks) are unchanged.
+PHASE3B_PLAYBOOKS = frozenset(get_phase3b_playbooks())
 
 
 def is_phase3b_playbook(playbook_name: str) -> bool:

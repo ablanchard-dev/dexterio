@@ -1,5 +1,6 @@
 """Execution Engine - Paper Trading"""
 import logging
+from enum import Enum
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from models.trade import Trade, Position
@@ -11,20 +12,78 @@ from engines.execution.phase3b_execution import (
     is_phase3b_playbook,
     should_attach_session_window_end,
 )
+from engines.execution.entry_gates import (
+    check_entry_confirmation,
+    GateResult,
+)
+from engines.execution.fill_model import FillModel, IdealFillModel
 
 logger = logging.getLogger(__name__)
+
+
+class ClockMode(str, Enum):
+    """Phase W.3 — execution clock modes.
+
+    BACKTEST: candles are replayed historically; `update_open_trades` fires on
+              every bar of the replay loop.
+    PAPER:    same engine logic but bound to a live market feed; trades are
+              recorded but no real orders are sent. Conservative fill models
+              are expected here.
+    LIVE:     real-money orders go through IBKR gateway. Same engine logic +
+              reconciliation against broker fills.
+
+    Default is BACKTEST so all existing callers are unchanged.
+    """
+    BACKTEST = "BACKTEST"
+    PAPER = "PAPER"
+    LIVE = "LIVE"
+
 
 class ExecutionEngine:
     """Moteur d'exécution des trades (Paper Trading)"""
     
-    def __init__(self, risk_engine: RiskEngine):
+    def __init__(
+        self,
+        risk_engine: RiskEngine,
+        fill_model: Optional[FillModel] = None,
+        clock_mode: ClockMode = ClockMode.BACKTEST,
+    ):
         self.risk_engine = risk_engine
         self.playbook_loader = get_playbook_loader()
         self.open_trades = {}  # {trade_id: Trade}
         self.closed_trades = []
         self.slippage_ticks = 0.02  # $0.02
-        
-        logger.info("ExecutionEngine initialized (Paper Trading mode)")
+        # Phase W.2 — FillModel is a protocol held on the engine. Default
+        # IdealFillModel reproduces the current inline close_price logic
+        # exactly. Callers wanting paper/live realism can inject
+        # ConservativeFillModel.
+        self.fill_model: FillModel = fill_model if fill_model is not None else IdealFillModel()
+        # Phase W.3 — clock_mode distinguishes replay from live feed.
+        # Default BACKTEST keeps existing callers behavior unchanged.
+        self.clock_mode: ClockMode = clock_mode
+
+        logger.info(
+            f"ExecutionEngine initialized (clock_mode={self.clock_mode.value}, "
+            f"fill_model={type(self.fill_model).__name__})"
+        )
+
+    def check_entry_confirmation_gate(self, setup: Setup, candles_1m: Optional[list]) -> GateResult:
+        """Phase W.1 — paper/live hook onto the shared entry confirmation gate.
+
+        Callers (paper orchestrator, live) pass the most recent 1m candles for
+        the setup's symbol; the verdict is identical to the backtest gate at
+        engine.py. Returns passed=True when the playbook doesn't enable the
+        gate, when the bar has committed, or when playbook metadata is missing.
+        """
+        playbook_name = setup.playbook_name or (
+            setup.playbook_matches[0].playbook_name if setup.playbook_matches else None
+        )
+        if not playbook_name:
+            return GateResult(passed=True)
+        pb_def = self.playbook_loader.get_playbook_by_name(playbook_name)
+        if pb_def is None:
+            return GateResult(passed=True)
+        return check_entry_confirmation(pb_def, setup, candles_1m)
     
     def place_order(self, setup: Setup, risk_allocation: Dict[str, Any], current_time: Optional[datetime] = None) -> Dict[str, Any]:
         """
@@ -157,7 +216,12 @@ class ExecutionEngine:
             mc_breakout_dir=getattr(setup, 'mc_breakout_dir', None),
             mc_window_minutes=getattr(setup, 'mc_window_minutes', None),
             mc_session_date=getattr(setup, 'mc_session_date', None),
-            
+
+            # Option A v2 — tp_resolver + structure_alignment instrumentation
+            tp_reason=getattr(setup, 'tp_reason', None),
+            structure_alignment_tf=getattr(setup, 'structure_alignment_tf', None),
+            structure_alignment_last_pivot_type=getattr(setup, 'structure_alignment_last_pivot_type', None),
+
             # Confluences
             confluences={
                 'sweep': any(p.pattern_type == 'sweep' for p in setup.ict_patterns) if setup.ict_patterns else False,
