@@ -18,6 +18,7 @@
 | Direction | both : `long_spread` (long SPY + short QQQ × β) si z < -seuil ; `short_spread` (short SPY + long QQQ × β) si z > +seuil |
 | Régime visé | NY session 09:30–15:00 ET (liquidité maximale, exécution duale exécutable) |
 | Statut initial | `SPECIFIED_BLOCKED_BY_INFRA` (le moteur actuel ne sait pas exprimer un trade multi-leg simultané beta-neutral — cf pièce D) |
+| **Statut actuel** | **`ARCHIVED`** (SMOKE_FAIL nov_w4, 2026-04-22, 3/3 kill rules pré-écrites atteintes) |
 | Auteur / origine | Plan parsed-nibbling-kettle §5.3 P3 + QUANT_SYNTHESIS §3.2 (insurance non-ICT post-pivot ICT) |
 | Dernière review | 2026-04-22 (création dossier post-Sprint 1) |
 
@@ -245,3 +246,22 @@ Ce dossier place `Stat_Arb_SPY_QQQ_v1` au statut `SPECIFIED_BLOCKED_BY_INFRA`. L
 **Bloquant majeur** : la primitive `simultaneous_dual_leg_open` touche `ExecutionEngine` qui est validé byte-identique Phase W. Tout changement doit préserver cette propriété pour les playbooks single-leg existants. Stratégie : ajouter une méthode `open_pair_atomic` **sans modifier** `open_position` (rétrocompat stricte).
 
 **Décision utilisateur explicite requise** avant lancement phase D1 (commitment 5 jours).
+
+---
+
+## 2026-04-22 — Statut post-smoke : `SMOKE_FAIL → ARCHIVED`
+
+Phases exécutées (D3 contourné par un harness autonome pour obtenir un verdict sans toucher `ExecutionEngine`) :
+
+- **D1** — helpers purs ([zscore](../../../engines/stat_arb/zscore.py), [cointegration](../../../engines/stat_arb/cointegration.py), [sizing](../../../engines/stat_arb/sizing.py)) + 20 tests PASS.
+- **D2** — [PairSpreadTracker](../../../engines/stat_arb/tracker.py) + 11 tests PASS.
+- **D3'** — [harness autonome](../../../scripts/stat_arb_smoke.py) (contourne `ExecutionEngine` pour obtenir verdict avant commitment infra complet).
+- **D6** — smoke nov_w4 exécuté.
+
+**Résultat smoke** : n=8, WR=37.5 %, E[R] gross=−0.179, PF=0.258, peak_R p80=0.15, mean_rev_rate=25 %. **Kill rules pré-écrites §H atteintes 3/3** (n<10, mean_rev<50%, E[R]≤0).
+
+**Cas §20** : C (edge absent) + secondaire B (gate cointégration EG strict intraday trop restrictif). Les 2 TP mean-reversion produisent les pires pertes (−0.47R, −0.94R) → le chemin prix entre armement et exit z=0.5 comporte des excursions adverses dépassant le retour à la moyenne.
+
+**Verdict complet** : [stat_arb_spy_qqq_v1_smoke_nov_w4_verdict.md](../../../data/backtest_results/stat_arb_spy_qqq_v1_smoke_nov_w4_verdict.md)
+
+**Statut final** : `ARCHIVED`. Hypothèse SPY-QQQ 5m intraday mean-reverting **réfutée** pour la configuration testée. Briques D1+D2 (31 tests PASS) **préservées** et réutilisables pour toute future tentative stat-arb (paire alternative, TF daily cointégration, régime VIX gate).
