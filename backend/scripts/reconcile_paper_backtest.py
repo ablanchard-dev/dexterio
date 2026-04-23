@@ -57,15 +57,20 @@ def _bar_at_or_before(bars: pd.DataFrame, ts: pd.Timestamp) -> Optional[int]:
     return int(idx)
 
 
-def _adverse(price: float, side: str, slippage_pct: float) -> float:
-    """side='buy' → price up (adverse). side='sell' → price down (adverse)."""
+def _adverse(price: float, side: str, slippage_pct: float, spread_bps: float = 0.0) -> float:
+    """side='buy' → price up (adverse). side='sell' → price down (adverse).
+
+    §0.7 G3: `spread_bps` stacks adverse on top of slippage_pct (1 bp = 0.0001).
+    """
+    total_pct = slippage_pct + (spread_bps / 10_000.0)
     if side == "buy":
-        return price * (1.0 + slippage_pct)
-    return price * (1.0 - slippage_pct)
+        return price * (1.0 + total_pct)
+    return price * (1.0 - total_pct)
 
 
 def reconcile(trades_path: Path, bars_dir: Path,
-              slippage_pct: float = 0.0005) -> pd.DataFrame:
+              slippage_pct: float = 0.0005,
+              spread_bps: float = 1.0) -> pd.DataFrame:
     trades = pd.read_parquet(trades_path)
     trades["timestamp_entry"] = pd.to_datetime(trades["timestamp_entry"], utc=True)
     trades["timestamp_exit"] = pd.to_datetime(trades["timestamp_exit"], utc=True)
@@ -101,8 +106,8 @@ def reconcile(trades_path: Path, bars_dir: Path,
         entry_side = "buy" if direction == "LONG" else "sell"
         exit_side = "sell" if direction == "LONG" else "buy"
 
-        cons_entry = _adverse(float(next_entry["open"]), entry_side, slippage_pct)
-        cons_exit = _adverse(float(next_exit["open"]), exit_side, slippage_pct)
+        cons_entry = _adverse(float(next_entry["open"]), entry_side, slippage_pct, spread_bps)
+        cons_exit = _adverse(float(next_exit["open"]), exit_side, slippage_pct, spread_bps)
 
         # Gross P&L dollars (no costs, just fill delta)
         dir_sign = 1.0 if direction == "LONG" else -1.0
@@ -153,10 +158,15 @@ def summarize(df: pd.DataFrame) -> dict:
 
 
 def write_report(df: pd.DataFrame, summary: dict, out_path: Path,
-                 trades_path: Path, slippage_pct: float) -> None:
+                 trades_path: Path, slippage_pct: float,
+                 spread_bps: float = 0.0) -> None:
     lines = []
     lines.append(f"# Paper-vs-backtest reconcile — {trades_path.name}\n")
-    lines.append(f"**Slippage model:** ConservativeFillModel, {slippage_pct * 100:.3f}% adverse slippage on next-bar-open fills.\n")
+    lines.append(
+        f"**Slippage model:** ConservativeFillModel, next-bar-open fills with "
+        f"{slippage_pct * 100:.3f}% extra slippage + {spread_bps:.2f} bps spread "
+        f"(§0.7 G3, asymmetric buyer/seller).\n"
+    )
     lines.append("**Interpretation:** negative delta_$ = conservative model would have been worse than the backtest's ideal fill.\n")
     lines.append("## Aggregate\n")
     lines.append("| metric | value |")
@@ -184,17 +194,21 @@ def main():
                     default=Path(__file__).resolve().parents[1] / "data/market")
     ap.add_argument("--slippage-pct", type=float, default=0.0005,
                     help="adverse slippage on next-bar-open fills (default 0.05%%)")
+    ap.add_argument("--spread-bps", type=float, default=1.0,
+                    help="§0.7 G3 bid-ask spread in bps stacked on slippage "
+                         "(default 1.0 = SPY/QQQ v1)")
     ap.add_argument("--out", type=Path, default=None,
                     help="write markdown report to this path")
     args = ap.parse_args()
 
-    df = reconcile(args.trades_parquet, args.bars_dir, args.slippage_pct)
+    df = reconcile(args.trades_parquet, args.bars_dir, args.slippage_pct, args.spread_bps)
     summary = summarize(df)
     print("\n=== Aggregate ===")
     for k, v in summary.items():
         print(f"  {k}: {v}")
     if args.out:
-        write_report(df, summary, args.out, args.trades_parquet, args.slippage_pct)
+        write_report(df, summary, args.out, args.trades_parquet,
+                     args.slippage_pct, args.spread_bps)
     else:
         print("\n=== First 10 trades ===")
         print(df.head(10).to_string())
