@@ -99,21 +99,36 @@ class IdealFillModel:
 
 
 class ConservativeFillModel:
-    """Next-bar-open fills with extra adverse slippage.
+    """Next-bar-open fills with adverse slippage + bid-ask spread.
 
     - Stops and TPs that trigger on the current bar fill at the NEXT bar's open
       (if provided) instead of the target price — the signal fires late.
-    - Additional slippage = `extra_slippage_pct` of the fill price, always adverse
-      to the trade direction.
+    - Two adverse components layered on the base fill price:
+        * `extra_slippage_pct` — generic adverse (market impact + latency).
+        * `spread_bps` — §0.7 G3 bid-ask spread crossed per market order
+          (1-2 bps SPY/QQQ v1). Asymmetry: LONG exit receives bid (down),
+          SHORT exit pays ask (up).
     - If no `next_bar`, falls back to the ideal target price (end-of-data edge case).
     """
 
-    def __init__(self, extra_slippage_pct: float = 0.0005):
+    def __init__(
+        self,
+        extra_slippage_pct: float = 0.0005,
+        spread_bps: float = 1.0,
+    ):
         # 0.05% ≈ double the default cost-model slippage in `backend.backtest.costs`
+        if extra_slippage_pct < 0:
+            raise ValueError(f"extra_slippage_pct must be >= 0, got {extra_slippage_pct}")
+        if spread_bps < 0:
+            raise ValueError(f"spread_bps must be >= 0, got {spread_bps}")
         self.extra_slippage_pct = extra_slippage_pct
+        self.spread_bps = spread_bps
 
     def _apply_adverse_slippage(self, base_price: float, direction: str) -> tuple[float, float]:
-        adj = base_price * self.extra_slippage_pct
+        # §0.7 G3 — total adverse per fill = generic slippage + bid-ask spread.
+        # spread_bps is in basis points of the base price (1 bp = 0.0001).
+        total_pct = self.extra_slippage_pct + (self.spread_bps / 10_000.0)
+        adj = base_price * total_pct
         if direction == "LONG":
             # on exit (stop/tp), LONG sells → adverse = sold cheaper → price down
             return base_price - adj, adj
