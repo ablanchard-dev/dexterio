@@ -113,6 +113,61 @@ def allocate_vol_target(
     return {t: float(base_weights.get(t, 0.0) * scale) for t in tickers}
 
 
+def apply_vix_regime_overlay(
+    weights: Dict[str, float],
+    vix_series: pd.Series,
+    as_of: pd.Timestamp,
+    *,
+    fertile_range: tuple = (15.0, 25.0),
+    panic_threshold: float = 30.0,
+    low_vol_threshold: float = 13.0,
+    scale_outside_fertile: float = 0.5,
+    scale_panic: float = 0.0,
+) -> Dict[str, float]:
+    """VIX regime overlay (§0.4-bis fertile 15-25).
+
+    - VIX in fertile range [15, 25] → keep weights as-is (full risk-on)
+    - VIX < low_vol_threshold (e.g. <13) → scale down (too complacent, reversal risk)
+    - VIX >= panic_threshold (>=30) → scale to 0 (deleverage)
+    - VIX 25-30 → proportional scale down (linear interpolation)
+
+    Reads VIX prior-day close (lookup as_of index in vix_series, one-day lag
+    to avoid lookahead).
+    """
+    if vix_series.empty:
+        return weights
+    try:
+        # Use prior day's VIX (merge_asof style)
+        vix_idx = vix_series.index.get_indexer([as_of], method="pad")[0]
+        if vix_idx < 0:
+            return weights
+        vix_now = float(vix_series.iloc[vix_idx])
+    except (KeyError, IndexError):
+        return weights
+    if pd.isna(vix_now):
+        return weights
+
+    lo, hi = fertile_range
+    if lo <= vix_now <= hi:
+        scale = 1.0  # fertile — full exposure
+    elif vix_now < low_vol_threshold:
+        scale = scale_outside_fertile  # low vol — reduce (reversal risk)
+    elif vix_now >= panic_threshold:
+        scale = scale_panic  # panic — deleverage
+    elif hi < vix_now < panic_threshold:
+        # Linear interpolation between hi (scale=1) and panic (scale=0).
+        span = panic_threshold - hi
+        t = (vix_now - hi) / span
+        scale = 1.0 - t
+    else:
+        # Between low_vol_threshold and lo : interpolate
+        span = lo - low_vol_threshold
+        t = (vix_now - low_vol_threshold) / span if span > 0 else 1.0
+        scale = scale_outside_fertile + t * (1.0 - scale_outside_fertile)
+
+    return {t: float(w * scale) for t, w in weights.items()}
+
+
 def allocate_risk_parity(
     prices: pd.DataFrame,
     as_of: pd.Timestamp,
@@ -167,6 +222,7 @@ class PortfolioAllocator:
         jt_lookback: int = 12,
         jt_skip: int = 1,
         jt_top_n: int = 3,
+        vix_series: Optional[pd.Series] = None,
     ) -> AllocationResult:
         """Run the chosen allocation method + optional overlays (vol_target)."""
         if method == "equal_weight":
@@ -202,7 +258,15 @@ class PortfolioAllocator:
                         target_annual_vol=target_annual_vol,
                         base_weights=weights,
                     )
-                elif ov not in ("vol_target",):
+                elif ov == "vix_regime":
+                    if vix_series is None:
+                        raise ValueError(
+                            "vix_regime overlay requires vix_series kwarg"
+                        )
+                    weights = apply_vix_regime_overlay(
+                        weights, vix_series, as_of,
+                    )
+                elif ov not in ("vol_target", "vix_regime"):
                     raise ValueError(f"Unknown overlay: {ov!r}")
 
         total = sum(weights.values())
