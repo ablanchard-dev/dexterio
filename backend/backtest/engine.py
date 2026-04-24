@@ -132,6 +132,15 @@ class BacktestEngine:
         # precomputed k3 pivots + HTF bias) = separate bar-loop stage, pending
         # full integration into the dual-symbol coordination layer.
         from engines.smt_driver import SMTDriver
+        # pre_sweep_window_minutes=30 : default maintenu post-smoke v5 iter3.
+        # Tentative v5 (120 min) a produit gate_pre_sweep_pass=0 identique à
+        # v4 (30 min) — le lifecycle total state machine (POOL_SWEEPED 150
+        # + STRUCTURE_OBSERVABLE 100 + SMT_SIGNAL_EMITTED 30 = 280 min) excède
+        # toute fenêtre raisonnable. Le pre_sweep_gate tel que spéc'd TRUE
+        # `BdBxXKGWVjk` était pour IFVG entry (fraîcheur sweep), pas pour
+        # SMT dont la fraîcheur est déjà enforcée par le state machine
+        # lifecycle interne. Refactor future : bypass pre_sweep_gate pour
+        # SMT path (spec mismatch documenté dans dossier pièce H).
         self.smt_driver = SMTDriver(pair=("SPY", "QQQ"))
         
         # Data (M1 Parquet -> Candles multi-TF)
