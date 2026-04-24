@@ -119,6 +119,20 @@ class BacktestEngine:
         # fires; standard playbook_evaluator picks it up via APLUS01@1m.
         from engines.aplus01_driver import Aplus01Driver
         self.aplus01_driver = Aplus01Driver()
+
+        # §0.5bis entrée #1 SMT Cross-Index driver (v4.0, 2026-04-24).
+        # Pair-level orchestrator (SPY, QQQ) : consumes HTF 4h/1h closes for
+        # pool bootstrap, then 5m bar ticks + pivots + HTF bias snapshot per
+        # symbol. On EMIT_SETUP, injects a synthetic ICTPattern(pattern_type=
+        # 'smt_cross_index_sequence') for the lagging symbol. Playbook
+        # SMT_Divergence_SPY_QQQ_v1 matches via SMT_CROSS_INDEX@5m.
+        #
+        # HTF bootstrap is wired below in _process_bar_optimized (on 4h/1h close).
+        # Pair-level 5m tick (both SPY + QQQ bars required simultaneously +
+        # precomputed k3 pivots + HTF bias) = separate bar-loop stage, pending
+        # full integration into the dual-symbol coordination layer.
+        from engines.smt_driver import SMTDriver
+        self.smt_driver = SMTDriver(pair=("SPY", "QQQ"))
         
         # Data (M1 Parquet -> Candles multi-TF)
         self.data: Dict[str, pd.DataFrame] = {}
@@ -1230,6 +1244,34 @@ class BacktestEngine:
                 self.aplus01_driver.on_5m_close(symbol, current_time, candles_5m, det_5m)
             except Exception as e:
                 logger.warning(f"[APLUS01] on_5m_close failed for {symbol}: {e}")
+
+            # §0.5bis #1 SMT — register HTF 4h / 1h bar-close high/low as
+            # fresh pool candidates. Sweep detection and pair-level setup
+            # emission are handled by the pair-coordination stage (separate
+            # from this per-symbol loop). The HTF bootstrap call is safe to
+            # make per-symbol (tracker dedupes by id, and only accepts SPY/QQQ).
+            if htf_events.get("is_close_4h") and len(candles_4h) > 0:
+                last_4h = candles_4h[-1]
+                try:
+                    self.smt_driver.on_htf_bar_close(
+                        symbol=symbol, tf="4h",
+                        bar_high=float(last_4h.high),
+                        bar_low=float(last_4h.low),
+                        bar_close_ts=current_time,
+                    )
+                except Exception as e:
+                    logger.warning(f"[SMT] on_htf_bar_close 4h failed for {symbol}: {e}")
+            if htf_events.get("is_close_1h") and len(candles_1h) > 0:
+                last_1h = candles_1h[-1]
+                try:
+                    self.smt_driver.on_htf_bar_close(
+                        symbol=symbol, tf="1h",
+                        bar_high=float(last_1h.high),
+                        bar_low=float(last_1h.low),
+                        bar_close_ts=current_time,
+                    )
+                except Exception as e:
+                    logger.warning(f"[SMT] on_htf_bar_close 1h failed for {symbol}: {e}")
 
         # Aplus_01 1m confirm — runs every bar; emits a synthetic ICTPattern when
         # the cascade fires. The synthetic pattern joins ict_1m so the standard
