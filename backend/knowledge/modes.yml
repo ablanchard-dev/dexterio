@@ -34,6 +34,11 @@ aggressive_allowlist:
   # --- Sprint 1 LAB candidate REMOVED post-smoke (2026-04-22) ---
   # - Aplus_01_full_v1                      # SMOKE_FAIL nov_w4 (n=1 < 10, peak_R 0.89 < 1R, E[R]=-0.003)
   #                                         # → ARCHIVED, see aplus01_full_v1_smoke_nov_w4_verdict.md
+  # --- §0.5bis entrée #1 SMT (v4.0 plan, 2026-04-24) — IMPLEMENTED v8.5 ---
+  - SMT_Divergence_SPY_QQQ_v1               # 1st dual-asset playbook, pipeline end-to-end fonctionnel,
+                                            # Stage 1 4w smoke SMOKE_INCONCLUSIVE Cas A1 (3 canonical signals,
+                                            # 1 emit_setup oct_w2). ALLOWLIST required pour obtenir trades
+                                            # réels post-fix match→create gap (v8.5 fallback_rr).
 
 aggressive_denylist:
   # --- Destructive / proven negative ---
