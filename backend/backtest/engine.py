@@ -3703,6 +3703,16 @@ class BacktestEngine:
                 "htf_alignment_stats": dict(
                     getattr(self.setup_engine, "_htf_gate_stats", {}) or {}
                 ),
+                # §0.5bis entrée #1 SMT instrumentation counters (v4.0). Surfaced
+                # here for offline localization : if pair_tick_fired=0 → pair-coord
+                # bug ; pool_sweeped=0 but pair_tick_fired>0 → HTF sweep genuinely
+                # rare ; signal_detected=0 but state_structure_observable>0 →
+                # divergence rare ; emit_setup=0 but signal_detected>0 → gate
+                # cascade bloquant (see individual gate_*_pass counters).
+                "smt_driver_counters": (
+                    self.smt_driver.get_counters()
+                    if hasattr(self, "smt_driver") else {}
+                ),
             }
             
             # Convertir les dict en dict simples pour JSON

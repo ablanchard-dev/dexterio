@@ -92,6 +92,21 @@ class SMTDriver:
         self._pre_sweep_window_minutes = pre_sweep_window_minutes
         self._emit_count = 0
         self._last_emission: Optional[ICTPattern] = None
+        # Instrumentation counters (persisted to debug_counts by BacktestEngine).
+        # Written once per on_5m_bar call to localize where signals drop out.
+        self._counters: Dict[str, int] = {
+            "pair_tick_fired": 0,
+            "htf_pool_sweeped": 0,
+            "state_pool_sweeped": 0,
+            "state_structure_observable": 0,
+            "signal_detected": 0,
+            "state_smt_signal_emitted": 0,
+            "gate_macro_kill_zone_pass": 0,
+            "gate_daily_profile_pass": 0,
+            "gate_pre_sweep_pass": 0,
+            "gate_bias_aligned_pass": 0,
+            "emit_setup": 0,
+        }
 
     # -- HTF pool bootstrap ---------------------------------------------
 
@@ -157,6 +172,8 @@ class SMTDriver:
           6. If SMT_SIGNAL_EMITTED, try gates + emit setup.
           7. On EMIT_SETUP, produce synthetic ICTPattern.
         """
+        self._counters["pair_tick_fired"] += 1
+
         # 1. Sweep detection per symbol.
         swept_by_symbol: Dict[str, List[str]] = {}
         pool_state_by_id: Dict[str, Pool] = {}
@@ -176,6 +193,14 @@ class SMTDriver:
                     pool_state_by_id[pid] = p
 
         # 2. Forward HTF sweep events to SMT tracker.
+        # Count any HTF (4h/1h) sweep regardless of whether tracker is idle
+        # (diagnostic — shows how often HTF pools get touched in the corpus).
+        for sym in self._pair:
+            for pid in swept_by_symbol.get(sym, []):
+                p = pool_state_by_id.get(pid)
+                if p is None or p.tf not in ("4h", "1h"):
+                    continue
+                self._counters["htf_pool_sweeped"] += 1
         if self._tracker.state == SMTState.IDLE:
             for sym in self._pair:
                 for pid in swept_by_symbol.get(sym, []):
@@ -186,6 +211,7 @@ class SMTDriver:
                         swept_pool_ids=[pid], symbol=sym, tf=p.tf, bar_ts=bar_ts
                     )
                     if self._tracker.state == SMTState.POOL_SWEEPED:
+                        self._counters["state_pool_sweeped"] += 1
                         break
                 if self._tracker.state == SMTState.POOL_SWEEPED:
                     break
@@ -197,6 +223,8 @@ class SMTDriver:
                 pivots_k3, sweep_ts
             ):
                 self._tracker.advance_to_structure_observable(bar_ts)
+                if self._tracker.state == SMTState.STRUCTURE_OBSERVABLE:
+                    self._counters["state_structure_observable"] += 1
 
         # 4. Run SMT detection.
         if self._tracker.state == SMTState.STRUCTURE_OBSERVABLE:
@@ -219,7 +247,10 @@ class SMTDriver:
                 sweep_ts=self._tracker.pool_sweep_ts,
             )
             if signal is not None:
+                self._counters["signal_detected"] += 1
                 self._tracker.on_signal(signal, bar_ts)
+                if self._tracker.state == SMTState.SMT_SIGNAL_EMITTED:
+                    self._counters["state_smt_signal_emitted"] += 1
 
         # 5. Tick bar (timeouts + rollover).
         tick_out = self._tracker.on_bar_tick(bar_ts)
@@ -245,6 +276,17 @@ class SMTDriver:
         # bias is directional, which is what makes the SMT reversal meaningful).
         bias_aligned = self._is_bias_aligned_for_signal(htf_bias)
 
+        # Count individual gate outcomes BEFORE the AND-combination in try_emit_setup,
+        # to allow localization of blocking gate(s).
+        if macro_kill_zone_pass:
+            self._counters["gate_macro_kill_zone_pass"] += 1
+        if daily_profile_allowed:
+            self._counters["gate_daily_profile_pass"] += 1
+        if pre_sweep_ok:
+            self._counters["gate_pre_sweep_pass"] += 1
+        if bias_aligned:
+            self._counters["gate_bias_aligned_pass"] += 1
+
         out = self._tracker.try_emit_setup(
             bar_ts=bar_ts,
             htf_bias_aligned=bias_aligned,
@@ -256,6 +298,7 @@ class SMTDriver:
         # 7. Synthesize ICTPattern on emit.
         if out.state != SMTState.EMIT_SETUP or out.setup is None:
             return None
+        self._counters["emit_setup"] += 1
         return self._synthesize_ict_pattern(out.setup, bar_ts)
 
     def _synthesize_ict_pattern(
@@ -307,14 +350,27 @@ class SMTDriver:
         pivots_k3: Dict[str, Sequence[Any]],
         sweep_ts: datetime,
     ) -> bool:
-        """True iff each symbol has ≥ 1 high pivot AND ≥ 1 low pivot
-        post-sweep_ts. Minimum structure required for classify_last_pivot.
+        """True iff each symbol has enough post-sweep structure for
+        classify_last_pivot() to return HH/LH/HL/LL (i.e. ≥ 2 same-type
+        pivots in the post-sweep window).
+
+        The function needs **2 high pivots OR 2 low pivots** per symbol
+        because `classify_last_pivot` compares the latest pivot against
+        the previous pivot of the same type. A single high + single low
+        is insufficient (cannot classify relative to a predecessor of
+        the same type).
+
+        Fix 2026-04-24 post-smoke instrumentation (nov_w4 counter
+        state_structure_observable=6 but signal_detected=0 → prior
+        permissive criterion ≥1 high AND ≥1 low advanced prematurely,
+        then classify_last_pivot returned None on both sides).
         """
         for sym_pivots in pivots_k3.values():
             post = [p for p in sym_pivots if p.timestamp >= sweep_ts]
             highs = [p for p in post if p.type == "high"]
             lows = [p for p in post if p.type == "low"]
-            if not highs or not lows:
+            # Need ≥2 of AT LEAST one type (either 2 highs or 2 lows).
+            if len(highs) < 2 and len(lows) < 2:
                 return False
         return True
 
@@ -347,6 +403,11 @@ class SMTDriver:
     @property
     def last_emission(self) -> Optional[ICTPattern]:
         return self._last_emission
+
+    def get_counters(self) -> Dict[str, int]:
+        """Return a copy of instrumentation counters. Called by BacktestEngine
+        at end-of-run to persist into debug_counts for offline localization."""
+        return dict(self._counters)
 
     def reset(self) -> None:
         self._tracker = SMTCrossIndexTracker(pair=self._pair)
