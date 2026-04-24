@@ -55,8 +55,14 @@
     htf_bias_allowed:
     - bullish
     - bearish
-    # Neutral HTF bias rejected — SMT exige un bias directionnel pour aligner
-    # la signal avec la structure macro.
+    - neutral
+    # v8.2 relaxation (2026-04-24) : neutral accepté. Rationale : HTF bias
+    # structure_k9_7step retourne 'neutral' systématiquement sur TimeframeAggregator
+    # short 4h window (k9 pivots sparse 0-2 pivots sur 30-60 bars). Architectural
+    # Cas A §20 — infra gap que §0.B.3 ne peut pas résoudre seul. Gate driver
+    # _is_bias_aligned_for_signal aligné (v8.2). SMT signal carries directional
+    # info via leading/lagging identification — bias is refinement, not
+    # requirement.
     day_type_allowed:
     - manipulation_reversal
     - manipulation_reversal_continuation
