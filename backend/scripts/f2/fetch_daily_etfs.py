@@ -14,7 +14,11 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
-TICKERS = ["SPY", "QQQ", "IWM", "DIA", "EFA", "EEM"]
+TICKERS = [
+    "SPY", "QQQ", "IWM", "DIA", "EFA", "EEM",  # v1 initial univers (equities)
+    "GLD", "TLT", "FXI",                        # v2 extension : gold, bonds, china
+    "^VIX",                                      # v2 regime overlay
+]
 OUT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "f2_daily"
 START = "2023-01-01"
 END = "2025-11-30"
@@ -31,7 +35,9 @@ def fetch_and_save(ticker: str) -> int:
     df.index.name = "date"
     df = df.reset_index()
     df["ticker"] = ticker
-    path = OUT_DIR / f"{ticker}_1d.parquet"
+    # ^VIX → VIX filename (no caret on disk)
+    safe_name = ticker.replace("^", "")
+    path = OUT_DIR / f"{safe_name}_1d.parquet"
     df.to_parquet(path, index=False)
     print(f"{ticker}: {len(df)} bars → {path}")
     return len(df)

@@ -83,6 +83,7 @@ def run_backtest(
     overlays: Optional[Sequence[str]] = None,
     rebalance_freq_days: int = 21,
     warmup_days: int = 252,
+    transaction_cost_bps: float = 0.0,
     **allocator_kwargs,
 ) -> tuple[pd.Series, BacktestMetrics, List[AllocationResult]]:
     """Run a rolling-rebalance backtest.
@@ -112,6 +113,8 @@ def run_backtest(
     current_weights: Dict[str, float] = {}
     current_equity = 1.0
     cash_weights: List[float] = []
+    total_turnover = 0.0
+    tc_rate = transaction_cost_bps / 10000.0  # bps → decimal
 
     for i, idx in enumerate(range(start_idx, len(dates))):
         date = dates[idx]
@@ -122,7 +125,18 @@ def run_backtest(
                 method=method, overlays=overlays,
                 **allocator_kwargs,
             )
-            current_weights = result.weights
+            new_weights = result.weights
+            # Turnover-based transaction cost (slippage + commission).
+            # Cost = Σ |new_w - old_w| × tc_rate, applied to equity.
+            if tc_rate > 0 and current_weights:
+                all_tickers = set(new_weights.keys()) | set(current_weights.keys())
+                turnover = sum(
+                    abs(new_weights.get(t, 0.0) - current_weights.get(t, 0.0))
+                    for t in all_tickers
+                )
+                total_turnover += turnover
+                current_equity *= (1.0 - turnover * tc_rate)
+            current_weights = new_weights
             cash_weights.append(result.cash_weight)
             allocation_history.append(result)
         # Compute daily return from current weights.
