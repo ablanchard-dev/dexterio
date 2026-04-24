@@ -295,18 +295,25 @@ class SMTDriver:
         if self._tracker.state != SMTState.SMT_SIGNAL_EMITTED:
             return None
 
-        # Pre-sweep gate : sweep must be within window_minutes of current bar.
-        pre_sweep_ok = check_pre_sweep_gate(
-            sweep_event_ts=self._tracker.pool_sweep_ts,
-            current_ts=bar_ts,
-            max_window_minutes=self._pre_sweep_window_minutes,
-        )
+        # §0.5bis entrée #1 v4.0 refactor 2026-04-24 : bypass pre_sweep_gate
+        # for SMT path. The pre_sweep_gate was spec'd for IFVG entry (TRUE
+        # `BdBxXKGWVjk` : IFVG flip requires fresh pool sweep within N min).
+        # SMT divergence has a fundamentally different horizon :
+        #   POOL_SWEEPED timeout 150 min + STRUCTURE_OBSERVABLE 100 min +
+        #   SMT_SIGNAL_EMITTED 30 min = 280 min total state machine lifecycle.
+        # The tracker's internal timeouts ALREADY enforce freshness via state
+        # chain expiry — adding pre_sweep_gate on top is redundant and
+        # architecturally blocks emission for SMT (empirically : v4+v5 smoke
+        # nov_w4 produced signal_detected=1 but gate_pre_sweep_pass=0).
+        # We pass True unconditionally to try_emit_setup. The
+        # check_pre_sweep_gate helper remains available in fvg_stacking.py
+        # for IFVG-specific playbooks that need it.
+        pre_sweep_ok = True
 
-        # HTF bias alignment : use the *leading* symbol's bias for the SHORT
-        # signal (bear divergence) or the lagging's bias for LONG (bull).
-        # Convention : signal direction SHORT → leading was the counter-trend
-        # LH ; we require leading's bias to be non-neutral (i.e. the structural
-        # bias is directional, which is what makes the SMT reversal meaningful).
+        # HTF bias alignment : use the leading symbol's bias (non-neutral
+        # required — SMT divergence against a directional macro bias is the
+        # canonical reversal signal). _is_bias_aligned_for_signal reads the
+        # tracker's locked signal to know which symbol is leading.
         bias_aligned = self._is_bias_aligned_for_signal(htf_bias)
 
         # Count individual gate outcomes BEFORE the AND-combination in try_emit_setup,
