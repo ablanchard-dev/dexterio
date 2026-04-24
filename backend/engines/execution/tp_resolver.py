@@ -50,11 +50,15 @@ from __future__ import annotations
 from typing import Any, Mapping, Optional, Sequence
 
 from engines.features.pivot import Pivot
+from engines.features.pool_freshness_tracker import Pool
 
 _DIRECTION_LONG = "LONG"
 _DIRECTION_SHORT = "SHORT"
 
-_ALLOWED_TP_LOGIC = {"fixed_rr", "liquidity_draw"}
+# §0.B.1 NEW: `smt_completion` = attached swing H/L of the pool swept by the
+# SMT-triggering move (canon TRUE `FJch02ucIO8`). 3rd structural TP type,
+# requires `smt_completion_price` in tp_logic_params from §0.B.2 smt_htf detector.
+_ALLOWED_TP_LOGIC = {"fixed_rr", "liquidity_draw", "smt_completion"}
 _ALLOWED_DRAW_TYPES = {"swing_k3", "swing_k9"}
 _DRAW_TYPE_TO_PIVOT_KEY = {"swing_k3": "k3", "swing_k9": "k9"}
 _ALLOWED_POOL_SELECTION = {"nearest", "significant"}
@@ -77,12 +81,18 @@ def resolve_tp_price(
     direction: str,
     bars: Sequence[Any],
     structure_pivots: Optional[Mapping[str, Sequence[Pivot]]] = None,
+    fresh_pools: Optional[Sequence[Pool]] = None,
 ) -> tuple[float, str]:
     """Return `(tp_price, reason)`.
 
     Args:
-        tp_logic: one of `fixed_rr`, `liquidity_draw`.
-        tp_logic_params: opaque YAML dict (see module docstring).
+        tp_logic: one of `fixed_rr`, `liquidity_draw`, `smt_completion` (§0.B.1).
+        tp_logic_params: opaque YAML dict (see module docstring). For
+            `smt_completion`, must include `smt_completion_price: float`.
+            §0.B.1 params: `pool_tf` (Sequence[str] filter for fresh_pools),
+            `require_unsweeped_since` (str, contract passthrough),
+            `require_reaction_confirmation` (bool, contract passthrough),
+            `pool_source_hierarchy` (Sequence[str], ranks fresh_pools TFs).
         tp1_rr: legacy fixed-RR multiple (used by `fixed_rr` and as sanity input).
         entry_price: the resolved entry (post entry_gate).
         sl_price: the resolved stop-loss (structural SL from setup_engine_v2).
@@ -92,6 +102,10 @@ def resolve_tp_price(
               OHLC itself.
         structure_pivots: mapping `"k1"|"k3"|"k9" -> list[Pivot]` produced by
               `features.directional_change.detect_structure_multi_scale`.
+        fresh_pools: §0.B.1 NEW. Sequence of unswept Pool objects from
+              PoolFreshnessTracker.get_fresh_pools(). If provided for
+              tp_logic=liquidity_draw, used as primary candidates filtered by
+              `pool_tf`. Falls back to structure_pivots if empty/None.
     """
     if tp_logic not in _ALLOWED_TP_LOGIC:
         raise ValueError(
@@ -109,6 +123,40 @@ def resolve_tp_price(
 
     if tp_logic == "fixed_rr":
         return _fixed_rr(entry_price, sl_distance, tp1_rr, dir_up), "fixed_rr"
+
+    # §0.B.1 NEW — tp_logic == "smt_completion"
+    # Attached swing H/L of the pool swept by the SMT-triggering move. Canon
+    # TRUE `FJch02ucIO8` "SMT completion". Requires smt_completion_price in
+    # params (supplied by §0.B.2 smt_htf detector's ICTPattern output).
+    if tp_logic == "smt_completion":
+        params = dict(tp_logic_params or {})
+        smt_price_raw = params.get("smt_completion_price")
+        fallback_rr = float(params.get("fallback_rr", _DEFAULT_FALLBACK_RR))
+        reject_on_fallback = bool(params.get("reject_on_fallback", False))
+        if smt_price_raw is None:
+            reason = "fallback_rr_no_smt_completion"
+            if reject_on_fallback:
+                reason = "reject_on_fallback_no_smt_completion"
+            return (
+                _tp_from_rr(entry_price, sl_distance, fallback_rr, dir_up),
+                reason,
+            )
+        smt_price = float(smt_price_raw)
+        # Sanity: the smt_completion_price must be on the trade-direction side.
+        # If it's on the wrong side (behind entry), fall back.
+        on_correct_side = (
+            (dir_up == _DIRECTION_LONG and smt_price > entry_price)
+            or (dir_up == _DIRECTION_SHORT and smt_price < entry_price)
+        )
+        if not on_correct_side:
+            reason = "fallback_rr_no_smt_completion"
+            if reject_on_fallback:
+                reason = "reject_on_fallback_no_smt_completion"
+            return (
+                _tp_from_rr(entry_price, sl_distance, fallback_rr, dir_up),
+                reason,
+            )
+        return smt_price, "smt_completion"
 
     # tp_logic == "liquidity_draw"
     params = dict(tp_logic_params or {})
@@ -137,6 +185,43 @@ def resolve_tp_price(
         float(max_rr_ceiling_raw) if max_rr_ceiling_raw is not None else None
     )
     reject_on_fallback = bool(params.get("reject_on_fallback", False))
+
+    # §0.B.1 NEW — optional fresh_pools path.
+    # If caller supplied fresh_pools (filtered via PoolFreshnessTracker), use
+    # them as primary candidates. TF filter via `pool_tf`; ranking via
+    # `pool_source_hierarchy`. Empty after filtering → fall through to
+    # legacy structure_pivots path (backward compat).
+    pool_tf_filter = params.get("pool_tf")
+    pool_source_hierarchy = params.get("pool_source_hierarchy")
+    if fresh_pools:
+        pool_price, verdict, pool_tf_used = _select_fresh_pool(
+            fresh_pools,
+            entry_price=entry_price,
+            sl_distance=sl_distance,
+            direction=dir_up,
+            min_rr_floor=min_rr_floor,
+            max_rr_ceiling=max_rr_ceiling,
+            pool_selection=pool_selection,
+            tf_filter=pool_tf_filter,
+            tf_hierarchy=pool_source_hierarchy,
+        )
+        if reject_on_fallback and verdict != "pool":
+            return (
+                _tp_from_rr(entry_price, sl_distance, fallback_rr, dir_up),
+                f"reject_on_fallback_{verdict}",
+            )
+        if verdict == "pool":
+            assert pool_price is not None and pool_tf_used is not None
+            return pool_price, f"liquidity_draw_pool_{pool_tf_used}"
+        if verdict == "beyond_ceiling":
+            return (
+                _tp_from_rr(entry_price, sl_distance, fallback_rr, dir_up),
+                "fallback_rr_pool_beyond_ceiling",
+            )
+        if verdict == "below_floor":
+            floor_price = _tp_from_rr(entry_price, sl_distance, min_rr_floor, dir_up)
+            return floor_price, "fallback_rr_min_floor_binding"
+        # verdict == "no_pool" — fall through to legacy structure_pivots path.
 
     # draw_type -> pivot scale (k3 or k9).
     pivot_key = _DRAW_TYPE_TO_PIVOT_KEY[draw_type]
@@ -196,6 +281,121 @@ def _tp_from_rr(entry: float, sl_dist: float, rr: float, direction: str) -> floa
     if direction == _DIRECTION_LONG:
         return entry + sl_dist * rr
     return entry - sl_dist * rr
+
+
+# §0.B.1 NEW — default TF priority matches PoolFreshnessTracker._TF_PRIORITY.
+# Higher-priority TFs appear earlier. Used when pool_source_hierarchy is None.
+_DEFAULT_TF_HIERARCHY: tuple[str, ...] = (
+    "prev_W", "4h", "prev_D", "1h", "15m", "5m", "1m",
+    "london", "asian", "premarket", "ny_session", "prev_session",
+)
+
+
+def _tf_rank(tf: str, hierarchy: Sequence[str]) -> int:
+    """Return rank of tf in hierarchy (lower = higher priority). Unknown → end."""
+    for i, h in enumerate(hierarchy):
+        if h == tf:
+            return i
+    return len(hierarchy)
+
+
+def _select_fresh_pool(
+    pools: Sequence[Pool],
+    *,
+    entry_price: float,
+    sl_distance: float,
+    direction: str,
+    min_rr_floor: float,
+    max_rr_ceiling: Optional[float],
+    pool_selection: str,
+    tf_filter: Optional[Sequence[str]] = None,
+    tf_hierarchy: Optional[Sequence[str]] = None,
+) -> tuple[Optional[float], str, Optional[str]]:
+    """§0.B.1 select a fresh Pool for TP placement.
+
+    Returns (price, verdict, tf_used). Verdict values match `_select_pool`:
+    "pool" / "no_pool" / "below_floor" / "beyond_ceiling".
+
+    Filters applied in order:
+        1. direction (LONG → HIGH pools only; SHORT → LOW pools only).
+        2. tf_filter (if provided) — pool.tf must be in the set.
+        3. pool.price must be strictly past entry (same direction guard as
+           `_select_pool`).
+        4. pool_selection (nearest / significant) applied to remaining
+           candidates, broken ties by TF priority.
+
+    TF hierarchy: defaults to _DEFAULT_TF_HIERARCHY (matches canon TRUE
+    `pKIo-aVic-c`: 4H > 1H > 15m > ... ; prev_W highest via
+    PoolFreshnessTracker ordering).
+    """
+    if not pools:
+        return None, "no_pool", None
+
+    hierarchy = tf_hierarchy if tf_hierarchy is not None else _DEFAULT_TF_HIERARCHY
+    tf_set = frozenset(tf_filter) if tf_filter is not None else None
+
+    target_kind = "high" if direction == _DIRECTION_LONG else "low"
+    filtered: list[Pool] = []
+    for p in pools:
+        if p.kind != target_kind:
+            continue
+        if tf_set is not None and p.tf not in tf_set:
+            continue
+        past_entry = (
+            (direction == _DIRECTION_LONG and p.price > entry_price)
+            or (direction == _DIRECTION_SHORT and p.price < entry_price)
+        )
+        if not past_entry:
+            continue
+        filtered.append(p)
+
+    if not filtered:
+        return None, "no_pool", None
+
+    floor_price = _tp_from_rr(entry_price, sl_distance, min_rr_floor, direction)
+
+    if pool_selection == "nearest":
+        # Nearest price to entry; tiebreak by TF priority (higher rank wins on tie).
+        filtered.sort(
+            key=lambda p: (
+                abs(p.price - entry_price),
+                _tf_rank(p.tf, hierarchy),
+            )
+        )
+        pick = filtered[0]
+        if _closer_to_entry_than(pick.price, floor_price, direction=direction):
+            return None, "below_floor", None
+        return pick.price, "pool", pick.tf
+
+    # pool_selection == "significant"
+    assert max_rr_ceiling is not None
+    ceiling_price = _tp_from_rr(
+        entry_price, sl_distance, max_rr_ceiling, direction
+    )
+    in_band = [
+        p
+        for p in filtered
+        if not _closer_to_entry_than(p.price, floor_price, direction=direction)
+        and not _farther_from_entry_than(p.price, ceiling_price, direction=direction)
+    ]
+    if in_band:
+        # Farthest from entry (highest for LONG, lowest for SHORT), tiebreak by TF.
+        in_band.sort(
+            key=lambda p: (
+                -abs(p.price - entry_price),
+                _tf_rank(p.tf, hierarchy),
+            )
+        )
+        pick = in_band[0]
+        return pick.price, "pool", pick.tf
+
+    any_below_floor = any(
+        _closer_to_entry_than(p.price, floor_price, direction=direction)
+        for p in filtered
+    )
+    if any_below_floor:
+        return None, "below_floor", None
+    return None, "beyond_ceiling", None
 
 
 def _select_pool(
