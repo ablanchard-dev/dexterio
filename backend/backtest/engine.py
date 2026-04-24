@@ -969,6 +969,16 @@ class BacktestEngine:
                 events = self.tf_aggregator.add_1m_candle(candle_1m)
                 htf_events[symbol] = events
             
+            # §0.5bis entrée #1 SMT — pair-level 5m coord tick (pre per-symbol).
+            # If SPY and QQQ both just closed their 5m bar for this current_time,
+            # run the SMT detection chain and stage any emission into
+            # self._smt_pending_patterns[lagging_symbol] for consumption during
+            # the per-symbol pass below.
+            try:
+                self._run_smt_pair_tick(current_time, htf_events)
+            except Exception as e:
+                logger.warning(f"[SMT] pair-tick failed at {current_time}: {e}")
+
             # 2) Générer au plus un setup par symbole pour cette minute
             candidate_setups: List[Setup] = []
             for symbol in self.config.symbols:
@@ -1088,6 +1098,141 @@ class BacktestEngine:
 
         return result
     
+    def _run_smt_pair_tick(
+        self, current_time: datetime, htf_events: Dict[str, Dict[str, bool]]
+    ) -> None:
+        """§0.5bis entrée #1 SMT — pair-level 5m coordination stage.
+
+        Called once per bar (before per-symbol iteration). When both SPY
+        and QQQ just closed a 5m bar at `current_time`, runs the SMT chain :
+            1. Gather last 5m bar per symbol.
+            2. Compute k3 pivots per symbol via directional_change.
+            3. Compute HTF bias snapshot per symbol (§0.B.3) — uses 4h
+               pivots as macro structure.
+            4. Derive attached_swing_prices : last k9 HTF pivot price per
+               symbol (proxy for pool-origin swing).
+            5. Check macro kill zone (§0.B.5).
+            6. Classify daily profile (§0.B.6) from today's 5m session bars.
+            7. Call smt_driver.on_5m_bar(). If emission, stage the synthetic
+               ICTPattern in self._smt_pending_patterns[lagging_symbol] ;
+               _process_bar_optimized consumes it on the matching symbol's
+               pass and appends to ict_5m.
+
+        Pair = ("SPY", "QQQ"). Requires both 5m closes at current_time ;
+        otherwise no-op.
+        """
+        pair = ("SPY", "QQQ")
+        if not all(s in self.config.symbols for s in pair):
+            return
+        both_5m_closed = all(
+            htf_events.get(s, {}).get("is_close_5m") for s in pair
+        )
+        if not both_5m_closed:
+            return
+
+        # Lazy imports (avoid circular at module load).
+        from engines.features.directional_change import detect_structure_multi_scale
+        from engines.features.htf_bias_structure import HTFBiasInputs, compute_htf_bias
+        from engines.features.daily_profile import classify_session_profile, is_profile_allowed
+        from engines.execution.entry_gates import check_macro_kill_zone
+
+        # 1. Gather last 5m bar per symbol + input series.
+        bars_5m_by_symbol = {}
+        bars_4h_by_symbol = {}
+        for s in pair:
+            c5 = self.tf_aggregator.get_candles(s, "5m")
+            c4h = self.tf_aggregator.get_candles(s, "4h")
+            if not c5 or not c4h:
+                return
+            bars_5m_by_symbol[s] = c5
+            bars_4h_by_symbol[s] = c4h
+
+        symbol_bars = {s: bars_5m_by_symbol[s][-1] for s in pair}
+
+        # 2. k3 pivots per symbol (via directional_change on last ~200 5m bars).
+        pivots_k3: Dict[str, Any] = {}
+        pivots_k9_htf: Dict[str, Any] = {}
+        for s in pair:
+            window_5m = bars_5m_by_symbol[s][-200:]
+            try:
+                multi = detect_structure_multi_scale(window_5m)
+                pivots_k3[s] = multi.get("k3", []) or []
+            except Exception:
+                pivots_k3[s] = []
+            window_4h = bars_4h_by_symbol[s][-60:]
+            try:
+                multi_htf = detect_structure_multi_scale(window_4h)
+                pivots_k9_htf[s] = multi_htf.get("k9", []) or []
+            except Exception:
+                pivots_k9_htf[s] = []
+
+        # 3. HTF bias snapshot per symbol (§0.B.3).
+        htf_bias: Dict[str, Any] = {}
+        for s in pair:
+            last_4h = bars_4h_by_symbol[s][-1]
+            try:
+                htf_bias[s] = compute_htf_bias(
+                    HTFBiasInputs(
+                        pivots_k9_htf=pivots_k9_htf[s],
+                        last_close_htf=float(last_4h.close),
+                        last_high_htf=float(last_4h.high),
+                        last_low_htf=float(last_4h.low),
+                    ),
+                    current_ts=current_time,
+                )
+            except Exception:
+                htf_bias[s] = None
+
+        # 4. Attached swing prices : last k9 HTF pivot price per symbol.
+        # Canon TRUE attached swing is the origin of the swept pool ; a
+        # pragmatic proxy for v1 is the most recent k9 pivot of the
+        # opposite type to the current trend (bearish→use last HTF high).
+        attached: Dict[str, Optional[float]] = {}
+        for s in pair:
+            pivs = pivots_k9_htf[s]
+            if not pivs:
+                attached[s] = None
+                continue
+            # Prefer the most recent k9 pivot regardless of type ; SMT detector
+            # validates direction-side coherence internally.
+            attached[s] = float(pivs[-1].price)
+
+        # last_closes per symbol.
+        last_closes = {s: float(bars_5m_by_symbol[s][-1].close) for s in pair}
+
+        # 5. Macro kill zone gate.
+        macro_result = check_macro_kill_zone(
+            current_time, macro_am=True, macro_pm=True, strict_manip_gate=False
+        )
+
+        # 6. Daily profile on today's 5m session bars (approx : last 78 5m bars ≈ RTH).
+        session_bars = bars_5m_by_symbol[pair[0]][-78:] if len(bars_5m_by_symbol[pair[0]]) >= 78 else bars_5m_by_symbol[pair[0]]
+        try:
+            profile_snap = classify_session_profile(session_bars, atr=0.0)
+            daily_profile_allowed = is_profile_allowed(
+                profile_snap.profile,
+                ["manipulation_reversal", "manipulation_reversal_continuation", "undetermined"],
+            )
+        except Exception:
+            daily_profile_allowed = True  # permissive fallback
+
+        # 7. Call driver.
+        emission = self.smt_driver.on_5m_bar(
+            bar_ts=current_time,
+            symbol_bars=symbol_bars,
+            pivots_k3=pivots_k3,
+            last_closes=last_closes,
+            attached_swing_prices=attached,
+            htf_bias=htf_bias,
+            macro_kill_zone_pass=macro_result.passed,
+            daily_profile_allowed=daily_profile_allowed,
+        )
+        if emission is not None:
+            if not hasattr(self, "_smt_pending_patterns"):
+                self._smt_pending_patterns = {}
+            self._smt_pending_patterns[emission.symbol] = emission
+            self.smt_driver.consume_emission()
+
     def _process_bar_optimized(self, symbol: str, current_time: datetime, htf_events: Dict[str, bool]) -> Optional[Setup]:
         """
         Construit le meilleur setup pour un symbole et une minute donnée (VERSION OPTIMISÉE).
@@ -1293,6 +1438,15 @@ class BacktestEngine:
                 if plist:
                     ict_15m.extend(plist)
             self._ict_by_tf["15m"] = ict_15m
+
+        # §0.5bis entrée #1 SMT — pair-coord 5m emission consumed by current
+        # symbol if matching. The pre-step `_run_smt_pair_tick` (called once
+        # in the main bar-loop before per-symbol iteration) may have staged a
+        # pending synthetic ICTPattern for this symbol. Consume it here so it
+        # joins ict_5m and the playbook matches via SMT_CROSS_INDEX@5m.
+        smt_pending = getattr(self, "_smt_pending_patterns", {}).pop(symbol, None)
+        if smt_pending is not None:
+            self._ict_by_tf.setdefault("5m", []).append(smt_pending)
 
         # Merge all TF patterns for the setup engine (it filters by playbook.setup_tf)
         ict_patterns: List[ICTPattern] = []
