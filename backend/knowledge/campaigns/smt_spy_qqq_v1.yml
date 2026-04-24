@@ -1,0 +1,148 @@
+# SMT_Divergence_SPY_QQQ_v1 — §0.5bis entrée #1 (plan v4.0 post-§0.B).
+#
+# Dossier playbook : backend/knowledge/playbooks/smt_divergence_spy_qqq_v1/dossier.md
+# Statut : SPECIFIED_BLOCKED_BY_INFRA_PARTIAL (wiring setup_engine_v2
+# hook en cours) → SPECIFIED_READY → IMPLEMENTED → SMOKE_PENDING post-wiring.
+#
+# Canon MASTER+TRUE+QUANT convergent 100% (04_CODE_AUDIT §5) :
+# - MASTER ligne 12745-12841 (SMT verbatim)
+# - TRUE `FJch02ucIO8` ("One Simple Confluence") + `7dTQA0t8SH0` + `ironJFzNBic`
+# - QUANT silencieux 0/20 → zéro décote académique
+#
+# Mechanism :
+# Pool HTF 4h ou 1h fresh sweeped sur SPY ou QQQ → divergence SMT cross-index
+# (leading fait LH/HL counter-trend, lagging continue trend) → trade lagging
+# dans direction-of-leading → TP "SMT completion" = attached swing H/L du
+# pool sweeped (3e type TP structural inédit, §0.B.1).
+#
+# Briques canon §0.B consommées :
+# §0.B.7 PoolFreshnessTracker (pool sweep events, freshness filter)
+# §0.B.1 tp_resolver upgrade (tp_logic=smt_completion + fresh_pools + TF hier)
+# §0.B.2 smt_htf (detect_smt_divergence → SMTSignal, GATE entry)
+# §0.B.3 htf_bias_structure (7-step bias, remplace SMA_5 proxy)
+# §0.B.5 macro kill zone 09:50-10:10 + 13:50-14:10 ET
+# §0.B.6 daily_profile filter (manip_reversal / manip_reversal_continuation)
+# §0.B.8 pre_sweep gate (30 min window post sweep)
+# Orchestrator : SMTCrossIndexTracker (5 états state machine)
+#
+# Run smoke nov_w4 :
+#   scripts/run_mini_lab_week.py --calib-allowlist SMT_Divergence_SPY_QQQ_v1
+#     --playbooks-yaml backend/knowledge/campaigns/smt_spy_qqq_v1.yml
+#     --start 2025-11-17 --end 2025-11-21 --label smt_spy_qqq_v1_smoke_nov_w4
+- playbook_name: SMT_Divergence_SPY_QQQ_v1
+  category: SCALP
+  description: >
+    Dual-asset SMT divergence post-HTF-pool-sweep. Entry on lagging index in
+    direction of leading's counter-move. TP = SMT completion (attached swing
+    of swept pool, §0.B.1 new tp_logic). Structurellement novel (0/30 playbooks
+    historiques dual-asset per 04_CODE_AUDIT §3). Canon TRUE+MASTER convergent.
+  max_setups_per_session: 2
+  enabled_in_modes:
+  - AGGRESSIVE
+  instruments:
+  - SPY
+  - QQQ
+  required_signals:
+  - SMT_CROSS_INDEX@5m  # synthetic emit from SMTCrossIndexTracker EMIT_SETUP state
+  timefilters:
+    session: NY
+    time_windows:
+    - - '09:50'
+      - '10:10'
+    - - '13:50'
+      - '14:10'
+  context_requirements:
+    htf_bias_allowed:
+    - bullish
+    - bearish
+    # Neutral HTF bias rejected — SMT exige un bias directionnel pour aligner
+    # la signal avec la structure macro.
+    day_type_allowed:
+    - manipulation_reversal
+    - manipulation_reversal_continuation
+    - undetermined
+    # Consolidation days rejected (low-vol range, SMT not fertile per §0.B.6).
+    structure_htf:
+    - uptrend
+    - downtrend
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+    adx_min: null
+    # NEW v4 : require_htf_alignment utilise method=structure_k9_7step via
+    # §0.B.3 htf_bias_structure, pas SMA_5 proxy legacy.
+    require_htf_alignment: D
+  ict_confluences:
+    # Les confluences ICT classiques sont pilotées par le SMTCrossIndexTracker
+    # (qui consomme §0.B.2+§0.B.3+§0.B.8 en interne). Le YAML ne gate pas
+    # doublement.
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+  candlestick_patterns:
+    required_families: []
+    direction: any
+  entry_logic:
+    type: MARKET
+    zone: signal_close
+    confirmation_tf: 1m
+  setup_tf: 5m
+  stop_loss_logic:
+    type: SWING
+    distance: k3_opposite_swing  # via directional_change k3 opposite-direction last swing
+    padding_ticks: 3
+    atr_min_mult: 0.5  # floor: SL ≥ 0.5 × ATR(14, 5m)
+    atr_max_mult: 3.0  # ceiling: SL ≤ 3.0 × ATR
+  take_profit_logic:
+    min_rr: 0.5
+    tp1_rr: 2.0  # legacy fallback if smt_completion_price absent
+    tp2_rr: 3.0
+    breakeven_at_rr: 0.5
+    trailing_mode: trail_rr
+    trailing_trigger_rr: 0.7
+    trailing_offset_rr: 0.3
+    # §0.B.1 NEW: smt_completion = attached swing H/L from SMTSignal
+    tp_logic: smt_completion
+    tp_logic_params:
+      # smt_completion_price sera injecté runtime par SMTCrossIndexTracker
+      # depuis signal.smt_completion_target. Ce champ n'a pas de valeur
+      # statique en YAML.
+      fallback_rr: 2.0
+      # Option ε : si smt_completion_price absent OR wrong-side, trade rejeté
+      # entièrement (pas de fallback silencieux à 2R fixed).
+      reject_on_fallback: true
+      # §0.B.1 NEW : pool_tf + freshness contract passed through pour
+      # documentation verdict (le tracker filtre upstream).
+      pool_tf: ["4h", "1h"]
+      require_unsweeped_since: session_prior
+      require_reaction_confirmation: true
+      pool_source_hierarchy: [prev_W, "4h", prev_D, "1h", "15m", "5m"]
+  max_duration_minutes: 90  # timeout exécution 1.5h après entry (§0.B.5 macro
+                            # windows + latence normale convergence SMT)
+  # §0.B.5 macro kill zone overlay (strict_manip_gate désactivé en v1 pour
+  # ne pas trop filtrer le sample initial — à re-évaluer si n<5 nov_w4).
+  entry_window:
+    macro_am: true
+    macro_pm: true
+    strict_manip_gate: false
+  # §0.B.6 daily profile filter top-layer
+  required_daily_profile:
+  - manipulation_reversal
+  - manipulation_reversal_continuation
+  - undetermined
+  # §0.B.8 pre-sweep gate window (minutes post pool sweep HTF → max entry latency)
+  pre_sweep_window_minutes: 30
+  scoring:
+    weights:
+      smt_divergence_strength: 0.35
+      pool_freshness: 0.20
+      htf_bias_alignment: 0.20
+      macro_kill_zone_centrality: 0.15
+      daily_profile_score: 0.10
+    grade_thresholds:
+      A_plus: 0.75
+      A: 0.55
+      B: 0.35
+  require_close_above_trigger: false
+  entry_buffer_bps: 0.0
