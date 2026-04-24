@@ -132,6 +132,10 @@
   - manipulation_reversal_continuation
   - undetermined
   # §0.B.8 pre-sweep gate window (minutes post pool sweep HTF → max entry latency)
+  # v1 = 30 min (TRUE `BdBxXKGWVjk` spec pour IFVG). Tentative v5 iter3 120 min
+  # a produit gate_pre_sweep_pass=0 identique v4 → pre_sweep_gate architecturalement
+  # redondant avec SMT state machine internal lifecycle (total 280 min). Refactor
+  # future : bypass pre_sweep_gate pour SMT path (différent de IFVG freshness).
   pre_sweep_window_minutes: 30
   scoring:
     weights:
