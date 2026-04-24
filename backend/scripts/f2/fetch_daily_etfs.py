@@ -20,7 +20,7 @@ TICKERS = [
     "^VIX",                                      # v2 regime overlay
 ]
 OUT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "f2_daily"
-START = "2023-01-01"
+START = "2019-06-01"  # v3 extend : capture COVID shock (Mar 2020) + 2022 bear
 END = "2025-11-30"
 
 
