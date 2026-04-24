@@ -1,0 +1,135 @@
+# Aplus_01_v2_TRUE_HTF — §0.5bis entrée #2 (plan v4.0, 2026-04-24).
+#
+# Source : Aplus_01_full_v1 (Sprint 1 ARCHIVED, SMOKE_FAIL Cas B : 1 emit/5
+# sessions × 2 symbols avec SMA proxy bias + sans SMT/freshness/EQ/macro
+# kill zone). Per 04_CODE_AUDIT §5, Aplus_01_full_v1 est **seul PARTIAL_IMPL
+# avec cascade Family A correcte** — verdict Cas B non-falsifiant §10 r11
+# = rewrite légitime avec briques §0.B.
+#
+# Enrichissement v2 post-§0.B (v4.0) :
+#   • tp_logic=liquidity_draw avec fresh_pools §0.B.1 + §0.B.7 (pool_tf 4h/1h
+#     + require_unsweeped_since: session_prior + reaction_confirmation)
+#   • entry_window macro kill zone §0.B.5 (09:50-10:10 + 13:50-14:10 ET)
+#   • required_daily_profile §0.B.6 (manip_reversal + continuation + undetermined)
+#   • htf_bias_allowed extended à neutral (§0.B.3 7-step retourne neutral sur
+#     short HTF window — cf SMT v8.2 diagnostic identique)
+#   • require_htf_alignment: null (Aplus_01 est cascade sweep→BOS→touch→confirm
+#     structural — peut émettre LONG en downtrend ou SHORT en uptrend selon
+#     sweep direction ; le HTF gate directional contradicts par design)
+#
+# Cascade state machine Aplus01Tracker inchangé (IDLE → ARMED_AFTER_SWEEP →
+# BOS_CONFIRMED → CONFLUENCE_TOUCHED → EMIT_SETUP). HTF sweep proxy 5m
+# (v1 fallback) conservé — extension vrai 1h/4h sweep = v3 future (briques
+# §0.B.7 pool_freshness déjà en place côté infrastructure).
+#
+# Run : scripts/run_mini_lab_week.py --calib-allowlist Aplus_01_v2_TRUE_HTF
+#       --playbooks-yaml backend/knowledge/campaigns/aplus01_v2_true_htf.yml
+- playbook_name: Aplus_01_v2_TRUE_HTF
+  category: SCALP
+  description: >
+    Aplus_01 Family A v2 TRUE HTF enriched : cascade sweep → 5m BOS →
+    confluence touch (FVG/OB/breaker/EQ) → 1m confirm. §0.B.1 tp_logic
+    liquidity_draw + freshness pool_tf 4h/1h. §0.B.5 macro kill zone
+    overlay. §0.B.6 daily_profile filter. bias HTF accepted (cf SMT v8.2
+    TimeframeAggregator short window diagnostic).
+  max_setups_per_session: 3
+  enabled_in_modes:
+  - AGGRESSIVE
+  instruments:
+  - SPY
+  - QQQ
+  required_signals:
+  - APLUS01@1m
+  timefilters:
+    session: NY
+    time_windows:
+    - - '09:30'
+      - '15:00'
+  context_requirements:
+    htf_bias_allowed:
+    - bullish
+    - bearish
+    - neutral  # v2 post-diagnostic SMT v8.2 : TimeframeAggregator 30 4h bars
+               # → k9 pivots sparse → bias neutral systémique. Accept neutral
+               # pour obtenir des setups au lieu de les bloquer architecturallement.
+    day_type_allowed:
+    - trend
+    - manipulation_reversal
+    - range
+    - unknown
+    structure_htf:
+    - uptrend
+    - downtrend
+    - range
+    - unknown
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+    adx_min: null
+    # v2 : null (vs v1 D). Aplus_01 cascade est structural, peut trader
+    # counter-HTF sur sweep reversal. HTF gate bloque par design.
+    require_htf_alignment: null
+  ict_confluences:
+    require_sweep: false  # sweep requirement déjà dans Aplus01Tracker cascade
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+  candlestick_patterns:
+    required_families: []
+    direction: any
+  entry_logic:
+    type: MARKET
+    zone: signal_close
+    confirmation_tf: 1m
+  setup_tf: 1m
+  stop_loss_logic:
+    type: SWING
+    distance: sweep_extreme  # carried by Aplus01Tracker synthetic.price_level
+    padding_ticks: 1
+  take_profit_logic:
+    min_rr: 1.0
+    tp1_rr: 2.0
+    tp2_rr: 3.0
+    breakeven_at_rr: 0.5
+    trailing_mode: trail_rr
+    trailing_trigger_rr: 0.7
+    trailing_offset_rr: 0.3
+    tp_logic: liquidity_draw
+    tp_logic_params:
+      draw_type: swing_k3
+      lookback_bars: 60
+      min_rr_floor: 0.5
+      fallback_rr: 2.0
+      pool_selection: significant
+      max_rr_ceiling: 3.0
+      reject_on_fallback: false  # permissive v2 pour data baseline (cf SMT v8.5)
+      # §0.B.1 NEW canon fresh_pools params (documenté mais non-consommé sans
+      # wiring full dans _run_aplus01_pair_tick — sera bootstrapped v3 refactor)
+      pool_tf: ["4h", "1h"]
+      require_unsweeped_since: session_prior
+      require_reaction_confirmation: true
+      pool_source_hierarchy: [prev_W, "4h", prev_D, "1h", "15m", "5m"]
+  max_duration_minutes: 60
+  # §0.B.5 macro kill zone overlay (strict_manip_gate false v2 pour sample)
+  entry_window:
+    macro_am: true
+    macro_pm: true
+    strict_manip_gate: false
+  # §0.B.6 daily_profile filter top-layer
+  required_daily_profile:
+  - manipulation_reversal
+  - manipulation_reversal_continuation
+  - undetermined
+  scoring:
+    weights:
+      bos_strength: 0.25
+      liquidity_sweep: 0.25
+      fvg_quality: 0.20
+      pattern_quality: 0.15
+      context_strength: 0.15
+    grade_thresholds:
+      A_plus: 0.7
+      A: 0.5
+      B: 0.3
+  require_close_above_trigger: false
+  entry_buffer_bps: 0.0

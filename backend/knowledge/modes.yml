@@ -39,6 +39,12 @@ aggressive_allowlist:
                                             # Stage 1 4w smoke SMOKE_INCONCLUSIVE Cas A1 (3 canonical signals,
                                             # 1 emit_setup oct_w2). ALLOWLIST required pour obtenir trades
                                             # réels post-fix match→create gap (v8.5 fallback_rr).
+  # --- §0.5bis entrée #2 Aplus_01 v2 TRUE HTF enriched (v4.0, 2026-04-24) ---
+  - Aplus_01_v2_TRUE_HTF                    # Rewrite §10 r11 d'Aplus_01_full_v1 ARCHIVED (Sprint 1 Cas B
+                                            # non-falsifiant). Same Aplus01Tracker cascade + §0.B briques
+                                            # enrichment (macro kill zone + daily_profile + fresh_pools + bias
+                                            # relax). Single-asset cascade = densité signal plus haute vs SMT
+                                            # dual-asset (0.75 canonical/week). ALLOWLIST pour Stage 1 smoke.
 
 aggressive_denylist:
   # --- Destructive / proven negative ---
