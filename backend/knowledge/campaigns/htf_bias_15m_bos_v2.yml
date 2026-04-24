@@ -1,0 +1,124 @@
+# HTF_Bias_15m_BOS_v2 — §0.5bis entrée #3 (plan v4.0, 2026-04-24).
+#
+# Source : HTF_Bias_15m_BOS (Leg 2.3 ARCHIVED 12w, n=58 E[R]=-0.036, 1/12 weeks
+# < -0.5R, **QQQ SHORT subset n=13 E[R]=+0.076 outlier noted NOT promoted**
+# per §10 r11 post-hoc). PARTIAL_IMPL per 04_CODE_AUDIT §4 — axes SWEEP+BOS+
+# FVG retest présents, manque A1 HTF (SMA proxy) + A4 pool freshness +
+# A6 SMT.
+#
+# §10 r11 rewrite légitime : rewrite avec §0.B briques canon :
+#   • §0.B.1 tp_logic liquidity_draw + fresh_pools (vs v1 fixed 3R)
+#   • §0.B.3 htf_bias structure_k9_7step (via setup_engine — neutral accepted
+#     post SMT v8.2 + Aplus_01 v2 diagnostic TimeframeAggregator)
+#   • §0.B.5 macro kill zone 09:50-10:10 + 13:50-14:10
+#   • §0.B.6 daily_profile filter (manip_reversal + continuation + undetermined)
+#   • Accept both bull/bear (v1 limitait à trend direction)
+#
+# Hypothèse QQQ SHORT subset +0.076 n=13 de Leg 2.3 (sans §0.B briques) suggère
+# qu'avec §0.B enrichment + conservation du signal SWEEP+BOS+FVG 15m, un edge
+# pourrait apparaître. 3e data point §0.3 point 3bis A/B après SMT et Aplus_01_v2.
+#
+# Run : scripts/run_mini_lab_week.py --calib-allowlist HTF_Bias_15m_BOS_v2
+#       --playbooks-yaml backend/knowledge/campaigns/htf_bias_15m_bos_v2.yml
+- playbook_name: HTF_Bias_15m_BOS_v2
+  category: DAYTRADE
+  description: >
+    HTF_Bias_15m_BOS v2 §10 r11 rewrite (TRUE HTF enriched) : SWEEP +
+    15m BOS + FVG retest + §0.B.1 liquidity_draw + §0.B.5 macro kill zone +
+    §0.B.6 daily_profile. Targets reopening Leg 2.3 QQQ SHORT subset +0.076.
+  max_setups_per_session: 2
+  enabled_in_modes:
+  - AGGRESSIVE
+  instruments:
+  - SPY
+  - QQQ
+  required_signals:
+  - BOS@15m
+  timefilters:
+    session: NY
+    time_windows:
+    - - '09:30'
+      - '12:00'
+    - - '13:30'
+      - '15:30'
+  context_requirements:
+    htf_bias_allowed:
+    - bullish
+    - bearish
+    - neutral  # cf SMT v8.2 diagnostic — TimeframeAggregator short window
+    day_type_allowed:
+    - trend
+    - manipulation_reversal
+    - range
+    - unknown
+    structure_htf:
+    - uptrend
+    - downtrend
+    - range
+    - unknown
+    london_sweep_required: false
+    adx_min: 15  # relaxé de 20→15 v2 pour plus de samples (v1 12w n=58)
+    require_htf_alignment: null  # v2 : cascade structural peut trader counter-HTF
+  ict_confluences:
+    require_sweep: true
+    allow_fvg: true
+    require_bos: true
+    smt_bonus: false
+  candlestick_patterns:
+    required_families: []
+    direction: any
+  entry_logic:
+    type: LIMIT
+    zone: fvg_retest
+    confirmation_tf: 1m
+  setup_tf: 15m
+  stop_loss_logic:
+    type: SWING
+    distance: recent_swing
+    padding_ticks: 3
+  take_profit_logic:
+    min_rr: 1.0   # relaxé de 3.0 v1 car peak_R p80 Leg 2.3 = 1.52 < 3R
+    tp1_rr: 2.0   # réduit de 3.0 v1 pour mieux capturer peak_R p80
+    tp2_rr: 3.0
+    breakeven_at_rr: 0.5
+    trailing_mode: trail_rr
+    trailing_trigger_rr: 0.7
+    trailing_offset_rr: 0.3
+    tp_logic: liquidity_draw  # v2 NEW (v1 était fixed_rr)
+    tp_logic_params:
+      draw_type: swing_k3
+      lookback_bars: 60
+      min_rr_floor: 0.5
+      fallback_rr: 2.0
+      pool_selection: significant
+      max_rr_ceiling: 3.0
+      reject_on_fallback: false
+      # §0.B.1 canon params
+      pool_tf: ["4h", "1h"]
+      require_unsweeped_since: session_prior
+      require_reaction_confirmation: true
+      pool_source_hierarchy: [prev_W, "4h", prev_D, "1h", "15m"]
+  max_duration_minutes: 120
+  # §0.B.5 macro kill zone
+  entry_window:
+    macro_am: true
+    macro_pm: true
+    strict_manip_gate: false
+  # §0.B.6 daily_profile
+  required_daily_profile:
+  - manipulation_reversal
+  - manipulation_reversal_continuation
+  - undetermined
+  scoring:
+    weights:
+      bos_strength: 0.30
+      liquidity_sweep: 0.25
+      fvg_quality: 0.20
+      pattern_quality: 0.15
+      context_strength: 0.10
+    grade_thresholds:
+      A_plus: 0.7
+      A: 0.5
+      B: 0.3
+  require_close_above_trigger: false
+  entry_buffer_bps: 0.0
