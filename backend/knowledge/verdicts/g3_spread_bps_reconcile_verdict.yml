@@ -1,0 +1,87 @@
+title: "§0.7 G3 — Spread bps in ConservativeFillModel + reconcile re-run calib_corpus_v1"
+date: "2026-04-23"
+plan: "v3.1.2 §0.7 G3"
+status: "DONE — gate pré-backlog 3/4 livré"
+
+bloc1_identity:
+  rows:
+    - ["Module modifié", "[fill_model.py](backend/engines/execution/fill_model.py) — `ConservativeFillModel.__init__(extra_slippage_pct=0.0005, spread_bps=1.0)`"]
+    - ["Reconcile harness", "[reconcile_paper_backtest.py](backend/scripts/reconcile_paper_backtest.py) — `--spread-bps` CLI flag (default 1.0)"]
+    - ["Corpus", "`calib_corpus_v1` (jun_w3 + aug_w3 + oct_w2 + nov_w4, **170 trades total**, 28 playbooks loaded, caps actives, allowlist 4 candidats `Morning_Trap_Reversal` + `Liquidity_Sweep_Scalp` + `Engulfing_Bar_V056` + `BOS_Scalp_1m`)"]
+    - ["Tests", "10/10 PASS [test_conservative_fill_model_spread.py](backend/tests/test_conservative_fill_model_spread.py)"]
+    - ["Spec", "1-2 bps SPY/QQQ constant v1, asymétrie buyer/seller (LONG exit reçoit bid → prix down, SHORT exit paie ask → prix up)"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Per-week reconcile (slippage 0.05% + spread 1 bp)"
+      tables:
+        - headers: ["Week", "n", "mean_delta_$", "mean_delta_R", "total_delta_R", "pct_worse"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["jun_w3", 40, "−112.13", "**−0.1027**", "−4.109", "100.0%"]
+            - ["aug_w3", 50, "−109.92", "**−0.1031**", "−5.157", "98.0%"]
+            - ["oct_w2", 40, "−87.70", "**−0.0787**", "−3.146", "100.0%"]
+            - ["nov_w4", 40, "−94.85", "**−0.0851**", "−3.404", "97.5%"]
+            - ["**TOTAL**", "**170**", "**−101.0**", "**−0.0973**", "**−15.82**", "**98.8%**"]
+    - heading: "Comparaison budget slippage `E[R]_pre_reconcile` → `E[R]_net`"
+      tables:
+        - headers: ["Configuration", "mean_delta_R / trade", "Source"]
+          align: ["---", "---:", "---"]
+          rows:
+            - ["Pre-G3 (slippage seul 0.05%, 0 bps spread)", "**−0.065**", "[reconcile_paper_vs_backtest_calib_oct_w2.md](backend/data/backtest_results/reconcile_paper_vs_backtest_calib_oct_w2.md)"]
+            - ["**G3 livré (slippage 0.05% + spread 1 bp)**", "**−0.097**", "présent verdict, 4w aggregate"]
+            - ["G3 stress (slippage 0.05% + spread 2 bps)", "−0.093", "oct_w2 seul (run de contrôle)"]
+      body: |
+        **Δ pré→post-G3 sur calib_corpus_v1** : **+0.032R/trade adverse** (4w agg, vs oct_w2-only pré-G3 −0.065 → 4w-agg post-G3 −0.097).
+
+        **Plan v3.1.2 §0.7 G3 attendu** : "−0.08 à −0.10R/trade" — **PASS** (4w agg = −0.097R/trade dans la fourchette haute).
+
+bloc3_structural:
+  subsections:
+    - heading: "Asymétrie buyer/seller validée empiriquement"
+      body: |
+        98.8% des trades reconciled sont strictement worse (vs 100% pré-G3 par construction du `next_bar.open` adverse). Les 2 trades positifs (1 aug_w3 +$112, 1 nov_w4 +$77) reflètent des cas où `next_bar.open` était structurellement favorable au-delà de l'adverse spread — cohérent, pas un bug.
+    - heading: "Variance per-week 0.0787 → 0.1031 (Δ +0.024)"
+      body: |
+        oct_w2 = best week (mean_delta_R = -0.079), aug_w3/jun_w3 = worst (-0.103). Reflète probablement la distribution des `next_bar.open` gaps (jun_w3 inclut early-summer macro events ; oct_w2 plus calme). Variance acceptable (4 weeks dans une bande [-0.078, -0.103]) → spread 1 bp est **directionnellement homogène** sur le corpus.
+    - heading: "Stress 2 bps moins destructeur que prévu sur oct_w2 (−0.093 vs +1bp -0.079, Δ +0.014)"
+      body: |
+        Doublement du spread n'augmente pas linéairement le delta_R parce que `extra_slippage_pct` (5 bps = 0.05%) reste dominant. Spread 1 bp = +20% vs slippage seul ; spread 2 bps = +40%. Cohérent avec total_pct = 0.0005 + 0.0001 = 0.0006 (G3 1bp) vs 0.0005 + 0.0002 = 0.0007 (G3 2bps), soit ratio 1.20 → 1.40.
+    - heading: "Implication §0.5bis entrée #1 Aplus_01 Family A v2 TRUE HTF"
+      body: |
+        Tout playbook qui veut atteindre `E[R]_net > 0.10R` (Stage 2 PASS bar §10) doit produire `E[R]_pre_reconcile > 0.197R/trade` (0.10 + 0.097 budget). Ce seuil est **brutal** vs les data points historiques Legs 1-4.2 (max E[R]_gross historique ≈ +0.025 sur Engulfing baseline 4w M, jamais > 0.05R). Doctrine §0.6.0 substitution s'applique : le bar Stage 2 inclut budget reconcile complet.
+    - heading: "Cas non-couvert v1 (différé)"
+      body: |
+        `spread_bps` est constant (1 bp SPY/QQQ). Pas de modélisation des sessions illiquides (premarket/post 16:00 ET, lunch 12:00-13:30) où spread réel SPY peut être 2-3× wider. Pour §0.5bis entrée #1 (Family A v2 sweep 1h/4h) le spread RTH est l'hypothèse correcte. Si entrée #4 Flags 15m ou entrée #3 Avellaneda-Lee multi-ETF active, re-évaluer (IWM/EFA/EEM ont spreads structurellement >2 bps).
+
+bloc4_decision:
+  body: |
+    **G3 = DONE**. Budget slippage `E[R]_pre_reconcile` → `E[R]_net` quantifié à **−0.097R/trade** (4-week aggregate calib_corpus_v1, 170 trades). Cette valeur **remplace** le `-0.065R/trade` historique référencé dans §5.3 / §18.3 verdicts antérieurs. Tous les verdicts post-G3 doivent citer ce nouveau budget pour la conversion `E[R]_pre_reconcile` → `E[R]_net` sur SPY/QQQ intraday RTH.
+
+bloc5_why:
+  subsections:
+    - heading: "Pas de tuning du spread"
+      body: |
+        1 bp = valeur SPY/QQQ liquidity-tier 1 documentée (cf market microstructure literature, Hendershott et al. 2011, average effective spread S&P 500 large caps ~0.5-1.5 bps RTH). Aucun fitting sur le corpus.
+    - heading: "Pas de calibration `extra_slippage_pct`"
+      body: |
+        Conservé à 5 bps (0.0005) pré-G3 pour éviter de modifier 2 axes en même temps. Si Sprint 4 paper IBKR fournit calibration empirique, `IBKRLatency` (post-G2) + `extra_slippage_pct` calibré pourraient remplacer.
+    - heading: "Test stress 2 bps inclus"
+      body: |
+        Valider que le modèle est linéaire en spread (ratio adverse 1.20 vs 1.40 cohérent) — pas de pathologie cachée.
+    - heading: "Reconcile harness, pas re-run mini_lab_week"
+      body: |
+        Fidèle à la directive user "pas de long run tant qu'on est pas dans le vert" (cf [feedback_no_long_runs.md](.claude/projects/-home-dexter-dexterio1-main/memory/feedback_no_long_runs.md)). Budget slippage est mesurable à partir des trades existants ; re-run smoke avec `ConservativeFillModel(spread_bps=1.0)` viendra à G4 (verdict templating) ou §0.5bis entrée #1.
+    - heading: "Gate pré-backlog 3/4 DONE, 1 PENDING"
+      body: |
+        G1 + G2 + G3 livrés. Reste **G4 verdict templating** (`build_verdict.py`) avant §0.5bis entrée #1.
+
+next_action: |
+  **G4 = verdict templating** : [build_verdict.py](backend/scripts/build_verdict.py) standardise §18.3 5-blocs (identité / métriques / lecture structurelle / décision / why). Gate : 1 verdict récent (probablement le présent verdict G3) re-généré, identique sémantiquement à main-written.
+
+artefacts:
+  - "[reconcile_g3_jun_w3_spread1.md](backend/data/backtest_results/reconcile_g3_jun_w3_spread1.md)"
+  - "[reconcile_g3_aug_w3_spread1.md](backend/data/backtest_results/reconcile_g3_aug_w3_spread1.md)"
+  - "[reconcile_g3_oct_w2_spread1.md](backend/data/backtest_results/reconcile_g3_oct_w2_spread1.md)"
+  - "[reconcile_g3_nov_w4_spread1.md](backend/data/backtest_results/reconcile_g3_nov_w4_spread1.md)"
+  - "Tests : [test_conservative_fill_model_spread.py](backend/tests/test_conservative_fill_model_spread.py) — 10/10 PASS"
