@@ -75,9 +75,14 @@
     volatility_min: null
     volatility_max: null
     adx_min: null
-    # NEW v4 : require_htf_alignment utilise method=structure_k9_7step via
-    # §0.B.3 htf_bias_structure, pas SMA_5 proxy legacy.
-    require_htf_alignment: D
+    # v8.4 : require_htf_alignment: null — SMT est inherently counter-trend
+    # sur l'index leading (LH post-HTF-sweep en uptrend D = bearish SMT →
+    # SHORT). La gate `require_htf_alignment: D` rejette SHORT vs D=uptrend
+    # par design (pour playbooks continuation) → bloque SMT architecturallement.
+    # Le gate interne SMTDriver._is_bias_aligned_for_signal fournit déjà
+    # le filtre bias pour le lagging side. Canon TRUE `FJch02ucIO8` : trade
+    # lagging dans le sens du leading counter-move, pas dans le sens HTF D.
+    require_htf_alignment: null
   ict_confluences:
     # Les confluences ICT classiques sont pilotées par le SMTCrossIndexTracker
     # (qui consomme §0.B.2+§0.B.3+§0.B.8 en interne). Le YAML ne gate pas
@@ -115,9 +120,15 @@
       # depuis signal.smt_completion_target. Ce champ n'a pas de valeur
       # statique en YAML.
       fallback_rr: 2.0
-      # Option ε : si smt_completion_price absent OR wrong-side, trade rejeté
-      # entièrement (pas de fallback silencieux à 2R fixed).
-      reject_on_fallback: true
+      # v8.5 pragmatic : reject_on_fallback false. Le smt_completion_target
+      # peut être wrong-side pour le lagging trade (leading's attached swing
+      # ≠ lagging's price range) — architectural gap dossier §18 pièce H
+      # à refactorer prochaine version (LAGGING's own attached swing).
+      # En attendant, fallback sur fixed 2R pour obtenir des trades réels
+      # + établir baseline. Trade-level `tp_reason` = fallback_rr_no_smt_completion
+      # loggé pour diagnostic — identifie % setups qui auraient besoin du
+      # vrai smt_completion.
+      reject_on_fallback: false
       # §0.B.1 NEW : pool_tf + freshness contract passed through pour
       # documentation verdict (le tracker filtre upstream).
       pool_tf: ["4h", "1h"]
