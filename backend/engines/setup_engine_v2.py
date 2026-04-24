@@ -516,7 +516,7 @@ class SetupEngineV2:
             if ict_patterns:
                 indicator_types = {'ema_cross', 'vwap_bounce', 'rsi_extreme', 'orb_break',
                                    'bos', 'fvg', 'liquidity_sweep', 'ifvg', 'order_block',
-                                   'aplus01_sequence'}
+                                   'aplus01_sequence', 'smt_cross_index_sequence'}
                 directional = [p for p in ict_patterns
                                if p.pattern_type in indicator_types and p.direction in ('bullish', 'bearish')]
                 if directional:
@@ -595,11 +595,29 @@ class SetupEngineV2:
             else:
                 stop_loss = entry_price * 1.005
 
-        # TP1 via tp_resolver (Option A v2 O1.3). Default = fixed_rr, byte-identical
-        # to the legacy inline branch below. For `liquidity_draw`, the resolver
-        # consumes pre-computed k3 pivots (cache shared across evaluations).
+        # TP1 via tp_resolver (Option A v2 O1.3 + §0.B.1 upgrade). Default =
+        # fixed_rr, byte-identical to the legacy inline branch. For
+        # `liquidity_draw`, the resolver consumes pre-computed k3 pivots
+        # (cache shared across evaluations). For `smt_completion` (§0.B.1),
+        # the resolver reads `smt_completion_price` from `tp_logic_params` —
+        # which we merge from the synthetic SMT ICTPattern's details below
+        # (signal-dependent, not statically resolvable in YAML).
         tp_logic = getattr(playbook, 'tp_logic', 'fixed_rr') or 'fixed_rr'
-        tp_logic_params = getattr(playbook, 'tp_logic_params', {}) or {}
+        tp_logic_params = dict(getattr(playbook, 'tp_logic_params', {}) or {})
+
+        # §0.5bis entrée #1 SMT: merge smt_completion_target from synthetic
+        # ICTPattern details if tp_logic="smt_completion". The SMTDriver
+        # (backend/engines/smt_driver.py) emits the pattern with the
+        # target baked in. Without this merge, the resolver would fall back
+        # to fallback_rr (Option ε reject_on_fallback=true → trade rejected).
+        if tp_logic == "smt_completion" and ict_patterns:
+            for p in ict_patterns:
+                if p.pattern_type == "smt_cross_index_sequence":
+                    target = (p.details or {}).get("smt_completion_target")
+                    if target is not None:
+                        tp_logic_params["smt_completion_price"] = float(target)
+                    break
+
         tp1, tp_reason = resolve_tp_price(
             tp_logic=tp_logic,
             tp_logic_params=tp_logic_params,
