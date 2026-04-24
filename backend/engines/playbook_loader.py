@@ -862,6 +862,14 @@ class PlaybookEvaluator:
                     # injects an ICTPattern with pattern_type='aplus01_sequence'
                     # when the state machine fires.
                     'APLUS01': 'aplus01_sequence',
+                    # SMT Cross-Index — §0.5bis entrée #1 dual-asset playbook
+                    # (pool HTF sweep → SMT divergence SPY/QQQ → macro kill zone
+                    # gate). SMTDriver (backend/engines/smt_driver.py) injects an
+                    # ICTPattern with pattern_type='smt_cross_index_sequence' on
+                    # EMIT_SETUP. details['smt_completion_target'] feeds
+                    # tp_resolver tp_logic='smt_completion'.
+                    'SMT': 'smt_cross_index_sequence',
+                    'SMTCROSSINDEX': 'smt_cross_index_sequence',
                 }
                 p_type = type_map.get(base, base.lower())
                 dir_required = None
