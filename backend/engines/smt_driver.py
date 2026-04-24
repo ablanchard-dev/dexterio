@@ -417,10 +417,19 @@ class SMTDriver:
     def _is_bias_aligned_for_signal(
         self, htf_bias: Dict[str, Optional[HTFBiasResult]]
     ) -> bool:
-        """Gate helper : leading symbol's HTF bias must be non-neutral.
+        """Gate helper : leading symbol's HTF bias.
 
-        Returns False if any symbol has a None/neutral bias, OR if the tracker
-        hasn't locked a signal yet (defensive).
+        v8.2 relaxation (2026-04-24, post 4w Stage 1 diagnostic) : accept
+        neutral HTF bias. Rationale :
+          - TimeframeAggregator produces sparse 4h bars (30 bars even with
+            3 months 1m corpus) → k9 pivots routinely 0, k3 2-4.
+          - compute_htf_bias requires ≥2H + ≥2L → typically returns
+            "insufficient" / "neutral" on current infra.
+          - Gate_bias_aligned_pass was 0 across 4 weeks Stage 1 v8 run.
+          - Architectural Cas A (infra gap : HTF aggregator short window).
+        Gate now : require last_signal non-None AND HTFBiasResult non-None
+        for the leading symbol. Doesn't require non-neutral — the SMT signal
+        itself carries directional info via the leading/lagging identification.
         """
         last_sig_result = self._tracker._data.last_signal  # internal — ok for driver
         if last_sig_result is None:
@@ -428,7 +437,9 @@ class SMTDriver:
         leading_bias = htf_bias.get(last_sig_result.leading_symbol)
         if leading_bias is None:
             return False
-        return leading_bias.bias != "neutral"
+        # Accept any HTFBiasResult (including neutral) — gate reduced to
+        # "bias computable" rather than "bias directional".
+        return True
 
     # -- Introspection --------------------------------------------------
 

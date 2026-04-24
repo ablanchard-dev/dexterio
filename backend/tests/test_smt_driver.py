@@ -147,8 +147,14 @@ def test_driver_end_to_end_bearish_divergence_emits_synthetic_pattern():
     assert d.state == SMTState.IDLE
 
 
-def test_driver_no_emission_when_bias_neutral():
-    """HTF bias neutral → _is_bias_aligned_for_signal returns False → no emission."""
+def test_driver_neutral_bias_still_emits_v8_relaxation():
+    """v8.2 relaxation : HTF bias neutral no longer blocks emission (see
+    _is_bias_aligned_for_signal docstring). Gate reduced to "bias computable"
+    because TimeframeAggregator sparse HTF window produces neutral routinely.
+
+    Prior expectation (pre-v8.2) : neutral bias → no emission.
+    Current expectation (v8.2+)   : neutral bias + all other gates → emission.
+    """
     d = SMTDriver()
     d.on_htf_bar_close("SPY", "4h", 450.0, 440.0, _ts(6, 0))
 
@@ -187,10 +193,11 @@ def test_driver_no_emission_when_bias_neutral():
         macro_kill_zone_pass=True,
         daily_profile_allowed=True,
     )
-    # Neutral leading bias → no emission.
-    assert emission is None
-    # Tracker should be in SMT_SIGNAL_EMITTED (waiting for gates).
-    assert d.state == SMTState.SMT_SIGNAL_EMITTED
+    # v8.2 : neutral bias no longer blocks emission. All other gates pass
+    # (macro_kill_zone, daily_profile, pre_sweep bypassed), so emit fires.
+    assert emission is not None
+    assert emission.direction == "bearish"  # SHORT QQQ (lagging)
+    assert d.state == SMTState.EMIT_SETUP
 
 
 def test_driver_no_emission_when_macro_kill_zone_fails():

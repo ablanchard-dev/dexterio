@@ -1168,10 +1168,18 @@ class BacktestEngine:
                 pivots_k3[s] = multi.get("k3", []) or []
             except Exception:
                 pivots_k3[s] = []
-            window_4h = bars_4h_by_symbol[s][-60:]
+            # HTF bias pivots : use k3 instead of k9 (2026-04-24 v8 post-
+            # diagnostic). Canon TJR ironJFzNBic "structure HH-HL 4H/1H"
+            # isn't scale-specific — k9 (kappa=9×ATR) empirically produces
+            # **zero pivots** on 30 4h bars (tested offline on SPY 2025-10
+            # window). k3 (kappa=3×ATR) denser, still captures macro swings,
+            # aligns better with TJR's subjective "most recent swing"
+            # terminology. Compute_structural_bias requires ≥2H + ≥2L for
+            # HH-HL classification — k3 routinely satisfies on 60-200 bars.
+            window_4h = bars_4h_by_symbol[s][-200:]
             try:
                 multi_htf = detect_structure_multi_scale(window_4h)
-                pivots_k9_htf[s] = multi_htf.get("k9", []) or []
+                pivots_k9_htf[s] = multi_htf.get("k3", []) or []
             except Exception:
                 pivots_k9_htf[s] = []
 
