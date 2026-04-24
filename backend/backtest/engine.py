@@ -1183,19 +1183,30 @@ class BacktestEngine:
             except Exception:
                 htf_bias[s] = None
 
-        # 4. Attached swing prices : last k9 HTF pivot price per symbol.
-        # Canon TRUE attached swing is the origin of the swept pool ; a
-        # pragmatic proxy for v1 is the most recent k9 pivot of the
-        # opposite type to the current trend (bearish→use last HTF high).
+        # 4. Attached swing prices : canon TRUE = origin of swept pool swing.
+        # Pragmatic v1 heuristic (post-v3 smoke diagnostic fix) :
+        #   - First, try the most recent k3 pivot on the 4h series (k3 denser
+        #     than k9, typically populates on 60 bars + kappa=3).
+        #   - Fallback : midpoint of the last 4h bar (guaranteed non-None).
+        # Diagnostic v3 nov_w4 smoke : k9 heuristic returned None on the
+        # leading side for 9/9 canonical divergent patterns (9 bars with
+        # `class_canonical_no_attached` counter). k3 + midpoint fallback
+        # ensures attached_swing_price is always available, unblocking the
+        # divergence gate.
         attached: Dict[str, Optional[float]] = {}
         for s in pair:
-            pivs = pivots_k9_htf[s]
-            if not pivs:
-                attached[s] = None
-                continue
-            # Prefer the most recent k9 pivot regardless of type ; SMT detector
-            # validates direction-side coherence internally.
-            attached[s] = float(pivs[-1].price)
+            try:
+                pivs_k3_htf = detect_structure_multi_scale(
+                    bars_4h_by_symbol[s][-60:]
+                ).get("k3", []) or []
+            except Exception:
+                pivs_k3_htf = []
+            if pivs_k3_htf:
+                attached[s] = float(pivs_k3_htf[-1].price)
+            else:
+                # Fallback : midpoint of last 4h bar (always non-None).
+                last_4h = bars_4h_by_symbol[s][-1]
+                attached[s] = (float(last_4h.high) + float(last_4h.low)) / 2.0
 
         # last_closes per symbol.
         last_closes = {s: float(bars_5m_by_symbol[s][-1].close) for s in pair}

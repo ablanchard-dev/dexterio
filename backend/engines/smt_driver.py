@@ -46,7 +46,11 @@ from engines.features.smt_cross_index_tracker import (
     TrackerOutput,
 )
 from engines.patterns.fvg_stacking import check_pre_sweep_gate
-from engines.patterns.smt_htf import SMTInputs, detect_smt_divergence
+from engines.patterns.smt_htf import (
+    SMTInputs,
+    classify_last_pivot,
+    detect_smt_divergence,
+)
 from models.setup import ICTPattern
 
 logger = logging.getLogger(__name__)
@@ -99,6 +103,15 @@ class SMTDriver:
             "htf_pool_sweeped": 0,
             "state_pool_sweeped": 0,
             "state_structure_observable": 0,
+            # Granular divergence-classification outcomes (v4.0 post-v2 smoke
+            # 2026-04-24) : localize why signal_detected=0 despite
+            # state_structure_observable>0. Each STRUCTURE_OBSERVABLE tick
+            # falls into exactly one bucket below.
+            "class_both_none": 0,              # at least one side classify None
+            "class_same_direction": 0,         # both HH, both LL, both LH, both HL
+            "class_mixed_non_canonical": 0,    # e.g. HH + HL (both bullish-biased)
+            "class_canonical_divergent": 0,    # LH+HH or HL+LL (SMT pattern!)
+            "class_canonical_no_attached": 0,  # canonical but leading attached_swing None
             "signal_detected": 0,
             "state_smt_signal_emitted": 0,
             "gate_macro_kill_zone_pass": 0,
@@ -241,6 +254,26 @@ class SMTDriver:
                 last_close=last_closes.get(b_sym, 0.0),
                 attached_swing_price=attached_swing_prices.get(b_sym),
             )
+
+            # Granular classification bucket counter (diagnostic).
+            sweep_ts = self._tracker.pool_sweep_ts
+            a_class = classify_last_pivot(a_inputs.pivots_k3, since_ts=sweep_ts)
+            b_class = classify_last_pivot(b_inputs.pivots_k3, since_ts=sweep_ts)
+            canonical_pairs = ({"LH", "HH"}, {"HL", "LL"})
+            if a_class is None or b_class is None:
+                self._counters["class_both_none"] += 1
+            elif a_class == b_class:
+                self._counters["class_same_direction"] += 1
+            elif {a_class, b_class} in canonical_pairs:
+                # Canonical divergence pattern detected.
+                leading = a_inputs if a_class in ("LH", "HL") else b_inputs
+                if leading.attached_swing_price is None:
+                    self._counters["class_canonical_no_attached"] += 1
+                else:
+                    self._counters["class_canonical_divergent"] += 1
+            else:
+                self._counters["class_mixed_non_canonical"] += 1
+
             signal = detect_smt_divergence(
                 a=a_inputs, b=b_inputs,
                 detection_ts=bar_ts,
