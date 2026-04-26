@@ -1,0 +1,129 @@
+title: "Flag_Breakout_5m_v1 — Plan v4.0 J4-J5 Priorité #1 — ARCHIVED post-4w Stage 1 (3 kill rules convergents)"
+date: "2026-04-25"
+plan: "v4.0 §0.5bis Priorité #1 (post-TSMOM ARCHIVED, user Option C)"
+status: "ARCHIVED — kill rules R1 (n<15) + R2 (E[R]≤0) + R6 (peak_R p60<0.5R) déclenchées simultanément"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse", "Flag breakout 5m intraday : impulsion >1.5×ATR(14) → consolidation flag tight 3-5 bars range <1.0× impulse range → breakout vol >1.2× avg(20) → continuation TP1 1R + BE 0.5R"]
+    - ["Détecteur", "[flag_breakout.py](backend/engines/patterns/flag_breakout.py) — stateless, scan window per nouvelle bougie 5m"]
+    - ["Wire-up", "[custom_detectors.py](backend/engines/patterns/custom_detectors.py) + [playbook_loader.py](backend/engines/playbook_loader.py) FLAG/FLAGBREAK/FLAGBREAKOUT type_map + indicator_strength"]
+    - ["YAML", "[flag_breakout_v1.yml](backend/knowledge/campaigns/flag_breakout_v1.yml) sober v1 (TP fixed_rr 1.0R, SL signal_price_level, BE 0.5R, max_duration 30min YAML mais 120min effectif via PHASE3B)"]
+    - ["Tests unit", "6/6 PASS [test_flag_breakout.py](backend/tests/test_flag_breakout.py)"]
+    - ["Dossier §18", "[flag_breakout_v1/dossier.md](backend/knowledge/playbooks/flag_breakout_v1/dossier.md) pièces A-D+H"]
+    - ["Recalibration paramétrique", "**Single-shot one-pass 2026-04-25** : `flag_max_range_ratio` 0.6 → 1.0 basé sur distribution observée nov_w4 (p10=0.76, p50=1.03, p90=1.30 ; 0% < 0.6) — calibration structurelle non-outcome-based, pas grid search."]
+    - ["Corpus 4w canonical", "jun_w3 + aug_w3 + oct_w2 + nov_w4 2025 (calib_corpus_v1 standard), SPY+QQQ, AGGRESSIVE, ConservativeFillModel realistic"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Per-week breakdown (Stage 1 4w)"
+      tables:
+        - headers: ["Week", "n trades", "Sum r_mult", "WR", "Notes"]
+          align: ["---", "---:", "---:", "---:", "---"]
+          rows:
+            - ["jun_w3", "5", "-0.447", "20%", "1 SL + 4 time_stop"]
+            - ["aug_w3", "3", "-0.154", "33%", "1 TP2 win + 2 time_stop loss"]
+            - ["oct_w2", "0", "0.000", "—", "**Aucun signal détecté**"]
+            - ["nov_w4", "1", "+0.080", "100%", "TP2 win SHORT SPY peak_R 1.04"]
+            - ["**TOTAL 4w**", "**9**", "**-0.521**", "**33.3%**", ""]
+    - heading: "Métriques agrégées 4w"
+      tables:
+        - headers: ["Métrique", "Valeur", "Gate plan", "Statut"]
+          align: ["---", "---:", "---", "---:"]
+          rows:
+            - ["**n trades**", "**9**", "**≥ 15** (kill rule R1)", "**FAIL ❌ Cas A1**"]
+            - ["E[R]_gross / trade", "**-0.058R**", "**> 0.05R** (kill rule R2)", "**FAIL ❌ Cas C**"]
+            - ["**peak_R p60**", "**0.380R**", "**> 0.5R** (kill rule R6)", "**FAIL ❌ signal faible**"]
+            - ["peak_R p80", "0.758R", "—", "—"]
+            - ["mae_R p20", "-0.851R", "—", "Losers absorb large R"]
+            - ["WR", "33.3%", "—", "—"]
+            - ["PF", "0.29", "(>1.2 Stage 2)", "—"]
+            - ["Sum total R", "-0.521", "—", "—"]
+            - ["Time_stop ratio", "**6/9 = 67%**", "—", "Pattern continuation ne se concrétise pas"]
+    - heading: "Direction + symbol split"
+      tables:
+        - headers: ["Subset", "n", "Mean r_mult", "Notes"]
+          align: ["---", "---:", "---:", "---"]
+          rows:
+            - ["LONG", "2", "-0.019", "Quasi BE"]
+            - ["SHORT", "7", "-0.069", "Mean -0.085, range -0.175 à +0.125"]
+            - ["SPY", "5", "-0.080", ""]
+            - ["QQQ", "4", "-0.045", ""]
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit (§18.3 v4)"
+      body: |
+        **STRUCTURAL_KILL** via convergence 3 kill rules pré-écrites — pas FANTASY (vraie implémentation flag breakout classique Edwards & Magee + Bulkowski), pas PARTIAL_IMPL. Le pattern flag breakout 5m intraday SPY/QQQ ne se manifeste ni assez fréquemment (n=9 << 15) ni avec assez de force (peak_R p60=0.38) pour générer un edge actionnable.
+    - heading: "Lecture structurelle — pourquoi le pattern n'existe pas comme prévu sur SPY 5m intraday"
+      body: |
+        Le pattern flag breakout théorique (Edwards & Magee 1948, Bulkowski) suppose une consolidation tight (range < 0.6× impulse range) suivie d'un breakout volume-confirmé donnant continuation 1-2R. Sur SPY 5m HFT moderne :
+
+        1. **Distribution observée** : 0% des cas où impulsion ≥1.5×ATR ont flag_range / impulse_range < 0.6 (recalibration 1.0 nécessaire pour fire). p50=1.03 (consolidation = même range que impulsion).
+
+        2. **Time_stop dominant 67%** : quand le pattern fire (post-recalibration), 6/9 trades expirent en time_stop sans atteindre TP1=1R. Le breakout n'est pas suivi d'une continuation rapide.
+
+        3. **peak_R p60=0.38 < 0.5R** : la majorité des trades n'atteint même pas la moitié du target 1R avant time_stop. Signal faible structurellement.
+
+        4. **Densité signal trop basse** : 9/4w = 2.25 signals/semaine en moyenne, avec 1/4 weeks à zéro signal (oct_w2). Sur 12w extension projection ~27, sous-Stage 2 mais aussi sous le seuil de robustesse cross-régime.
+
+        Le HFT moderne lisse les "flags" classiques en patterns plus larges et moins discrets. L'edge théorique est disparu (ou n'a jamais existé sur intraday liquide US).
+    - heading: "Convergence cross-tests post-Outcome-B (mise à jour pattern)"
+      body: |
+        14e data point négatif cross-playbook DexterioBOT 2025. Patterns convergents par classe d'edge :
+
+        - **ICT canon-faithful (post-§0.B)** : 3 playbooks → 0 PASS (SMT inconclusive, Aplus_01_v2 dilué, HTF_Bias_15m_BOS_v2 archived)
+        - **Momentum daily long-only (J&T cross-sectional + TSMOM per-asset)** : 2 styles → 0 PASS permutation
+        - **Directional intraday continuation (Flag breakout)** : 1 playbook → ARCHIVE 3 kill rules
+
+        Toutes les classes d'edge testées sur SPY/QQQ 2019-2025 (intraday + daily) ont failed les gates. Le périmètre est saturé. Confirme l'hypothèse "outcome B + arbitrage public" empiriquement à 14 points.
+    - heading: "Discipline plan respectée"
+      body: |
+        - 1 single-shot recalibration paramétrique structurelle (0.6 → 1.0) pré-smoke 4w, justifiée par distribution observée non-outcome
+        - Pas de grid search post-FAIL
+        - Pas de TP/SL tuning
+        - Pas de single-filter retest
+        - Kill rules pré-écrites honorées sans réinterprétation
+
+bloc4_decision:
+  body: |
+    **Flag_Breakout_5m_v1 = ARCHIVED** par discipline plan v4.0 J5.
+
+    3 kill rules pré-écrites déclenchées simultanément :
+    - R1 n < 15 (n=9, Cas A1 §20 signal structurellement rare)
+    - R2 E[R]_pre_reconcile ≤ 0 (mean = -0.058R, Cas C §20 edge absent)
+    - R6 peak_R p60 < 0.5R (0.380R, Cas C signal faible structurellement)
+
+    Cas §20 dominant : combinaison **A1 + C** non-falsifiant individuellement mais convergent sur kill rules → ARCHIVED clean.
+
+    **Pivot Priorité #2 plan v4.0 J6-J7 — Crypto basis/funding harvest skeleton** déclenché immédiatement.
+
+bloc5_why:
+  subsections:
+    - heading: "Pas d'iteration TP/SL/duration"
+      body: |
+        Plan v4.0 J5 explicite : "pas de re-shoot, pas de single-filter retest, pas de grid search". 3 kill rules convergents = pas ambigu, kill définitif.
+    - heading: "Pas d'iteration vol_mult / lookback / atr_period"
+      body: |
+        Toute optimisation paramétrique post-3-kill-rules = grid search caché. La recalibration unique 0.6→1.0 était structurellement justifiée pré-smoke 4w (distribution observée). Post-FAIL, plus aucune justification non-outcome ne tient.
+    - heading: "Pas de re-test extended 12w"
+      body: |
+        Densité 9/4w = 2.25/semaine projette ~27 sur 12w. Même si E[R] devenait positif au sample plus large, le pattern peak_R p60 = 0.38R + 67% time_stop reste structurel — pas un effet sample size. ARCHIVE direct économise temps inutile.
+    - heading: "Honnêteté méthodologique recalibration"
+      body: |
+        La recalibration 0.6 → 1.0 était une zone grise discipline. Justifiée par : (1) basée sur distribution observée non sur outcome, (2) one-shot pas iterative, (3) sans elle le détecteur ne fire jamais (pas de test possible). Mais notée comme précédent à surveiller. Si abuse futur ("calibration structurelle" comme excuse pour tweaks), revenir à standards stricts.
+
+next_action: |
+  **Pivot Priorité #2 plan v4.0 J6-J7 — Crypto basis/funding harvest skeleton** :
+  1. Fetch Binance REST BTC/ETH perp futures + spot historique 2y (free public API, pas de clé requise)
+  2. Compute funding rate stream (3×/jour cycles 8h)
+  3. Backtest funding harvest neutralisé (long perp + short spot OR mirror)
+  4. Gate Stage 1 v4.0 : E[R]_net annualisé > 8% post-frais (taker 0.04% + funding capture), drawdown < 10%, > 70% windows funding positif
+  5. Kill rule : E[R]_net < 5% OR DD > 15% OR > 30% windows funding négatif → ARCHIVE
+  6. Si PASS → infra Binance prod-grade + extension TSMOM crypto possible. Si FAIL → Priorité #3 Aplus_01_v2 single-filter last-call.
+
+  **Briques préservées** :
+  - `detect_flag_breakout()` dans [flag_breakout.py](backend/engines/patterns/flag_breakout.py) — réutilisable autre univers (Russell 2000, crypto OHLCV)
+  - YAML schema indicator-based template
+  - 6/6 unit tests
+  - Wire-up custom_detectors + playbook_loader + AGGRESSIVE_ALLOWLIST

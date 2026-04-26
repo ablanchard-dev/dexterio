@@ -1257,7 +1257,7 @@
       B: 0.0
 - playbook_name: Engulfing_Bar_V056
   category: SCALP
-  description: 'V056 M1 faithful: engulfing bar on 5m → MARKET entry → TP 2:1'
+  description: 'V056 M1 TP peak-R calib v1 (Leg 1.1): TP1 2.0R->0.68R (peak_R p60=0.663)'
   max_setups_per_session: 2
   enabled_in_modes:
   - AGGRESSIVE
@@ -1307,13 +1307,13 @@
     distance: pattern_extreme
     padding_ticks: 1
   take_profit_logic:
-    min_rr: 2.0
-    tp1_rr: 2.0
-    tp2_rr: 4.0
-    breakeven_at_rr: 1.0
+    min_rr: 0.68
+    tp1_rr: 0.68
+    tp2_rr: 1.20
+    breakeven_at_rr: 0.40
     trailing_mode: trail_rr
-    trailing_trigger_rr: 1.0
-    trailing_offset_rr: 0.5
+    trailing_trigger_rr: 0.50
+    trailing_offset_rr: 0.25
   max_duration_minutes: 120
   scoring:
     weights:
@@ -1883,80 +1883,3 @@
       A_plus: 0.7
       A: 0.5
       B: 0.3
-- playbook_name: Aplus_02_Premarket_v1
-  category: DAYTRADE
-  description: "Aplus_02 Family F Premarket v1 (Leg 3 §0.5): SWEEP@5m + BOS@5m en fenêtre NY premarket 04:00-09:30 ET, schéma α'' (liquidity_draw swing_k3 significant + structure k3) + 1m confirm. Kill rules template Sprint 1."
-  max_setups_per_session: 2
-  enabled_in_modes:
-  - AGGRESSIVE
-  instruments:
-  - SPY
-  - QQQ
-  required_signals:
-  - SWEEP@5m
-  - BOS@5m
-  timefilters:
-    session: PREMARKET_NY
-    time_windows:
-    - - 04:00
-      - 09:30
-  context_requirements:
-    htf_bias_allowed:
-    - bullish
-    - bearish
-    day_type_allowed:
-    - trend
-    - manipulation_reversal
-    structure_htf:
-    - uptrend
-    - downtrend
-    london_sweep_required: false
-    volatility_min: null
-    volatility_max: null
-    adx_min: 20
-    require_structure_alignment: k3
-  ict_confluences:
-    require_sweep: true
-    allow_fvg: true
-    require_bos: true
-    smt_bonus: false
-  candlestick_patterns:
-    required_families: []
-    direction: any
-  entry_logic:
-    type: LIMIT
-    zone: bos_close
-    confirmation_tf: 1m
-  setup_tf: 5m
-  stop_loss_logic:
-    type: SWING
-    distance: recent_swing
-    padding_ticks: 3
-  take_profit_logic:
-    min_rr: 1.0
-    tp1_rr: 1.0
-    tp2_rr: 2.0
-    breakeven_at_rr: 0.5
-    trailing_mode: trail_rr
-    trailing_trigger_rr: 0.7
-    trailing_offset_rr: 0.3
-    tp_logic: liquidity_draw
-    tp_logic_params:
-      draw_type: swing_k3
-      lookback_bars: 60
-      min_rr_floor: 0.5
-      fallback_rr: 2.0
-      pool_selection: significant
-      max_rr_ceiling: 3.0
-  max_duration_minutes: 60
-  require_htf_alignment: D
-  scoring:
-    weights:
-      liquidity_sweep: 0.35
-      bos_strength: 0.3
-      context_strength: 0.2
-      pattern_quality: 0.15
-    grade_thresholds:
-      A_plus: 0.75
-      A: 0.55
-      B: 0.35

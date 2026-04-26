@@ -1,0 +1,134 @@
+title: "TSMOM per-asset SPY/QQQ/GLD/TLT v1 — Plan v4.0 Priorité #1 — ARCHIVED post-permutation FAIL"
+date: "2026-04-25"
+plan: "v4.0 §0.5bis Priorité #1 (post-Outcome-B pivot)"
+status: "ARCHIVED — kill rule pré-écrite J3 plan déclenchée (permutation p=0.88 > 0.10)"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse", "Time-Series Momentum per-asset Moskowitz/Ooi/Pedersen 2012 — long si r_252d > 0 sinon cash, equal-weight long, vol-target 10% annualisé, monthly rebalance, sur SPY/QQQ/GLD/TLT 6.5y"]
+    - ["Briques modifiées", "[allocator.py](backend/engines/portfolio/allocator.py) — ajout `allocate_tsmom_signal()` + dispatcher `method='tsmom'` + kwarg `tsmom_lookback_days`"]
+    - ["Briques réutilisées", "[backtester.py](backend/engines/portfolio/backtester.py) `run_backtest()` agnostic, [fetch_daily_etfs.py](backend/scripts/f2/fetch_daily_etfs.py) data 6.5y"]
+    - ["Scripts livrés", "[run_f2_tsmom_smoke.py](backend/scripts/f2/run_f2_tsmom_smoke.py) + [run_f2_tsmom_per_asset.py](backend/scripts/f2/run_f2_tsmom_per_asset.py) + [run_f2_tsmom_permutation.py](backend/scripts/f2/run_f2_tsmom_permutation.py)"]
+    - ["Tests", "5/5 PASS [test_portfolio_allocator.py](backend/tests/test_portfolio_allocator.py) — long/cash/per-asset/all-down/dispatcher (15/15 régression)"]
+    - ["Corpus", "yfinance free 2019-06-03 → 2025-11-28, 1634 days, 4 ETFs (SPY SP500 + QQQ Nasdaq + GLD Gold + TLT Treasury 20y)"]
+    - ["Coûts simulés", "transaction_cost_bps=10 + ConservativeFillModel slippage budget post-G3 -0.097R/trade (non appliqué portfolio-level Sharpe car daily rebal ≠ per-trade)"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Test #1 — Smoke 6.5y portfolio (J1)"
+      tables:
+        - headers: ["Métrique", "TSMOM portfolio", "SPY buy-and-hold ref", "Gate plan"]
+          align: ["---", "---:", "---:", "---:"]
+          rows:
+            - ["Sharpe ann (daily)", "**0.96**", "0.79", "≥ 0.8 PASS ✅"]
+            - ["CAGR", "9.59%", "14.9% (148.9% / 6.5y)", "—"]
+            - ["max DD", "**-18.4%**", "-34.1%", "< 20% PASS ✅"]
+            - ["vol annualisée", "10.1%", "—", "(target 10%)"]
+            - ["Martin ratio", "1.15", "—", "—"]
+            - ["cash_avg", "28.5%", "0%", "—"]
+            - ["n rebalances", "66", "0", "—"]
+    - heading: "Test #2 — Per-asset Sharpe individuel (J2.2)"
+      tables:
+        - headers: ["Ticker", "BH Sharpe", "TSMOM Sharpe", "TSMOM CAGR", "TSMOM DD", "% time long", "Δ vs BH"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["**SPY** (SP500)", "0.79", "**0.98**", "12.97%", "-17.6%", "78.8%", "**+0.18**"]
+            - ["QQQ (Nasdaq)", "0.93", "0.81", "13.95%", "-24.5%", "78.8%", "-0.12"]
+            - ["GLD (Gold)", "1.17", "0.89", "12.19%", "-31.4%", "75.8%", "-0.28"]
+            - ["TLT (Treasury 20y)", "-0.27", "**-0.73**", "-4.54%", "-27.3%", "21.2%", "-0.47"]
+        - headers: ["Gate per-asset (plan)", "Résultat", "Statut"]
+          align: ["---", "---:", "---:"]
+          rows:
+            - ["≥3/4 actifs Sharpe > 0.5 (PASS bar)", "3/4 (SPY 0.98, QQQ 0.81, GLD 0.89)", "PASS ✅"]
+            - ["≥2/4 actifs Sharpe > 0.4 (kill rule)", "3/4", "OK"]
+    - heading: "Test #3 — Bar permutation 500 iter seed=42 (J2.1)"
+      tables:
+        - headers: ["Métrique", "Valeur", "Gate plan"]
+          align: ["---", "---:", "---:"]
+          rows:
+            - ["Real Sharpe", "**0.9595**", "—"]
+            - ["Shuffled mean Sharpe", "**1.2707**", "—"]
+            - ["Shuffled std Sharpe", "0.2538", "—"]
+            - ["Shuffled p95 / p99", "1.678 / 1.778", "—"]
+            - ["**z-score**", "**-1.226**", "real est 1.2 std SOUS random mean"]
+            - ["**p-value (one-sided)**", "**0.8800**", "**88% des permutations battent réalité**"]
+            - ["GATE p < 0.05 (PASS bar)", "**FAIL**", "❌"]
+            - ["**KILL p > 0.10 (archive)**", "**KILL DÉCLENCHÉ**", "❌"]
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit (§18.3 v4)"
+      body: |
+        **STRUCTURAL_KILL via permutation gate** — pas FANTASY (vraie implémentation Moskowitz canonique 12-month lookback), pas PARTIAL_IMPL (briques §0.B non-applicables car non-ICT). TSMOM est correctement codé, signal passe Sharpe + per-asset gates, mais échoue le gate stringent permutation.
+    - heading: "Lecture structurelle — pourquoi le portfolio Sharpe 0.96 n'est pas un edge"
+      body: |
+        Le Sharpe portfolio 0.96 vient majoritairement de la **diversification** (TSMOM filtre TLT down 2020-2022 → 21.2% time long), pas d'un edge per-asset systématique :
+
+        - SPY : TSMOM bat BH (+0.18 Sharpe) — seul vrai gain per-asset
+        - QQQ : TSMOM PERD vs BH (-0.12) — dilution
+        - GLD : TSMOM PERD vs BH (-0.28) — dilution majeure
+        - TLT : TSMOM amplifie pertes (-0.47) — destructeur en isolation
+
+        Sur 4 actifs, 1 seul génère vraie valeur ajoutée. Le reste = effet vol-target portfolio + diversification + retrait TLT downtrend. Reproductible avec n'importe quel signal qui retire les actifs en downtrend (tactical asset allocation banale).
+    - heading: "Permutation FAIL — interprétation"
+      body: |
+        Real Sharpe 0.96 < shuffled mean 1.27 (z=-1.23, p=0.88). 88% des permutations aléatoires battent la réalité.
+
+        **Cause probable** : le bar permutation (shuffle daily returns per ticker, reconstruct prices) préserve la dérive haussière des actifs (drift positif SPY/QQQ/GLD 2019-2025) mais détruit la corrélation temporelle. Sur prix avec drift positif, des "trends" aléatoires émergent naturellement par cumul. TSMOM exploite trends → fonctionne aussi sur shuffled. Mais **fonctionne moins bien que sur shuffled** (p=0.88 vs 0.5 baseline) car :
+
+        1. Le filtre 252d signal sur shuffled rate parfois mieux les "vrais" trends que sur réel (bruit aléatoire timing)
+        2. Real prices ont mean-reversion structurelle (jumps news, gaps) qui pénalise momentum
+        3. La taille de l'échantillon (1634 days, ~6.5y) avec lookback 252 = ~5.5 effective points de décision = haute variance
+
+        Cette critique est documentée dans la littérature (Hjalmarsson 2011, Daniel & Moskowitz 2016 momentum crash) : **bar permutation peut être trop stringent pour trend-following long-only sur indices avec drift**.
+    - heading: "Convergence avec F2 cross-sectional J&T (2026-04-24)"
+      body: |
+        2 tests permutation indépendants sur 2 styles momentum convergent FAIL :
+
+        | Stratégie | Sharpe réel | Shuffled mean | p-value | Verdict |
+        |---|---:|---:|---:|---:|
+        | F2 J&T cross-sectional 9 ETFs | 0.733 | 0.789 | 0.558 | FAIL |
+        | TSMOM per-asset 4 ETFs | 0.960 | 1.271 | **0.880** | **FAIL** |
+
+        Pattern : sur indices ETFs liquides 2019-2025, momentum strategies échouent permutation gate. Soit (a) les momentum strategies n'ont pas d'edge réel sur ce périmètre, soit (b) bar permutation n'est pas le bon falsifier pour trend-following long-only. Les deux interprétations sont valides ; la discipline plan dit ARCHIVE.
+
+bloc4_decision:
+  body: |
+    **TSMOM per-asset v1 = ARCHIVED** par discipline plan v4.0 J3.
+
+    Le plan était explicite (Priorité #1 kill rule pré-écrite) : `permutation p > 0.10 → ARCHIVE, pas d'iteration sur lookback (= p-hacking masqué). 12m = paramètre canonique académique, point.`
+
+    p=0.88 >> 0.10 → kill rule honorée sans réinterprétation.
+
+    **Pivot Priorité #2** : Crypto basis/funding harvest skeleton (J4-J6 plan v4.0). Infra à construire (~5j Binance REST + execution model + tests). Hypothèse : funding rate harvesting BTC/ETH perp neutralisé spot, E[R]_net annualisé > 8% post-frais sur 2y.
+
+    **OU décision user** : surfacer la question méthodologique (bar permutation appropriée pour trend-following ?) avant pivot crypto. Reformuler le gate impliquerait amendement plan Niveau 1, pas autorisation autonome CEO.
+
+bloc5_why:
+  subsections:
+    - heading: "Pas d'iteration lookback (1m / 3m / 6m / 9m / 12m)"
+      body: |
+        Plan v4.0 explicite : "pas d'iteration sur lookback = p-hacking masqué". Toute optimisation lookback post-FAIL crée une chance d'overfit data → résultat non-reproductible. 12m = canonique Moskowitz, choix défendable a priori.
+    - heading: "Pas de re-shoot avec TC=0 ou autre overlay"
+      body: |
+        Pure-signal Sharpe (no vol_target, no TC) = 0.88 dans le smoke. Vol_target overlay aide légèrement (+0.08). Aucune optimisation overlay ne sauverait permutation FAIL — le gate est sur le signal sous-jacent, pas l'enveloppe.
+    - heading: "Pas de re-test avec autre univers (ex: 6 ETFs ou crypto add)"
+      body: |
+        Univers SPY/QQQ/GLD/TLT pré-spécifié plan (aligne vision user SP500/Nasdaq/Gold). Changer l'univers post-FAIL = recherche de cherry-picking. Si TSMOM doit re-tester avec crypto, c'est dans extension Priorité #2 (PASS), pas comme rescue Priorité #1.
+    - heading: "Honnêteté méthodologique"
+      body: |
+        TSMOM portfolio Sharpe 0.96 PASS smoke + per-asset gate PASS — strictement, c'est un signal qui passe 2/3 gates pré-écrits. Le 3e (permutation) FAIL clean. Discipline plan = honorer kill rule. Ne pas honorer = précédent dangereux, pollue toute future décision PASS/FAIL.
+    - heading: "Question méthodologique légitime à surface user"
+      body: |
+        Le bar permutation peut être un test inadapté pour trend-following long-only sur indices liquides avec drift. Une alternative serait Monte Carlo block-bootstrap (preserve autocorrélation locale) ou White's Reality Check. Si user veut amender plan Niveau 1 pour reformer le gate stat avant ARCHIVE TSMOM, c'est sa prérogative (escalade §0.3 point 5).
+
+next_action: |
+  **Pivot Priorité #2 plan v4.0 J4-J6 — Crypto basis/funding harvest skeleton** :
+  1. Fetch Binance REST BTC/ETH perp futures + spot historique 2y free
+  2. Compute funding rate stream (3×/jour 8h cycles)
+  3. Backtest funding harvest neutralisé (long perp + short spot OR vice-versa)
+  4. Gate Stage 1 v4.0 : E[R]_net annualisé > 8%, drawdown < 10%, > 70% windows funding positif
+  5. Kill rule : E[R] < 5% OR DD > 15% OR > 30% windows funding négatif → ARCHIVE
+  6. Si PASS → infra Binance prod-grade + extension TSMOM ? Si FAIL → Priorité #3 (Aplus single-filter OR Flags)
+
+  **Décision user requise** : (A) Pivot crypto immédiat per plan, OU (B) Surface méthodologie permutation avant pivot (escalade §0.3 point 5 plan amendment), OU (C) Accepter ARCHIVE TSMOM mais pivoter vers autre Priorité (Russell 2000 small caps less arbitrated, VIX VRP via VXX/SVXY proxies, Flags directionnel).

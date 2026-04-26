@@ -1,0 +1,89 @@
+# Flag_Breakout_5m_v1 — Plan v4.0 J4 (post-TSMOM ARCHIVED)
+#
+# Hypothèse : impulsion 5m > 1.5×ATR(14) → consolidation flag 3-5 bars
+# range < 0.6× impulse range → breakout volume > 1.2× avg(20) → continuation 1R.
+#
+# Dossier : backend/knowledge/playbooks/flag_breakout_v1/dossier.md
+# Détecteur : backend/engines/patterns/flag_breakout.py
+# Tests : backend/tests/test_flag_breakout.py (6/6 PASS)
+#
+# SL = swing opposite à impulsion + 0.3× ATR padding (carried via signal price_level)
+# TP = 1R simple (pas de runner v1 — sober, tests d'edge nu)
+# Session NY RTH 09:30-15:00 ET (corpus existant)
+# Run :
+#   .venv/bin/python scripts/run_mini_lab_week.py \
+#     --calib-allowlist Flag_Breakout_5m_v1 \
+#     --playbooks-yaml knowledge/campaigns/flag_breakout_v1.yml \
+#     --start 2025-11-17 --end 2025-11-21
+- playbook_name: Flag_Breakout_5m_v1
+  category: SCALP
+  description: "Flag breakout 5m : impulsion > 1.5x ATR + consolidation tight 3-5 bars + breakout vol > 1.2x avg → 1R target. Sober v1 — pas de variantes, pas de runner, pas de filter post-hoc."
+  max_setups_per_session: 5
+  enabled_in_modes:
+  - AGGRESSIVE
+  instruments:
+  - SPY
+  - QQQ
+  required_signals:
+  - FLAGBREAK@5m
+  timefilters:
+    session: NY
+    time_windows:
+    - - 09:30
+      - '15:00'
+  context_requirements:
+    htf_bias_allowed:
+    - bullish
+    - bearish
+    - neutral
+    day_type_allowed:
+    - trend
+    - manipulation_reversal
+    - range
+    - unknown
+    structure_htf:
+    - uptrend
+    - downtrend
+    - range
+    - unknown
+    london_sweep_required: false
+    volatility_min: null
+    volatility_max: null
+    adx_min: null
+    require_htf_alignment: null
+  ict_confluences:
+    require_sweep: false
+    allow_fvg: true
+    require_bos: false
+    smt_bonus: false
+  candlestick_patterns:
+    required_families: []
+    direction: any
+  entry_logic:
+    type: MARKET
+    zone: signal_close
+    confirmation_tf: 5m
+  setup_tf: 5m
+  stop_loss_logic:
+    type: SWING
+    distance: signal_price_level
+    padding_ticks: 0
+  take_profit_logic:
+    min_rr: 1.0
+    tp1_rr: 1.0
+    tp2_rr: 1.0
+    breakeven_at_rr: 0.5
+    trailing_mode: none
+    tp_logic: fixed_rr
+  max_duration_minutes: 30
+  scoring:
+    weights:
+      indicator_strength: 0.6
+      pattern_quality: 0.2
+      context_strength: 0.2
+    grade_thresholds:
+      A_plus: 0.7
+      A: 0.5
+      B: 0.3
+  require_close_above_trigger: false
+  entry_buffer_bps: 0.0

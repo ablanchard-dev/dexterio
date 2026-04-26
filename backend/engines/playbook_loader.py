@@ -870,6 +870,12 @@ class PlaybookEvaluator:
                     # tp_resolver tp_logic='smt_completion'.
                     'SMT': 'smt_cross_index_sequence',
                     'SMTCROSSINDEX': 'smt_cross_index_sequence',
+                    # Flag breakout — Plan v4.0 J4 (post-TSMOM ARCHIVED)
+                    # Impulsion 5m → flag consolidation 3-5 bars → breakout
+                    # volume-confirmed. Stateless detector dans flag_breakout.py.
+                    'FLAG': 'flag_breakout',
+                    'FLAGBREAK': 'flag_breakout',
+                    'FLAGBREAKOUT': 'flag_breakout',
                 }
                 p_type = type_map.get(base, base.lower())
                 dir_required = None
@@ -1088,7 +1094,7 @@ class PlaybookEvaluator:
 
             elif criterion == 'indicator_strength':
                 # Use strength from indicator-based ICT patterns (EMA, VWAP, RSI, ORB)
-                indicator_types = {'ema_cross', 'vwap_bounce', 'rsi_extreme', 'orb_break'}
+                indicator_types = {'ema_cross', 'vwap_bounce', 'rsi_extreme', 'orb_break', 'flag_breakout'}
                 ind_pats = [p for p in effective_ict if p.pattern_type in indicator_types]
                 if ind_pats:
                     criterion_score = max(p.strength for p in ind_pats)

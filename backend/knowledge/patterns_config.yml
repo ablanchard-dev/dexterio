@@ -47,6 +47,7 @@ sessions:
   # Standard pre‑market window in NY timezone.  Use PRE_MARKET as the canonical
   # name; alias PREMARKET will be accepted by the code for backward compatibility.
   PRE_MARKET: "07:00-09:30"
+  PREMARKET_NY: "04:00-09:30"
   MKT_OPEN_WINDOW: "09:30-10:00"
   NY: "09:30-16:00"
   TIMEZONE: "America/New_York"

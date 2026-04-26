@@ -26,7 +26,7 @@ from typing import Dict, List, Literal, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-AllocationMethod = Literal["equal_weight", "momentum", "vol_target", "risk_parity"]
+AllocationMethod = Literal["equal_weight", "momentum", "vol_target", "risk_parity", "tsmom"]
 
 
 @dataclass(frozen=True)
@@ -168,6 +168,57 @@ def apply_vix_regime_overlay(
     return {t: float(w * scale) for t, w in weights.items()}
 
 
+def allocate_tsmom_signal(
+    prices: pd.DataFrame,
+    as_of: pd.Timestamp,
+    lookback_days: int = 252,
+    tickers: Optional[Sequence[str]] = None,
+) -> Dict[str, float]:
+    """Time-Series Momentum per-asset (Moskowitz/Ooi/Pedersen 2012).
+
+    For each asset independently : long if r_{lookback_days} > 0, cash otherwise.
+    Long-positioned assets share equal weight (1/n_long).
+
+    DIFFERS from allocate_momentum_jt (cross-sectional top-N picks). TSMOM is
+    PER-ASSET absolute return persistence (signal = sign of own return), not
+    relative ranking across the universe. Each asset's inclusion is independent.
+
+    Academic reference : Moskowitz/Ooi/Pedersen (2012) "Time Series Momentum",
+    Journal of Financial Economics. 12-month lookback canonical.
+
+    Args:
+        prices : date-indexed df, columns = tickers, values = close prices.
+        as_of : allocation decision date.
+        lookback_days : trading-day lookback (default 252 ≈ 12 months).
+        tickers : optional subset of prices.columns ; defaults to all columns.
+
+    Returns:
+        Dict ticker → weight. Long assets = 1/n_long each, others 0. If 0 long,
+        all weights = 0 (full cash).
+    """
+    if tickers is None:
+        tickers = list(prices.columns)
+    if prices.empty:
+        return {t: 0.0 for t in tickers}
+    window = prices.loc[:as_of].tail(lookback_days + 1)
+    if len(window) < 10:
+        return {t: 0.0 for t in tickers}
+    long_assets = []
+    for t in tickers:
+        if t not in window.columns:
+            continue
+        col = window[t].dropna()
+        if len(col) < 10:
+            continue
+        ret = col.iloc[-1] / col.iloc[0] - 1.0
+        if ret > 0:
+            long_assets.append(t)
+    if not long_assets:
+        return {t: 0.0 for t in tickers}
+    w = 1.0 / len(long_assets)
+    return {t: (w if t in long_assets else 0.0) for t in tickers}
+
+
 def allocate_risk_parity(
     prices: pd.DataFrame,
     as_of: pd.Timestamp,
@@ -222,6 +273,7 @@ class PortfolioAllocator:
         jt_lookback: int = 12,
         jt_skip: int = 1,
         jt_top_n: int = 3,
+        tsmom_lookback_days: int = 252,
         vix_series: Optional[pd.Series] = None,
     ) -> AllocationResult:
         """Run the chosen allocation method + optional overlays (vol_target)."""
@@ -237,6 +289,12 @@ class PortfolioAllocator:
         elif method == "risk_parity":
             weights = allocate_risk_parity(
                 prices[self._tickers], as_of,
+            )
+        elif method == "tsmom":
+            weights = allocate_tsmom_signal(
+                prices[self._tickers], as_of,
+                lookback_days=tsmom_lookback_days,
+                tickers=self._tickers,
             )
         elif method == "vol_target":
             # Pure vol_target on equal-weight base

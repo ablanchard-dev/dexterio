@@ -1470,17 +1470,20 @@ class BacktestEngine:
         # §0.5bis entrée #1 SMT — pair-coord 5m emission consumed by current
         # symbol if matching. The pre-step `_run_smt_pair_tick` (called once
         # in the main bar-loop before per-symbol iteration) may have staged a
-        # pending synthetic ICTPattern for this symbol. Consume it here so it
-        # joins ict_5m and the playbook matches via SMT_CROSS_INDEX@5m.
+        # pending synthetic ICTPattern for this symbol. Consume it as a
+        # **transient local** buffer (NOT stored in self._ict_by_tf) to avoid
+        # cross-symbol persistence leak (v8.5 fix : pattern was lingering in
+        # shared cache and being matched by the wrong symbol's evaluator).
         smt_pending = getattr(self, "_smt_pending_patterns", {}).pop(symbol, None)
-        if smt_pending is not None:
-            self._ict_by_tf.setdefault("5m", []).append(smt_pending)
 
         # Merge all TF patterns for the setup engine (it filters by playbook.setup_tf)
         ict_patterns: List[ICTPattern] = []
         candle_patterns: List[CandlestickPattern] = []
         for tf_pats in self._ict_by_tf.values():
             ict_patterns.extend(tf_pats)
+        # Append the SMT synthetic locally (scoped to this symbol's call only).
+        if smt_pending is not None and smt_pending.symbol == symbol:
+            ict_patterns.append(smt_pending)
         for tf_pats in self._candle_by_tf.values():
             candle_patterns.extend(tf_pats)
         

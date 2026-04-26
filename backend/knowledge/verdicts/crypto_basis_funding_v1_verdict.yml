@@ -1,0 +1,124 @@
+title: "Crypto basis/funding harvest BTC/ETH v1 — Plan v4.0 J6-J7 Priorité #2 — ARCHIVED post-2y backtest (FAIL gate 8%)"
+date: "2026-04-25"
+plan: "v4.0 §0.5bis Priorité #2 (post-Flag breakout ARCHIVED)"
+status: "ARCHIVED — gate plan PASS bar 8% FAIL sur 2 variantes (best continuous APR 5.51%)"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse", "Funding rate harvesting BTC/ETH perp Binance neutralisé spot — E[R]_net annualisé > 8% post-frais (taker 0.04% × 2 sides) sur 2y avec drawdown < 10%"]
+    - ["Data source", "Binance public REST API (api.binance.com + fapi.binance.com) — pas d'API key, 100% free. 731 daily klines spot+perp + 2191 funding events 8h × 2 assets"]
+    - ["Scripts", "[fetch_binance_perp_spot_funding.py](backend/scripts/crypto/fetch_binance_perp_spot_funding.py) + [run_funding_harvest_backtest.py](backend/scripts/crypto/run_funding_harvest_backtest.py)"]
+    - ["Universe", "BTCUSDT + ETHUSDT, $10k notional/asset = $20k portfolio total"]
+    - ["Période", "2024-04-25 → 2026-04-25 (2 ans, post-bull 2021-2022 + bull 2024-2025)"]
+    - ["Strategy variante 1 (sober)", "Continuous hold long spot + short perp, exit après 2 cycles consécutifs funding négative, re-enter funding positive"]
+    - ["Strategy variante 2 (control)", "Continuous buy-and-hold full 2y (1 entry + 1 exit), aucune réaction funding sign"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Per-asset breakdown — Strategy 1 (exit-on-negative)"
+      tables:
+        - headers: ["Asset", "n_entries", "% time in market", "gross funding $", "cost $", "net PnL $", "APR net %", "max DD %", "Sharpe"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["BTCUSDT", "69", "90.7%", "$1,147", "$1,104", "**+$43**", "**+0.22%**", "-4.19%", "0.27"]
+            - ["ETHUSDT", "84", "91.8%", "$1,202", "$1,344", "**-$142**", "**-0.71%**", "-7.52%", "-0.67"]
+            - ["**Portfolio**", "**153**", "**~91%**", "**$2,349**", "**$2,448**", "**-$99**", "**-0.25%**", "-5.56%", "-0.26"]
+    - heading: "Per-asset breakdown — Strategy 2 (continuous buy-and-hold full 2y)"
+      tables:
+        - headers: ["Asset", "gross funding $", "cost (entry+exit) $", "net PnL $", "APR net %", "% pos funding", "avg APR pos", "avg APR neg"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["BTCUSDT", "$1,092", "$16", "**+$1,076**", "**+5.38%**", "82.8%", "+7.31%", "-3.49%"]
+            - ["ETHUSDT", "$1,144", "$16", "**+$1,128**", "**+5.64%**", "82.8%", "+7.77%", "-4.17%"]
+            - ["**Portfolio**", "**$2,236**", "**$32**", "**+$2,204**", "**+5.51%**", "82.8%", "—", "—"]
+    - heading: "Gate plan v4.0 evaluation"
+      tables:
+        - headers: ["Gate", "Variante 1 (exit-on-neg)", "Variante 2 (continuous)", "PASS bar / Kill rule"]
+          align: ["---", "---:", "---:", "---:"]
+          rows:
+            - ["E[R]_net annualisé > 8% (PASS bar)", "**FAIL** (-0.25%)", "**FAIL** (5.51%)", "8% required"]
+            - ["E[R]_net > 5% (kill rule)", "**KILL** (-0.25%)", "OK borderline (5.51%)", "5% threshold"]
+            - ["max DD < 10% (PASS bar)", "PASS (-5.56%)", "PASS (estimated)", "10% required"]
+            - ["max DD < 15% (kill rule)", "OK", "OK", "15% threshold"]
+            - ["> 70% windows funding+ (PASS bar)", "PASS (82.8%)", "PASS", "70% required"]
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit (§18.3 v4)"
+      body: |
+        **STRUCTURAL_KILL** via gate FAIL convergent sur 2 variantes (sober + control). Pas FANTASY (vraie implémentation funding harvest classique : long spot + short perp = market-neutral, collect funding payments). Pas PARTIAL_IMPL (briques fetch + backtest + cost model en place). L'edge crypto basis 2024-2025 est compressé sous le PASS bar 8%.
+    - heading: "Lecture structurelle — pourquoi 5.5% APR ne fait pas un edge actionnable"
+      body: |
+        Le market crypto basis a été massivement arbitré post-2022 :
+
+        - **2021-2022 bull mania** : funding APR moyen 25-50% (retail FOMO long perp, crypto natives short hedge)
+        - **2023-2024 normalization** : APR descend 10-20% (institutional capture progressif via DeFi yield farms, MicroStrategy-style basis trades, Grayscale basis arb)
+        - **2024-2025 saturation** : APR moyen 5-7% sur 2y mesuré (BTC 5.46%, ETH 5.72% gross). Edge résiduel = compensation marginale pour risques structurels.
+
+        À 5.5% APR net, comparé aux risques :
+        - Counterparty Binance (FTX 2022 reminder)
+        - Basis blowout sur événement extrême (March 2020 COVID, May 2021 China ban, FTX collapse)
+        - Regulatory risk (US/EU restrictions sur exchanges)
+        - Funding rate régime change abrupt
+
+        Le ratio reward/risk est **inférieur** à TLT yield + dividend (~4.5% APR sans risk crypto). Crypto basis n'est plus un edge actionnable pour capital propre 2024-2025.
+    - heading: "Variante 1 over-trading destructive"
+      body: |
+        Strategy "exit après 2 consecutive negative funding" déclenche 153 round-trips combinés sur 2y. À 0.16% per rotation = 24% costs annualisés total, qui dépassent le gross funding (~5.5%). Net APR -0.25%.
+
+        L'optimisation naive "réagir au funding negative" est contre-productive parce que les fluctuations 8h sont noisier que la tendance. Continuous hold (variante 2) est la version optimale. Mais même celle-ci FAIL le PASS bar 8%.
+    - heading: "Convergence cross-tests (15e data point négatif)"
+      body: |
+        Pattern complet par classe d'edge testée sur DexterioBOT :
+
+        - **ICT canon-faithful (post-§0.B)** : 3/3 fail (SMT inconclusive, Aplus_01_v2 dilué, HTF_Bias_15m_BOS_v2 archived)
+        - **Momentum daily long-only** : 2/2 fail permutation (J&T cross-sectional p=0.558, TSMOM per-asset p=0.880)
+        - **Directional intraday continuation** : 1/1 fail kill rules (Flag breakout 3 kill rules convergents)
+        - **Crypto basis/funding harvest** : 1/1 fail gate 8% (5.51% best variante)
+
+        **15 data points négatifs cross-classes**. Le périmètre testé (data free + intraday/daily liquide US + crypto basis 2y) est entièrement saturé.
+    - heading: "Hypothèse alternatives non testées"
+      body: |
+        - **Funding harvest régime-conditional** : enter only when funding > 10% APR threshold (filter top quintile). Pourrait améliorer net APR mais réduirait time-in-market. Non-testé per discipline plan (pas de grid search post-FAIL).
+        - **Cross-exchange basis arb** : Binance perp vs OKX/Bybit perp avec different funding rates. Requires multi-exchange infra, hors scope J6-J7.
+        - **DeFi yield farming** (Aave/Compound + Curve) : APR plus élevé mais smart contract risk + gaz fees. Hors scope (pas crypto pivot fundamental).
+
+bloc4_decision:
+  body: |
+    **Crypto basis/funding harvest v1 = ARCHIVED** par discipline plan v4.0 J7.
+
+    Gate PASS bar 8% FAIL sur 2 variantes convergentes. Variante 1 (sober exit-on-neg) déclenche kill rule (-0.25%). Variante 2 (continuous control) marginalement OK kill rule mais FAIL PASS bar (5.51% < 8%).
+
+    Edge réel mesuré ~5.5% APR sur 2024-2025 ne compense pas les risques crypto (counterparty, basis blowout, regulatory). Le market basis a été arbitré professionnellement post-2022.
+
+    **Pivot Priorité #3 plan v4.0 J7 — Aplus_01_v2 single-filter last-call** déclenché immédiatement.
+
+bloc5_why:
+  subsections:
+    - heading: "Pas de funding-threshold filter post-hoc"
+      body: |
+        Plan v4.0 explicite : pas de single-filter retest post-FAIL = grid search caché. Si filtre threshold était dans hypothèse initiale OK, mais post-test = p-hacking.
+    - heading: "Pas de cross-exchange ou DeFi extension"
+      body: |
+        Hors scope J6-J7 (2 jours). Demande infra nouvelle (Binance + OKX + Bybit auth, gas fees DeFi). Si user veut explorer crypto sérieusement futur, séparé Sprint dédié post-décision globale.
+    - heading: "Honnêteté méthodologique"
+      body: |
+        Variante 2 continuous hold = best naive case. Test hypothèse fondamentale du funding harvest (collect funding × time × notional). 5.51% APR est la **vérité empirique** du marché 2024-2025. Pas tuning, pas selection bias.
+    - heading: "Convergence post-15-data-points = signal stratégique fort"
+      body: |
+        Toutes les classes d'edge testées (ICT canon, momentum daily, directional intraday, crypto basis) FAIL sur SPY/QQQ/BTC/ETH 2019-2026. Pattern univoque : edges publics gratuits sur instruments liquides US/crypto majeurs sont arbitrés. Confirme hypothèse "outcome B" empiriquement à 15 points.
+
+next_action: |
+  **Pivot Priorité #3 plan v4.0 J7 — Aplus_01_v2 single-filter last-call** :
+  1. Une seule filter pré-spécifiée : macro kill zone strict 09:50-10:10 + 13:50-14:10 ET only (TRUE canon)
+  2. Re-test sur 12w existantes Aplus_01_v2 sans re-fit data
+  3. Kill rule absolue : E[R]_net < 0.05R sur même data → ARCHIVE définitive Aplus_01_v2
+  4. 1 jour max budget
+
+  Si Aplus #3 PASS : 1er signal product-grade candidate du projet → ESCALADE USER §0.3 point 2 review humaine pré-paper.
+  Si Aplus #3 FAIL : **3/3 priorités plan FAIL** → ESCALADE USER §0.3 point 3 terminale = pivot fondamental S+1 (Russell 2000 cross-sectional / VIX VRP / accept role infra-only avec stratégie publique connue).
+
+  **Briques préservées** :
+  - Binance fetcher [fetch_binance_perp_spot_funding.py](backend/scripts/crypto/fetch_binance_perp_spot_funding.py) — réutilisable other crypto pairs (SOL, AVAX, etc.)
+  - Funding harvest backtest framework [run_funding_harvest_backtest.py](backend/scripts/crypto/run_funding_harvest_backtest.py) — réutilisable
+  - Data BTC/ETH 2y dans `data/crypto/` — réutilisable pour TSMOM crypto extension ou autre stratégie
