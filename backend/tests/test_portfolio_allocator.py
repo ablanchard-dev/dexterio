@@ -10,6 +10,7 @@ from engines.portfolio.allocator import (
     allocate_equal_weight,
     allocate_momentum_jt,
     allocate_risk_parity,
+    allocate_tsmom_signal,
     allocate_vol_target,
 )
 from engines.portfolio.backtester import compute_metrics, run_backtest
@@ -131,3 +132,74 @@ def test_allocator_unknown_method_raises():
             pd.Timestamp("2024-01-02"),
             method="nonexistent",
         )
+
+
+# ---- TSMOM (Time-Series Momentum per-asset) tests ----
+
+
+def test_tsmom_long_when_positive_return(synthetic_prices):
+    """AAA has +0.0005/day drift, after 252 days r_252 > 0 → long."""
+    as_of = synthetic_prices.index[-1]
+    weights = allocate_tsmom_signal(
+        synthetic_prices[["AAA"]], pd.Timestamp(as_of), lookback_days=252,
+    )
+    assert weights["AAA"] == pytest.approx(1.0)
+
+
+def test_tsmom_cash_when_negative_return(synthetic_prices):
+    """CCC has -0.0003/day drift, after 252 days r_252 < 0 → cash (weight 0)."""
+    as_of = synthetic_prices.index[-1]
+    weights = allocate_tsmom_signal(
+        synthetic_prices[["CCC"]], pd.Timestamp(as_of), lookback_days=252,
+    )
+    assert weights["CCC"] == pytest.approx(0.0)
+
+
+def test_tsmom_per_asset_independent_signals(synthetic_prices):
+    """AAA up + BBB flat + CCC down → AAA long, BBB likely 0 or 1, CCC cash."""
+    as_of = synthetic_prices.index[-1]
+    weights = allocate_tsmom_signal(
+        synthetic_prices, pd.Timestamp(as_of), lookback_days=252,
+    )
+    # AAA must be long (uptrend)
+    assert weights["AAA"] > 0
+    # CCC must be cash (downtrend)
+    assert weights["CCC"] == pytest.approx(0.0)
+    # Long weights sum to 1 (equal-weight among long), CCC excluded
+    long_total = sum(w for w in weights.values() if w > 0)
+    assert long_total == pytest.approx(1.0, abs=1e-9)
+    # Each long asset gets equal weight
+    n_long = sum(1 for w in weights.values() if w > 0)
+    expected_w = 1.0 / n_long
+    for w in weights.values():
+        assert w == pytest.approx(0.0) or w == pytest.approx(expected_w)
+
+
+def test_tsmom_all_cash_when_all_assets_negative():
+    """3 assets all in downtrend → all cash."""
+    dates = pd.date_range("2023-01-01", periods=300, freq="B")
+    rng = np.random.default_rng(7)
+    a = 100.0 * np.exp(np.cumsum(-0.001 + rng.normal(0, 0.005, 300)))
+    b = 100.0 * np.exp(np.cumsum(-0.001 + rng.normal(0, 0.005, 300)))
+    c = 100.0 * np.exp(np.cumsum(-0.001 + rng.normal(0, 0.005, 300)))
+    prices = pd.DataFrame({"A": a, "B": b, "C": c}, index=dates)
+    weights = allocate_tsmom_signal(
+        prices, pd.Timestamp(dates[-1]), lookback_days=252,
+    )
+    assert sum(weights.values()) == pytest.approx(0.0)
+    assert all(w == 0.0 for w in weights.values())
+
+
+def test_tsmom_dispatcher_via_allocate_method(synthetic_prices):
+    """PortfolioAllocator.allocate(method='tsmom') routes correctly."""
+    alloc = PortfolioAllocator(["AAA", "BBB", "CCC"])
+    as_of = synthetic_prices.index[-1]
+    result = alloc.allocate(
+        synthetic_prices, pd.Timestamp(as_of),
+        method="tsmom", tsmom_lookback_days=252,
+    )
+    assert result.method == "tsmom"
+    assert result.weights["AAA"] > 0
+    assert result.weights["CCC"] == pytest.approx(0.0)
+    # cash_weight + sum(weights) = 1
+    assert sum(result.weights.values()) + result.cash_weight == pytest.approx(1.0, abs=1e-9)

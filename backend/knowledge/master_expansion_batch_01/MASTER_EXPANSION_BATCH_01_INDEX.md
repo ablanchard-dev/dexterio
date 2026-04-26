@@ -65,36 +65,50 @@ Chaque vidéo doit traverser **intégralement** les 5 étapes :
 
 ## Sous-batch 1 — Initial 2026-04-22 (14 vidéos)
 
-### Vidéo #1 — `DyS79Eb92Ug`
+### Vidéo #1 — `DyS79Eb92Ug` ✓ CLASSIFIED 2026-04-24
 
 - **URL** : https://www.youtube.com/watch?v=DyS79Eb92Ug
-- **Statut** : `PENDING_INGEST`
-- **Étape A (ingest)** : non-démarré. Cible artefacts : `videos/DyS79Eb92Ug/raw_transcript.txt` + `videos/DyS79Eb92Ug/metadata.json` (title, channel, duration, upload_date, view_count).
-- **Étape B (transcript résumé)** : non-démarré. Cible : `videos/DyS79Eb92Ug/notes.md` ≤300 mots (thèse / mécanisme / TF / univers / règles / fertilité / stérilité).
-- **Étape C (dedupe)** : non-démarré. Checklist cross-check : MASTER_legacy (71 transcripts) + 10 data points négatifs + vidéos #2-#19 du batch.
-- **Étape D (classify)** : non-démarré. Checklist §0.A étape 3+4 : famille (ICT A-F / stat-arb / mean-rev / momentum / gap-fade / flag-cont / autre) + variante (TF principal + direction + régime §0.4-bis ciblé) + filtre + contexte univers ; codability 4Q+1Q.
-- **Étape E (tag terminal)** : non-démarré.
-- **Notes user** : aucune annotation contextuelle spécifique. Fourni au batch initial 2026-04-22.
-- **Famille pressentie** : à déterminer.
-- **Doublons/thèses réfutées pré-flag à surveiller** : si thèse = IFVG 5m isolé TP fixed RR → auto-`DUPLICATE` pointer data point #1/2. Si thèse = HTF+15m BOS isolé → auto-`DUPLICATE` pointer data point #3/4. Si thèse = stat-arb SPY-QQQ intraday → auto-`DUPLICATE` pointer data point #6. Si thèse = portfolio cohort quasi-BE → auto-`DUPLICATE` pointer data point #9. Si ICT vocab-borrowing sans mécanique fermée → `LOW_SIGNAL` ou `PEDAGOGICAL_ONLY`.
+- **Titre** : "Trading LIVE with the BEST Scalper in the World (PERFECT Accuracy)"
+- **Durée** : 141.6 min (8498 s) — conférence live trading NY session
+- **Statut** : `CLASSIFIED`
+- **Tag terminal** : **`PEDAGOGICAL_ONLY`**
+- **Famille** : orderflow-scalping (non-ICT, non-MASTER)
+- **Étape A (ingest)** : DONE — `raw_transcript.txt` (3668 lignes) + `metadata.json`.
+- **Étape B (transcript résumé)** : DONE — `notes.md` (thèse / mécanisme / TF / fertilité / stérilité / honnêteté).
+- **Étape C (dedupe)** : DONE — pas de DUPLICATE. Famille orderflow NQ (footprint+CVD+aggressor side+range bars) ≠ ICT/MASTER/SPY/QQQ. Aucun chevauchement 10 data points négatifs.
+- **Étape D (classify)** : DONE — 4/4 codability NON (pas de CVD/L2/footprint/range bars sur DexterioBOT, pas de règle fermée extractible, discrétionnaire complet). Q5 = not a playbook. Cas §20 A (infra gap massif).
+- **Étape E (tag terminal)** : DONE — `PEDAGOGICAL_ONLY`. Système discrétionnaire expert "years of tape reading" (citation auteur), capital-gated ($1M+ NQ), stack data inaccessible. Valeur documentaire = structure session NY (expansion/rebalance/power hour) + gestion risque asymétrique. Aucune action backlog.
+- **Artefacts** : `videos/DyS79Eb92Ug/raw_transcript.txt` + `videos/DyS79Eb92Ug/metadata.json` + `videos/DyS79Eb92Ug/notes.md` + `videos/DyS79Eb92Ug/true.md`
 
-### Vidéo #2 — `PlsHO33j6B8`
+### Vidéo #2 — `PlsHO33j6B8` ✓ CLASSIFIED 2026-04-24
 
 - **URL** : https://www.youtube.com/watch?v=PlsHO33j6B8
-- **Statut** : `PENDING_INGEST`
-- **Étapes A-E** : non-démarré (même structure que #1).
-- **Notes user** : batch initial 2026-04-22.
-- **Famille pressentie** : à déterminer.
-- **Doublons/thèses réfutées pré-flag** : idem §pré-checks globaux.
+- **Titre** : "Advanced Imbalance Concepts (NDOG / NWOG / NCOG / BPR)"
+- **Durée** : 23.1 min (1386 s)
+- **Statut** : `CLASSIFIED`
+- **Tag terminal** : **`DUPLICATE`**
+- **Famille** : ICT-A (imbalance / FVG variants)
+- **Étape A (ingest)** : DONE — `raw_transcript.txt` (571 lignes) + `metadata.json`.
+- **Étape B (transcript résumé)** : DONE — `notes.md` (NDOG/NWOG/NCOG/BPR mécanismes / fertilité / stérilité / honnêteté).
+- **Étape C (dedupe)** : DONE — `DUPLICATE`. NDOG/NWOG/BPR = variantes famille imbalance déjà dans MASTER_legacy (MASTER_FINAL.txt, MASTER_PLAYBOOK_MAP.md, fair_value_gap détecteur). NCOG auto-disqualifié par l'auteur. Aucune nouveauté §10 r11.
+- **Étape D (classify)** : DONE — Q1 PARTIEL / Q2 OUI / Q3 NON / Q4 Cas C probable / Q5 NON (pédagogique). DUPLICATE confirmé.
+- **Étape E (tag terminal)** : DONE — `DUPLICATE` per R3 §0.A.bis. Pointer : MASTER_FINAL.txt + MASTER_PLAYBOOK_MAP.md + fair_value_gap.py + verdicts Aplus_03 (4 data points négatifs imbalance isolé). NDOG/NWOG comme draws candidates dans tp_resolver différé R5.
+- **Artefacts** : `videos/PlsHO33j6B8/raw_transcript.txt` + `videos/PlsHO33j6B8/metadata.json` + `videos/PlsHO33j6B8/notes.md` + `videos/PlsHO33j6B8/true.md`
 
-### Vidéo #3 — `4sRDnVmLcMk`
+### Vidéo #3 — `4sRDnVmLcMk` ✓ CLASSIFIED 2026-04-24
 
 - **URL** : https://www.youtube.com/watch?v=4sRDnVmLcMk
-- **Statut** : `PENDING_INGEST`
-- **Étapes A-E** : non-démarré.
-- **Notes user** : batch initial 2026-04-22.
-- **Famille pressentie** : à déterminer.
-- **Doublons/thèses réfutées pré-flag** : idem §pré-checks globaux.
+- **Titre** : "Path to Profitability: Inverse Fair Value Gaps Explained"
+- **Durée** : 22.5 min (1352 s)
+- **Statut** : `CLASSIFIED`
+- **Tag terminal** : **`DUPLICATE`**
+- **Famille** : ICT-A (IFVG / FVG inversion)
+- **Étape A (ingest)** : DONE — `raw_transcript.txt` (535 lignes) + `metadata.json`.
+- **Étape B (transcript résumé)** : DONE — `notes.md` (IFVG mécanisme / stacked FVG stack_resolve / fertilité / stérilité / lien Aplus_03).
+- **Étape C (dedupe)** : DONE — `DUPLICATE`. IFVG = cœur de Aplus_03_IFVG_Flip_5m déjà instancié en 4 versions (R.3/v2/α''/ε) avec verdicts négatifs convergents. Concept dans MASTER_legacy. Aucune nouveauté §10 r11.
+- **Étape D (classify)** : DONE — Q1 OUI / Q2 OUI / Q3 OUI hist. mais pas de nouvelle kill rule / Q4 Cas C très probable / Q5 NON (confluence pas playbook). DUPLICATE confirmé.
+- **Étape E (tag terminal)** : DONE — `DUPLICATE` per R3 §0.A.bis. Pointer : MASTER_FINAL.txt + MASTER_PLAYBOOK_MAP.md + fair_value_gap.py + verdicts Aplus_03 R.3/v2/aplus04_v2_alpha_pp/aplus04_v2_epsilon (4 data points négatifs convergents). Knob stack_resolve différé R5.
+- **Artefacts** : `videos/4sRDnVmLcMk/raw_transcript.txt` + `videos/4sRDnVmLcMk/metadata.json` + `videos/4sRDnVmLcMk/notes.md` + `videos/4sRDnVmLcMk/true.md`
 
 ### Vidéo #4 — `joe_XTCn5Bs`
 
@@ -272,34 +286,36 @@ Chaque vidéo doit traverser **intégralement** les 5 étapes :
 
 ## Synthèse provisoire (sera finalisée dans `MASTER_EXPANSION_BATCH_01_SUMMARY.md` post-étape E de tous les vidéos)
 
+**Dernière mise à jour** : 2026-04-24 (batch de traitement #1 complet : vidéos #1-#3)
+
 | Métrique | Valeur actuelle |
 |---|---:|
 | Total vidéos batch | 19 |
 | Sous-batch 1 (2026-04-22) | 14 |
 | Sous-batch 2 extension (2026-04-23) | 5 |
 | URLs user-source dédupliquées vers #1 | 2 (`DyS79Eb92Ug` × 2 = déjà #1) |
-| `PENDING_INGEST` | 19 |
+| `PENDING_INGEST` | **16** |
 | `INGESTED` (post-étape A) | 0 |
 | `TRANSCRIBED` (post-étape B) | 0 |
-| `CLASSIFIED` (post-étape D) | 0 |
+| `CLASSIFIED` (post-étape D-E) | **3** (#1 #2 #3) |
 | `KEEP_PLAYBOOK_CANDIDATE` (post-étape E) | 0 |
 | `KEEP_OVERLAY` | 0 |
 | `KEEP_FEATURE` | 0 |
 | `KEEP_MANAGEMENT` | 0 |
-| `PEDAGOGICAL_ONLY` | 0 |
-| `DUPLICATE` (anticipé ≥ 0 selon dédup legacy) | 0 |
+| `PEDAGOGICAL_ONLY` | **1** (#1 `DyS79Eb92Ug`) |
+| `DUPLICATE` | **2** (#2 `PlsHO33j6B8`, #3 `4sRDnVmLcMk`) |
 | `LOW_SIGNAL` | 0 |
 
 ## Prochaine action workflow §0.A.bis (pickable entre runs §0.9 route principale)
 
 Le CEO peut traiter §0.A.bis **par batches de 3 vidéos** entre runs longs, per R6 non-dispersion. **Défaut autonome CEO** : continuer §0.9 route principale (gate pré-backlog §0.7 → §0.5bis entrée #1) ET §0.A.bis en parallèle par lots de 3.
 
-**Batch 1 de traitement suggéré (ordre stable)** : vidéos #1-#3 (`DyS79Eb92Ug`, `PlsHO33j6B8`, `4sRDnVmLcMk`).
-**Batch 2** : #4-#6.
-**Batch 3** : #7-#9.
-**Batch 4** : #10-#12.
+**Batch 1 de traitement — COMPLET 2026-04-24** : vidéos #1-#3 (`DyS79Eb92Ug` PEDAGOGICAL_ONLY, `PlsHO33j6B8` DUPLICATE, `4sRDnVmLcMk` DUPLICATE). 0 KEEP_PLAYBOOK_CANDIDATE.
+**Batch 2 — SUIVANT** : #4-#6 (`joe_XTCn5Bs`, `7dTQA0t8SH0`, `L4xz2o23aPQ`).
+**Batch 3** : #7-#9 (`52nxvJKM57U`, `ironJFzNBic`, `TEp3a-7GUds`).
+**Batch 4** : #10-#12 (`wzq2AMsoJKY`, `vlnNPFu4rEQ`, `FJch02ucIO8`).
 **Batch 5** : #13-#14 (sous-batch 1 fin) + #15 (sous-batch 2 début).
 **Batch 6** : #16-#18 (#18 candidate conf 2H scalper, flag duration à étape A).
 **Batch 7** : #19 (sous-batch 2 fin) → livrable final `MASTER_EXPANSION_BATCH_01_SUMMARY.md` mis à jour.
 
-Livrable INDEX.md + SUMMARY.md **à jour après chaque batch de 3 vidéos** per plan §0.A.bis R6.
+Livrable INDEX.md **à jour après chaque batch de 3 vidéos** per plan §0.A.bis R6.

@@ -50,6 +50,12 @@ aggressive_allowlist:
                                             # E[R]=-0.036 12w, QQQ SHORT subset n=13 E[R]=+0.076 outlier noted
                                             # NOT promoted). Same SWEEP+BOS+FVG retest 15m + §0.B briques.
                                             # 3e data point §0.3 point 3bis A/B.
+  # --- Plan v4.0 J4-J5 Priorité #1 Flag breakout — ARCHIVED 2026-04-25 (3 kill rules convergents) ---
+  # Flag_Breakout_5m_v1 retiré post-4w Stage 1 : n=9 < 15 (R1) + E[R] -0.058R ≤ 0 (R2) +
+  # peak_R p60 0.380R < 0.5R (R6). Cas §20 A1+C convergents. Recalibration single-shot
+  # 0.6 → 1.0 (structurelle non-outcome) appliquée pré-4w. Verdict :
+  # data/backtest_results/flag_breakout_v1_4w_verdict.md. Pivot Priorité #2 crypto J6-J7.
+  # - Flag_Breakout_5m_v1                   # ARCHIVED → see verdict
 
 aggressive_denylist:
   # --- Destructive / proven negative ---
