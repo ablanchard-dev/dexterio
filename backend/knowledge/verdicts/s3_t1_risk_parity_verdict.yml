@@ -1,0 +1,125 @@
+title: "S+3 T1 Risk Parity 9 ETFs vs benchmarks — ARCHIVED clean (dominated par 3/3 benchmarks)"
+date: "2026-04-26"
+plan: "S+3 amendement plan — dernier sprint free-data discipliné"
+status: "ARCHIVED — Risk parity inverse-vol + vol_target 10% retail equal-rebalance dominé par SPY / 60-40 / equal-weight sur Sharpe + Calmar + CAGR"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse", "Risk parity inverse-vol cross-asset 9 ETFs (allocation robuste plutôt qu'edge alpha pur), monthly rebalance, vol target 10% annualisé via overlay"]
+    - ["Univers", "SPY, QQQ, IWM, DIA, EFA, EEM, GLD, TLT, FXI (data daily 6.5y existante)"]
+    - ["Benchmarks", "(1) SPY buy-hold (2) 60/40 SPY/TLT monthly rebal (3) Equal-weight 9 ETFs monthly"]
+    - ["Costs", "10 bps round-trip per turnover"]
+    - ["Module utilisé", "[allocator.py allocate_risk_parity](backend/engines/portfolio/allocator.py) + overlay vol_target — réutilisation existant 100%"]
+    - ["Script", "[run_t1_risk_parity.py](backend/scripts/s3/run_t1_risk_parity.py)"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Métriques portfolio (capture_summary non-applicable, remplacé)"
+      tables:
+        - headers: ["Strategy", "CAGR", "Sharpe", "maxDD", "Calmar", "vol", "%mNeg", "DDdur_d"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["**Risk Parity 9 ETFs (vol_target 10%)**", "**4.12%**", "**+0.39**", "-23.9%", "**+0.17**", "12.3%", "40.3%", "1104"]
+            - ["REF SPY buy-and-hold", "**+13.98%**", "**+0.74**", "-34.1%", "**+0.41**", "20.8%", "34.7%", "512"]
+            - ["REF 60/40 SPY/TLT monthly", "+5.69%", "+0.48", "-28.5%", "+0.20", "13.3%", "36.1%", "926"]
+            - ["REF Equal-weight 9 ETFs monthly", "+8.98%", "+0.61", "-28.2%", "+0.32", "16.4%", "37.5%", "714"]
+    - heading: "Rolling 12m Sharpe stability"
+      tables:
+        - headers: ["Strategy", "min 12m Sharpe", "median 12m Sharpe"]
+          align: ["---", "---:", "---:"]
+          rows:
+            - ["Risk Parity", "-1.73", "+0.77"]
+            - ["SPY", "-0.86", "+0.93"]
+            - ["60/40", "-1.90", "+0.65"]
+            - ["Equal-weight 9", "-1.58", "+0.87"]
+    - heading: "Sub-sample stability 2019-2022 vs 2022-2025"
+      tables:
+        - headers: ["Strategy", "2019-2022 Sharpe", "2019-2022 CAGR", "2022-2025 Sharpe", "2022-2025 CAGR", "ΔSharpe"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["**Risk Parity**", "**-0.15**", "**-3.1%**", "+0.92", "+9.7%", "**+1.07**"]
+            - ["SPY", "+0.57", "+11.5%", "+0.93", "+15.8%", "+0.37"]
+            - ["60/40", "+0.39", "+4.5%", "+0.56", "+6.6%", "+0.17"]
+            - ["Equal-weight 9", "+0.35", "+5.0%", "+0.86", "+12.0%", "+0.51"]
+    - heading: "Gate plan S+3 T1"
+      tables:
+        - headers: ["Critère", "Risk Parity", "Verdict"]
+          align: ["---", "---:", "---:"]
+          rows:
+            - ["Sharpe ≥ 0.8 (PASS bar)", "0.39", "**FAIL**"]
+            - ["Sharpe ≥ 0.5 (kill rule)", "0.39", "**KILL**"]
+            - ["Sharpe > best bench (0.74)", "0.39", "**FAIL**"]
+            - ["Calmar > best bench (0.41)", "0.17", "**FAIL**"]
+            - ["Sub-sample stable (ΔSharpe < 0.4)", "+1.07", "**FAIL**"]
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit"
+      body: |
+        **STRUCTURAL_KILL via dominance benchmark** : Risk parity inverse-vol + vol_target 10% est mathématiquement dominé par les 3 benchmarks simples (SPY buy-hold + 60-40 + equal-weight 9 ETFs) sur tous les axes risk-adjusted (Sharpe, Calmar, CAGR).
+    - heading: "Cause structurelle — vol_target overlay overcaps + bull regime dependency"
+      body: |
+        Le risk parity inverse-vol naturellement target ~12% vol agrégée. Vol_target overlay 10% scale BACK l'exposition → CAGR suppressed à 4.12%.
+
+        Sans le filter vol_target, risk parity raw aurait probablement Sharpe similaire (~0.4-0.5) avec CAGR plus élevé. Mais c'est du grid search post-FAIL — interdit per discipline.
+
+        Sub-sample révélateur : 2019-2022 Sharpe **-0.15** (négatif, COVID + 2022 bear ont détruit risk parity), 2022-2025 +0.92 (recovery). ΔSharpe +1.07 = pure dépendance régime bull. Pas robuste.
+
+        Risk parity inverse-vol overweight low-vol assets (TLT, GLD) qui ont eu rendements négatifs/médiocres 2019-2022 (rates rising). Le portefeuille a été pénalisé par cette concentration involontaire.
+    - heading: "Application lens v4 G4 (capture_summary non-applicable, métriques portfolio à la place)"
+      body: |
+        Risk parity = portfolio rebalancé continu (pas de trades discrets), donc capture_summary inapplicable comme prévu.
+
+        Métriques portfolio remplacent : Calmar 0.17 (vs SPY 0.41) + ΔSharpe +1.07 (vs SPY +0.37) + DDdur 1104j (vs SPY 512j) = Risk Parity strictement worse sur les 3 axes risk-adjusted alternatifs. Documentation valide pour S+3 T2/T3 utilisation portfolio metrics quand pertinent.
+    - heading: "19e data point — 7/7 classes d'edge ARCHIVED"
+      body: |
+        Pattern empirique étendu :
+
+        | Classe | Tests | Statut |
+        |---|---:|---|
+        | ICT canon-faithful | 3 | 3/3 ARCHIVED |
+        | Momentum daily long-only (J&T + TSMOM) | 2 | 2/2 ARCHIVED |
+        | Directional intraday continuation | 1 | 1/1 ARCHIVED |
+        | Crypto basis/funding | 1 | 1/1 ARCHIVED |
+        | Vol risk premium structural | 1 | 1/1 ARCHIVED |
+        | Event-driven cross-sectional (PEAD) | 1 | 1/1 ARCHIVED |
+        | **Cross-asset allocation (Risk Parity)** | 1 | **1/1 ARCHIVED** |
+
+        **7/7 classes ARCHIVED**. 19 data points cumulés. Pivot S+3 T2 + T3 reste pour confirmer/infirmer définitivement.
+
+bloc4_decision:
+  body: |
+    **Risk Parity 9 ETFs vol_target 10% = ARCHIVED clean** par discipline plan S+3 T1.
+
+    5/5 critères FAIL convergent (Sharpe < kill rule + Sharpe < PASS bar + Calmar < bench + Sharpe < bench + sub-sample non-stable). Permutation skipped (gates clean enough).
+
+    Réponse explicite question verdict :
+    > "Est-ce que cette stratégie sort réellement assez de R / assez de bénéfice pour mériter d'être dans Dexterio ?"
+
+    **NON sans ambiguïté**. SPY buy-hold simple bat risk parity sur tous les axes risk-adjusted. Aucun mérite à inclure cette stratégie. Pas de second-guess possible.
+
+    **19e data point négatif. 7/7 classes d'edge ARCHIVED**.
+
+    **Pivot immédiat T2 Sector momentum rotation 11 secteurs** per scope S+3 frozen.
+
+bloc5_why:
+  subsections:
+    - heading: "Pas de tuning vol_target removal"
+      body: |
+        Spec pré-déclarée incluait vol_target 10%. Retirer post-FAIL = grid search interdit.
+    - heading: "Pas de variantes lookback risk parity (60d / 120d / 252d)"
+      body: |
+        Idem — grid search caché. Spec lookback était 60d implicite (allocator default).
+    - heading: "Pas de permutation"
+      body: |
+        5 gates FAIL clean simultanés + dominé par 3 benchmarks → certitude. Permutation économisée (5-10 min compute).
+    - heading: "Honnêteté sur risk parity"
+      body: |
+        Risk parity historiquement (Bridgewater All Weather, AQR risk parity products) a Sharpe 0.6-0.8 documenté MAIS sur fenêtres beaucoup plus longues (40+ ans), avec leverage notable (1.5-2x), et ajustements actifs régime. Notre version retail simple sur 6.5y inverse-vol non-leveragée + vol_target = strict dominance par buy-hold simple. Cohérent avec littérature : risk parity over-promise sur fenêtres courtes + retail.
+
+next_action: |
+  **Pivot S+3 T2 immédiatement** : Sector momentum rotation 11 secteurs (XLK/XLF/XLV/XLI/XLY/XLP/XLE/XLRE/XLU/XLB/XLC), top 3 par 6m return, monthly rebalance.
+
+  Briques préservées :
+  - run_backtest agnostic + allocator equal_weight + benchmark functions réutilisables
+  - Métriques portfolio framework (Calmar, dd_dur, rolling Sharpe, sub-sample) réutilisable T2/T3
