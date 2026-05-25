@@ -1,0 +1,117 @@
+title: "S+3 T2 Sector Momentum 11 SPDR sectors top-3 6m — ARCHIVED MARGINAL (dominé par SPY simple)"
+date: "2026-04-26"
+plan: "S+3 T2 amendement plan refais-moi-le-plan-swirling-orbit.md"
+status: "ARCHIVED MARGINAL — bat equal-weight bench (1/2) mais strictement worse que SPY buy-hold sur Sharpe + Calmar + CAGR"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse", "Sector momentum cross-sectional intra-equity (less arbitré que cross-asset) : top 3 sectors par 6m return, monthly rebalance equal-weight"]
+    - ["Univers", "11 SPDR sectors : XLK, XLF, XLV, XLI, XLY, XLP, XLE, XLRE, XLU, XLB, XLC (data 6.5y fetched 2026-04-26)"]
+    - ["Stratégie pré-déclarée frozen", "Lookback 6m / Top 3 / Equal-weight / Monthly rebal / 10 bps cost"]
+    - ["Benchmarks", "(1) SPY buy-hold (2) Equal-weight 11 sectors monthly"]
+    - ["Module", "[run_t2_sector_momentum.py](backend/scripts/s3/run_t2_sector_momentum.py) — réutilise PortfolioAllocator equal_weight pour bench + portfolio metrics framework T1"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Métriques portfolio"
+      tables:
+        - headers: ["Strategy", "CAGR", "Sharpe", "maxDD", "Calmar", "vol", "%mNeg"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["**Sector Momentum Top-3 6m**", "**12.12%**", "**+0.66**", "-31.8%", "**+0.38**", "20.8%", "40.3%"]
+            - ["REF SPY buy-and-hold", "**+13.82%**", "**+0.73**", "-34.1%", "**+0.41**", "20.8%", "34.7%"]
+            - ["REF Equal-weight 11 sectors", "+10.29%", "+0.59", "-36.8%", "+0.28", "19.8%", "37.5%"]
+    - heading: "Niveau exploitation — capture_summary per-position 21d-forward"
+      tables:
+        - headers: ["n", "cap_med", "% signal_weak", "% exit_early", "% exit_late", "% efficient", "headline"]
+          align: ["---:", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["213", "+0.353", "9.9%", "13.6%", "**26.8%**", "**38.5%**", "**mixed**"]
+    - heading: "Sub-sample stability 2019-2022 vs 2022-2025"
+      tables:
+        - headers: ["Strategy", "2019-2022 Sharpe", "2019-2022 CAGR", "2022-2025 Sharpe", "2022-2025 CAGR", "ΔSharpe"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["**Sector Momentum**", "**+0.77**", "**+17.9%**", "+0.56", "+8.2%", "**-0.22**"]
+            - ["SPY", "+0.55", "+11.1%", "+0.93", "+15.8%", "+0.38"]
+            - ["Equal-weight 11", "+0.55", "+11.2%", "+0.69", "+9.6%", "+0.13"]
+    - heading: "Gate plan S+3 T2"
+      tables:
+        - headers: ["Critère", "Sector Mom", "Verdict"]
+          align: ["---", "---:", "---:"]
+          rows:
+            - ["Sharpe ≥ 0.8 (PASS bar)", "0.66", "**FAIL**"]
+            - ["Sharpe ≥ 0.5 (kill rule)", "0.66", "OK"]
+            - ["Calmar > best bench (0.41)", "0.38", "**FAIL**"]
+            - ["Sharpe > best bench (0.73)", "0.66", "**FAIL**"]
+            - ["Beat ≥1 bench Sharpe ET Calmar", "0.66 > EW 0.59, 0.38 > EW 0.28", "PASS (vs equal-weight only)"]
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit"
+      body: |
+        **MARGINAL → ARCHIVED via dominance benchmark partielle** : Sector momentum top-3 6m bat le benchmark equal-weight 11 sectors sur Sharpe (0.66 vs 0.59) et Calmar (0.38 vs 0.28), mais est strictement dominé par SPY buy-hold simple (Sharpe 0.73, Calmar 0.41, CAGR 13.82%). C'est le cas "défendable statistiquement vs équipondéré naive" mais "pas mérite inclusion vs passif simple disponible".
+    - heading: "Lecture nuancée vs T1 risk parity"
+      body: |
+        Différent de T1 (FAIL clean dominé par 3/3 benchmarks). T2 a des points positifs réels :
+
+        - **Sub-sample stable** : ΔSharpe -0.22 (T1 était +1.07 = bull dependency catastrophique)
+        - **Capture mixed** avec 38.5% efficient (T1 sans capture portfolio-level)
+        - **Bat 1 benchmark** sur Sharpe ET Calmar (equal-weight 11)
+
+        Mais le critère plan est strict : "ne doit pas juste être défendable, doit être réellement meilleur qu'au moins 1 benchmark simple sur Sharpe ET Calmar". Equal-weight 11 sectors n'est PAS un benchmark "simple" (=  retail accessible naturellement) — SPY l'est. Et SPY domine.
+    - heading: "Raison structurelle de la sous-performance vs SPY"
+      body: |
+        SPY est cap-weighted, dominé par mega-cap tech (AAPL/MSFT/GOOGL/NVDA/META = ~25% poids). 2019-2025 a vu un rally tech dominant (NVDA +1500%, AAPL +400%, MSFT +200%). Sector momentum top-3 picks souvent XLK + XLY + autres mais pondère 1/3 sans capter la concentration cap-weighted SP500.
+
+        Pour battre SPY sur ce corpus, il faudrait soit (a) cap-weighted picking dans top sectors, (b) leverage tech overweight dynamiquement, (c) attendre régime bear où sector rotation defensive paye. Ces sophistications = grid search post-FAIL = interdit.
+    - heading: "20e data point — pattern continue"
+      body: |
+        | Classe | Tests | Statut |
+        |---|---:|---|
+        | ICT canon-faithful | 3 | 3/3 ARCHIVED |
+        | Momentum daily long-only | 2 | 2/2 ARCHIVED |
+        | Directional intraday | 1 | 1/1 ARCHIVED |
+        | Crypto basis/funding | 1 | 1/1 ARCHIVED |
+        | Vol risk premium | 1 | 1/1 ARCHIVED |
+        | Event-driven (PEAD) | 1 | 1/1 ARCHIVED |
+        | Cross-asset allocation (Risk Parity) | 1 | 1/1 ARCHIVED |
+        | **Cross-sectional sector momentum** | 1 | **1/1 ARCHIVED MARGINAL** |
+
+        **8/8 classes ARCHIVED**. T3 low-vol anomaly reste pour confirmer/infirmer.
+
+bloc4_decision:
+  body: |
+    **Sector Momentum Top-3 6m = ARCHIVED MARGINAL** par discipline plan S+3 T2.
+
+    Per plan : "Marginal (Sharpe 0.5-0.8 borderline) : Strict ARCHIVE per discipline. Pas de tuning post-FAIL."
+
+    Réponse explicite question verdict :
+    > "Est-ce que cette stratégie sort réellement assez de R / assez de bénéfice pour mériter d'être dans Dexterio ?"
+
+    **NON**. Inclure sector momentum dans Dexterio = ajouter complexité (rotation, rebalance, monitoring) pour résultat strictement worse que SPY buy-hold simple. Le bénéfice marginal vs equal-weight n'est pas suffisant pour justifier l'inclusion vs un investissement passif accessible à tout retail.
+
+    **20e data point négatif. 8/8 classes d'edge ARCHIVED**.
+
+    **Pivot immédiat T3 Low-volatility anomaly SP500** per scope S+3 frozen.
+
+bloc5_why:
+  subsections:
+    - heading: "Pas de tuning lookback (3m / 9m / 12m)"
+      body: |
+        Spec pré-déclarée 6m. Tester d'autres lookbacks post-FAIL = grid search.
+    - heading: "Pas de top-N alternatif (top-1, top-5)"
+      body: |
+        Idem grid search interdit.
+    - heading: "Pas de cap-weighted picking dans sectors"
+      body: |
+        Modification stratégie post-FAIL. Pas de tweak.
+    - heading: "Pas de permutation"
+      body: |
+        Borderline mais multiple gates fail (Sharpe < 0.8 + Calmar < SPY + Sharpe < SPY) → certitude qualitative. Permutation économisée.
+    - heading: "Honnêteté MARGINAL vs CLEAN FAIL"
+      body: |
+        Verdict statut "MARGINAL" reflète : T2 a sub-sample stability réelle (ΔSharpe -0.22) et capture mixed 38.5% efficient = pas signal_weak. Différent T1 (clean fail dominé 3/3 benchmarks). Mais le critère "réellement meilleur que SPY" tranche : NON.
+
+next_action: |
+  **Pivot T3 Low-volatility anomaly SP500 immédiat** : long bottom-decile realized vol 60d, equal-weight, monthly rebalance, vs SPY + equal-weight SP500 sample.

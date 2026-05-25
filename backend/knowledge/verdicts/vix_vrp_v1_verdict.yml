@@ -1,0 +1,145 @@
+title: "VIX VRP via SVXY/VXX proxies S+1 — ARCHIVED clean (3/3 variantes FAIL Sharpe + DD gates, dominé par SPY)"
+date: "2026-04-26"
+plan: "S+1 post-§0.3 point 3 terminale, plan refais-moi-le-plan-swirling-orbit.md"
+status: "ARCHIVED — VIX VRP retail proxy mathématiquement dominé par SPY buy-hold sur 6.5y"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse", "Volatility risk premium structurel exploitable via long SVXY (-0.5x VIX) avec regime filter VIX threshold + contango z-score, Sharpe net ≥ 0.8, DD ≤ -20%, sub-sample stable"]
+    - ["Data source", "yfinance free 6.5y 2019-06-03 → 2025-11-28, 1634 days. VIX + VXX + SVXY ETN/ETF (post-Feb-2018 leverage current series)"]
+    - ["Universe", "SVXY uniquement (long position), VXX/VIX en signal/référence"]
+    - ["Costs simulés", "10 bps round-trip per entry/exit (ETF retail spread + commission)"]
+    - ["Variantes pré-déclarées", "V1 buy-and-hold / V2 VIX_prior < 25 filter / V3 VIX_prior < 20 AND vxx_svxy_zscore_20d < 0"]
+    - ["Scaffold research livré", "[feature_store.py](backend/research/feature_store.py) (9 features VIX VRP) + [label_factory.py](backend/research/label_factory.py) (MFE/MAE/forward_return + capture_ratio diagnostic) + scripts [fetch_vix_vrp_universe.py](backend/scripts/vix_vrp/fetch_vix_vrp_universe.py) + [run_vix_vrp_smoke.py](backend/scripts/vix_vrp/run_vix_vrp_smoke.py). Budget réel : ~2h sur 1.5j max prévu."]
+
+bloc2_metrics:
+  sections:
+    - heading: "Niveau système — 3 variantes vs SPY buy-hold reference"
+      tables:
+        - headers: ["Variante", "CAGR", "Sharpe ann", "max DD", "% time in mkt", "n_trades"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["V1 SVXY buy-and-hold", "**+11.02%**", "**+0.47**", "**-62.2%**", "99.9%", "1"]
+            - ["V2 SVXY long if VIX_prior<25", "+2.64%", "+0.24", "-53.3%", "79.5%", "40"]
+            - ["V3 SVXY long if VIX<20 AND zscore<0", "**-8.59%**", "**-0.38**", "-57.6%", "47.3%", "88"]
+            - ["**REF SPY buy-and-hold**", "**+15.08%**", "**+0.79**", "**-34.1%**", "100%", "1"]
+    - heading: "Niveau exploitation — capture_summary par variante"
+      tables:
+        - headers: ["Variante", "n", "cap_med", "% signal_weak", "% exit_early", "% exit_late", "% efficient", "headline"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["V1 buy-hold", "1", "+0.65", "0%", "0%", "0%", "0%", "mixed (n=1)"]
+            - ["V2 VIX<25", "40", "+0.61", "25.0%", "22.5%", "22.5%", "25.0%", "mixed"]
+            - ["V3 VIX<20+z<0", "88", "**+1.00**", "**46.6%**", "9.1%", "**17.0%**", "18.2%", "mixed (signal_weak dominant)"]
+    - heading: "Sub-sample stability 2019-2022 vs 2022-2025"
+      tables:
+        - headers: ["Variante", "2019-2022 Sharpe", "2019-2022 CAGR", "2022-2025 Sharpe", "2022-2025 CAGR", "ΔSharpe"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["V1 buy-hold", "+0.21", "**-0.6%**", "+0.76", "**+22.1%**", "+0.55"]
+            - ["V2 VIX<25", "+0.03", "-3.4%", "+0.41", "+8.1%", "+0.39"]
+            - ["V3 VIX<20+z<0", "**-0.60**", "**-12.5%**", "-0.18", "-5.1%", "+0.41"]
+    - heading: "Gate plan v4.0 S+1 — 4 gates"
+      tables:
+        - headers: ["Gate", "V1", "V2", "V3", "Verdict"]
+          align: ["---", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["Sharpe ≥ 0.5 (kill rule)", "FAIL (0.47 borderline)", "FAIL (0.24)", "FAIL (-0.38)", "**3/3 FAIL**"]
+            - ["Sharpe ≥ 0.8 (PASS bar)", "FAIL", "FAIL", "FAIL", "3/3 FAIL"]
+            - ["max DD ≥ -20%", "FAIL (-62%)", "FAIL (-53%)", "FAIL (-57%)", "**3/3 FAIL**"]
+            - ["Beat SPY ref (Sharpe 0.79)", "FAIL (-0.32)", "FAIL (-0.55)", "FAIL (-1.17)", "**3/3 FAIL**"]
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit (§18.3 v4)"
+      body: |
+        **STRUCTURAL_KILL via dominance test** : VIX VRP retail proxy est **mathématiquement dominé** par SPY buy-and-hold sur 6.5y. CAGR plus faible (11% vs 15%), DD plus large (-62% vs -34%), Sharpe inférieur (0.47 vs 0.79). Pas FANTASY (vraie implémentation vol short via SVXY -0.5x), pas PARTIAL_IMPL (briques + scaffold complets). C'est une stratégie correctement codée et correctement testée qui se révèle insuffisante post-2018 dans le format retail accessible.
+    - heading: "Pourquoi VIX VRP retail proxy est mort post-Feb-2018"
+      body: |
+        La littérature académique documentant VRP Sharpe 0.7-1.0 (Eraker, Wu, Demeterfi-Derman) reposait sur :
+
+        1. **Options vol selling direct** (gamma + theta capture, dispersion trading) — requires options chain access (Polygon/IBKR L2 payant)
+        2. **XIV ETN -1x leverage pré-février 2018** — détruit dans le blowup volpocalypse 5-Feb-2018, replaced par SVXY -0.5x ProShares (leverage cut moitié)
+        3. **Direct VIX futures roll yield capture** — requires futures account ($20k+ margin, professional access)
+
+        **SVXY post-2018 -0.5x = "demi-VRP"** : leverage cut a divisé l'expected return par 2 mais le risque downside (vol spike → SVXY crash) reste élevé proportionnellement. Risk/reward déséquilibré pour retail.
+
+        **Empiriquement vérifié sur 6.5y free data** : CAGR 11% net costs vs CAGR 15% SPY = pas de prime de risque payée. Le marché VIX futures a probablement absorbé l'edge structurel pré-2018 via :
+        - Hedge funds dedicated vol arb (LongTail, etc.)
+        - Pension funds short vol overlay
+        - Dispersion traders multi-leg
+    - heading: "Niveau exploitation : capture analysis confirme signal weak dominant V3"
+      body: |
+        V3 multi-feature filter capture_summary :
+        - 46.6% signal_weak (peak_R < 0.5R équivalent)
+        - 17.0% exit_too_late (winners turned to losers)
+        - 18.2% efficient
+        - Headline : mixed avec signal_weak prédominant
+
+        Cohérent avec l'analyse niveau système : edge insuffisant **avant** problème exit. Aucune calibration TP/SL ne sauvera un signal dont 47% des trades sont structurellement faibles. Discipline plan : pas de tuning post-FAIL.
+    - heading: "Sub-sample révèle la fragilité 2019-2022"
+      body: |
+        V1 buy-and-hold sur 2019-2022 (incluant COVID March 2020 + 2022 bear) : **CAGR -0.6%** (effacé). Tout l'edge raw vient de 2022-2025 (CAGR +22.1%) = artefact bull post-COVID. ΔSharpe +0.55 entre les 2 fenêtres = **non-stable cross-régime**. Réplique le pattern F2 J&T 2y vs 6.5y dilution.
+    - heading: "17e data point — pattern empirique complet sur 5 classes d'edge"
+      body: |
+        Toutes classes testées sur DexterioBOT 2025-2026 free data + retail US/crypto majeurs liquides :
+
+        | Classe | Tests | Statut |
+        |---|---:|---|
+        | ICT canon-faithful (post-§0.B) | 3 | 3/3 ARCHIVED |
+        | Momentum daily long-only (J&T + TSMOM) | 2 | 2/2 ARCHIVED (permutation FAIL) |
+        | Directional intraday continuation (Flag) | 1 | 1/1 ARCHIVED |
+        | Crypto basis/funding harvest | 1 | 1/1 ARCHIVED |
+        | **Vol risk premium structural** | 1 | **1/1 ARCHIVED (dominé par SPY)** |
+
+        **5/5 classes ARCHIVED**. C'est plus une conclusion empirique sur le périmètre que des échecs individuels.
+
+bloc4_decision:
+  body: |
+    **VIX VRP via SVXY/VXX proxies retail = ARCHIVED clean** par discipline plan S+1.
+
+    3/3 variantes pré-déclarées FAIL convergents sur 2 gates simultanés (Sharpe < 0.5 + DD < -20%) + dominance test SPY ref. Permutation test skipped (gates clean enough sans ce 3e angle).
+
+    **17e data point négatif cross-playbook DexterioBOT 2025-2026**.
+
+    **Pattern empirique** : 5/5 classes d'edge testées exhaustivement sur free data + retail US/crypto majeurs ARCHIVED. Le périmètre testé est entièrement saturé — ce n'est plus une question de signal individuel, c'est une conclusion structurelle.
+
+    **Pivot S+2 obligatoire** vers terrain moins arbitré. Per plan branching pré-écrit :
+    - **(A) Russell 2000 cross-sectional** small caps less arbitrated, capacity-constrained edges peuvent exister à notre échelle, yfinance free
+    - **(B) PEAD** (post-earnings announcement drift) — Sharpe 1-1.5 documenté académiquement, capacity limitée, free data partiel via yfinance earnings dates
+    - **(C) Accept role infra-only** : Dexterio = exécution discipline pour stratégie publique connue (TSMOM Moskowitz tel quel comme baseline) → paper baseline IBKR live stack
+
+    OU pivot fondamental projet (paid data Polygon, prop firm FTMO/Topstep, plus de capital).
+
+bloc5_why:
+  subsections:
+    - heading: "Pas de tuning V1 leverage 1.5-2x"
+      body: |
+        Sharpe global RAW 0.47 < SPY 0.79. Leverage augmenterait CAGR mais aussi DD proportionnellement → DD passerait à -90%+ ce qui est impractical retail. Le sous-jacent edge est insuffisant, pas un problème de scale. Discipline plan = pas de tuning post-FAIL.
+    - heading: "Pas de 4e variante post-FAIL"
+      body: |
+        Plan explicite : "2 ou 3 variantes max pré-déclarées". Toute variante 4/5/6 testée post-FAIL = grid search caché. V1/V2/V3 couvraient les 3 angles raisonnables (raw / simple regime filter / multi-feature regime filter). 3/3 FAIL = signal clair, pas ambigu.
+    - heading: "Pas de permutation test"
+      body: |
+        Plan dit : "FAIL clean si Sharpe < 0.5 OU permutation p > 0.10". Sharpe 0.47 V1 = under threshold, kill rule R1 satisfaite seule. + DD gate FAIL hard. + dominé par SPY ref. 3 gates fail convergent = certitude, permutation ne change rien.
+    - heading: "Application capture_ratio lens"
+      body: |
+        Conformément à user feedback 2026-04-25, capture_summary inclus pour la 1ère fois dans verdict G4. V3 montre 46.6% signal_weak (dominant). Confirme : edge insuffisant avant exit. Lens méthodologique préservée pour futurs verdicts (HTF_Bias_15m_BOS retrospective avait montré 53% exit_too_early — VIX VRP montre 47% signal_weak = différent, edge intrinsèque manquant).
+    - heading: "Honnêteté : VIX VRP n'est pas mort universellement, juste dans format retail-accessible 2024-2026"
+      body: |
+        VRP académique reste valide via options vol selling direct ou prop firm access. Mais avec contraintes user (no paid API, retail capital, free yfinance), le proxy SVXY post-2018 est insuffisant. Conclusion : si user veut VRP réellement, faut paid data ou pro infrastructure. Sinon, accepter pivot.
+
+next_action: |
+  **Décision user requise post-17e data point** :
+
+  1. **(A) Pivot Russell 2000 cross-sectional** — universe less arbitrated, ~3-5j infra single-name fetch + universe management. Risque : aussi peut être saturé.
+  2. **(B) Pivot PEAD** (post-earnings drift) — Sharpe 1-1.5 documenté, capacity limit. ~2-3j infra (earnings calendar + filter).
+  3. **(C) Accept infra-only mission** — Dexterio = exécution disciplined pour TSMOM Moskowitz publique. Paper baseline IBKR live stack ~5-7j.
+  4. **(D) Pivot fondamental projet** — accepter limite free retail, considérer paid data ($200/mois Polygon) ou prop firm (FTMO/Topstep).
+
+  **Briques préservées** :
+  - `feature_store.py` + `label_factory.py` + `capture_ratio diagnostic` (réutilisables tous edges futurs)
+  - VXX/SVXY/UVXY 6.5y data dans `data/vix_vrp/` (réutilisable autre VRP angle si paid options chain devient disponible)
+  - 3 scripts harnesses VIX VRP archived as historical reference
+
+  **Lens capture_ratio** désormais standard dans tous verdicts G4 futurs per discipline méthodologique 2026-04-25.

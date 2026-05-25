@@ -1,0 +1,166 @@
+title: "PEAD Post-Earnings Announcement Drift SP500 6.5y v1 — ARCHIVED clean (3/3 variantes FAIL gates, dominé par SPY)"
+date: "2026-04-26"
+plan: "S+2 J1 PEAD smoke per amendement plan refais-moi-le-plan-swirling-orbit.md"
+status: "ARCHIVED — capacity decay PEAD confirmé empiriquement, edge per-event existe mais non-extractible portfolio"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse", "Post-Earnings Announcement Drift (Bernard & Thomas 1989/1990) : top-decile EPS surprise long, hold 60 trading days. Sharpe historique 1.0-1.5 documenté multiple papers. Capacity-constrained favorable retail."]
+    - ["Data sources", "yfinance prices 6.5y SP500 + yfinance per-ticker earnings_dates ~25Q history. **Coverage : 272/503 SP500 tickers** (54% — yfinance rate-limit silencieux sur 231 tickers, sample reste 6093 events statistically valid)"]
+    - ["Universe", "SP500 current constituents (Wikipedia scrape 2026-04-26) — biais survivorship implicite (current names only)"]
+    - ["Période", "2019-08-08 → 2025-09-04 entries (T+60 exits jusqu'à fin 2025-11)"]
+    - ["Costs simulés", "10 bps round-trip per entry+exit (commission + spread retail)"]
+    - ["Variantes pré-déclarées", "V1 long top-decile / V2 V1 + big_caps (avg_dvol > median $248M) / V3 long top - short bottom (market neutral)"]
+    - ["Scaffold P0 livré", "[providers/__init__.py](backend/providers/__init__.py) interface + [yahoo_price_provider.py](backend/providers/yahoo_price_provider.py) + [yahoo_earnings_provider.py](backend/providers/yahoo_earnings_provider.py) + [research/quality_report.py](backend/research/quality_report.py) + [scripts/data_manage.py](backend/scripts/data_manage.py) CLI + manifest schema. **Budget P0 : ~1.5h sur 2j max prévu**"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Niveau système — 3 variantes vs SPY buy-hold reference"
+      tables:
+        - headers: ["Variante", "n events", "CAGR", "Sharpe ann", "max DD", "n_days"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["V1 long top-decile", "587", "**-1.71%**", "**+0.03**", "**-56.9%**", "1404"]
+            - ["V2 top-decile + big_caps", "279", "-3.51%", "+0.00", "-65.1%", "1404"]
+            - ["V3 long-short market neutral", "587/589", "**-19.88%**", "**-3.91**", "-72.2%", "1401"]
+            - ["**REF SPY buy-and-hold same window**", "n/a", "**+16.57%**", "**+0.97**", "-25.4%", "1403"]
+    - heading: "Niveau événement — mean per-event return positif mais skewed"
+      tables:
+        - headers: ["Variante", "n", "mean realized_ret", "interpretation"]
+          align: ["---", "---:", "---:", "---"]
+          rows:
+            - ["V1 events", "587", "**+6.10%**", "Positif mais median +0.636% = skewed (few huge wins)"]
+            - ["V2 events (big_caps)", "279", "+6.80%", "Slightly higher = big caps cleaner signal"]
+            - ["V3 long events", "587", "+6.10%", "Identique V1"]
+            - ["**V3 short events** (interp long-side)", "589", "**+4.32%**", "**Bottom-decile drift UP** — short loses 4.32% mean"]
+    - heading: "Niveau exploitation — capture_summary per variant"
+      tables:
+        - headers: ["Variante", "n", "cap_med", "% signal_weak", "% exit_early", "% exit_late", "% efficient", "headline"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["V1 long top-decile", "587", "+0.636", "9.2%", "14.1%", "25.7%", "**38.0%**", "mixed"]
+            - ["V2 top-decile + big_caps", "279", "+0.664", "8.6%", "14.3%", "27.6%", "**40.5%**", "mixed"]
+            - ["V3 short-side", "589", "+0.197", "15.1%", "13.6%", "**39.9%**", "20.0%", "**exit_broken_too_late**"]
+    - heading: "Sub-sample stability 2019-2022 vs 2022-2025"
+      tables:
+        - headers: ["Variante", "2019-2022 Sharpe", "2019-2022 CAGR", "2022-2025 Sharpe", "2022-2025 CAGR", "ΔSharpe"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["V1", "+0.27", "+3.7%", "-0.15", "-5.2%", "**-0.42**"]
+            - ["V2", "+0.09", "-1.3%", "-0.07", "-5.1%", "-0.16"]
+            - ["V3", "**-3.48**", "**-17.8%**", "-4.16", "-21.1%", "-0.67"]
+    - heading: "Gate plan S+2 PEAD — 3 gates per variante"
+      tables:
+        - headers: ["Gate", "V1", "V2", "V3", "Verdict global"]
+          align: ["---", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["Sharpe ≥ 0.5 (kill rule)", "**KILL** (0.03)", "**KILL** (0.00)", "**KILL** (-3.91)", "**3/3 KILL**"]
+            - ["Sharpe ≥ 0.8 (PASS bar)", "FAIL", "FAIL", "FAIL", "3/3 FAIL"]
+            - ["max DD ≥ -20%", "FAIL (-57%)", "FAIL (-65%)", "FAIL (-72%)", "**3/3 FAIL**"]
+            - ["Beat SPY ref (Sharpe 0.97)", "FAIL (-0.94)", "FAIL (-0.97)", "FAIL (-4.88)", "**3/3 FAIL**"]
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit (§18.3 v4)"
+      body: |
+        **STRUCTURAL_KILL via capacity decay confirmé empiriquement** — pas FANTASY (vraie implémentation Bernard & Thomas 1989/1990 canonique : top-decile EPS surprise quarterly cohort, hold 60d, equal-weight portfolio). Pas PARTIAL_IMPL (briques providers + earnings + portfolio aggregation complets). C'est une stratégie correctement codée et correctement testée qui se révèle non-extractible en portfolio sur SP500 free retail data 2019-2025.
+    - heading: "Diagnostic clé : per-event +6% mais portfolio Sharpe 0.03 — paradoxe résolu"
+      body: |
+        **Le PEAD signal existe per-event mais ne survit pas à l'aggregation portfolio** :
+
+        - Mean realized return per event V1 = **+6.10%** (60d hold) → annualisé ~24% si capturable
+        - Median capture_ratio = +0.636 → median per-event return ~0.64% (tiny)
+        - Distribution **massivement skewed** : ~10% des events font +20-50%, majorité fait +/-1-3%
+
+        Aggregation equal-weight portfolio (587 events / 6.3y × 60d hold = ~23 positions overlap concurrentes) **dilue le mean dans le median**. Daily portfolio return moyen ~0.01-0.02% net = Sharpe 0.03.
+
+        C'est la **capacity decay académique du PEAD** : Bernard & Thomas 1989-1990 ont mesuré +5-10% drift exploitable dans un marché moins efficient. Sur 2019-2025, le drift moyen reste positif (+6%) mais devient **non-extractible portfolio** par dilution + corrélation avec beta SP500 (toutes positions long sont longues SP500 beta).
+    - heading: "Bottom-decile drift UP — pas down — = inversion classique"
+      body: |
+        V3 short-side (bottom-decile EPS surprises) : mean realized_ret = **+4.32%** (long-equivalent return). Cela signifie : short-seller perd -4.32% mean sur ces "negative surprise" events.
+
+        **Bernard & Thomas avaient documenté** : top-decile drift up 5%, bottom-decile drift down 5%, spread 10%. Sur 2019-2025 : top-decile drift up 6%, **bottom-decile drift up AUSSI 4.3%**. Le spread (long-short edge) est **+1.7%** au lieu de **+10%**.
+
+        Cause probable : (1) capacity arbitrage des hedge funds short-selling negative surprises, (2) bear market 2022 où "negative surprise" stocks ont rebound, (3) survivorship bias current SP500 (les vraiment mauvais sont sortis de l'index).
+
+        Conclusion : V3 long-short est mort par compression différentielle des deux côtés.
+    - heading: "Capture analysis V3 short = exit_broken_too_late confirme"
+      body: |
+        Headline `exit_broken_too_late` 39.9% sur short-side. Signifie : 40% des short positions ont eu un peak excursion (price drop) puis reversed avant le 60d exit. Le drift bottom-decile down existe à court terme mais reverse → long-only directionnel survit pas.
+
+        Pas un problème "exit fix" (pas de SL/TP à calibrer en PEAD academic). C'est structurel : le pattern bottom-decile drift down est déformé sur ce corpus.
+    - heading: "Sub-sample 2019-2022 vs 2022-2025 — décélération continue"
+      body: |
+        V1 ΔSharpe **-0.42** (de +0.27 à -0.15). Edge marginal qui restait en 2019-2022 (Sharpe positif modeste) **disparaît** en 2022-2025. Pattern : capacity arbitrage continue, le PEAD edge décroît graduellement.
+
+        V3 négatif sur les 2 sous-périodes (Sharpe -3.48 puis -4.16). Pas de fenêtre où V3 a fonctionné.
+
+        Confirme : pas une fenêtre lucky/unlucky. Le PEAD long-only est **structurellement insuffisant** sur SP500 2019-2025 free data, le PEAD long-short est **structurellement négatif**.
+    - heading: "18e data point négatif — 6/6 classes d'edge ARCHIVED"
+      body: |
+        Pattern empirique complet sur DexterioBOT 2025-2026 free data + retail US/crypto majeurs liquides :
+
+        | Classe | Tests | Statut |
+        |---|---:|---|
+        | ICT canon-faithful (post-§0.B) | 3 | 3/3 ARCHIVED |
+        | Momentum daily long-only (J&T + TSMOM) | 2 | 2/2 ARCHIVED (permutation FAIL) |
+        | Directional intraday continuation (Flag) | 1 | 1/1 ARCHIVED |
+        | Crypto basis/funding harvest | 1 | 1/1 ARCHIVED |
+        | Vol risk premium structural (VIX VRP) | 1 | 1/1 ARCHIVED (dominé par SPY) |
+        | **Event-driven cross-sectional (PEAD)** | 1 | **1/1 ARCHIVED (capacity decay + dominé par SPY)** |
+
+        **6/6 classes ARCHIVED**. Conclusion empirique structurelle confirmée : le périmètre testé (free data + retail US/crypto majeurs liquides + universe SP500 current) est **entièrement saturé** pour les classes d'edge publics documentés académiquement.
+
+bloc4_decision:
+  body: |
+    **PEAD V1/V2/V3 = ARCHIVED clean** par discipline plan S+2.
+
+    3/3 variantes FAIL convergent 4 gates (Sharpe ≥0.5, Sharpe ≥0.8, DD ≥-20%, dominance SPY ref). Permutation test skipped (gates clean enough sans ce 3e angle).
+
+    **18e data point négatif. 6/6 classes d'edge testées ARCHIVED.**
+
+    **Diagnostic non-trivial à retenir** : PEAD signal existe per-event (+6.10% mean realized) mais **non-extractible portfolio** (Sharpe 0.03 par dilution + skewness + beta SP500). C'est différent de "no signal" — c'est "signal présent mais non-tradable retail equal-weight". Pour exploiter PEAD modernement il faudrait : (a) vol-targeting per position, (b) skewness-aware sizing (Kelly partial), (c) hedge SP500 beta dynamic, (d) filter stricter que decile naive.
+
+    Mais ces sophistications = **grid search** post-FAIL = interdit per discipline plan. Si user veut explorer PEAD sophistiqué, c'est un nouveau plan, pas un re-test post-archive.
+
+    **Pivot S+3 obligatoire** per branching pré-écrit S+2 amendment. 2 options réelles :
+    - **Branche A** : Russell 2000 cross-sectional (universe less arbitrated)
+    - **Branche D** : Pivot fondamental projet (paid data Polygon / prop firm / accept role infra-only)
+
+bloc5_why:
+  subsections:
+    - heading: "Pas de tuning per-position vol-target / Kelly sizing"
+      body: |
+        Plan explicite : "pas de grid search caché, pas de variante 4+ post-FAIL". Vol-target / Kelly = sophistications post-FAIL → interdit. Si user veut PEAD sophistiqué V4+, c'est nouveau plan amendment Niveau 3 explicite, pas continuation S+2.
+    - heading: "Pas de hedge dynamic SP500 beta"
+      body: |
+        Idem — sophistication post-FAIL. V3 long-short tentait de hedge implicitement (long-short market neutral) → catastrophe (-3.91 Sharpe). Hedge dynamique = grid search beta-timing.
+    - heading: "Pas de re-test universe Russell 2000 dans S+2"
+      body: |
+        Per scope gelé S+2 : Russell est **branche alternative POST-PEAD verdict**, pas extension S+2. Activation Russell = **escalade user explicite**, pas autonome.
+    - heading: "Pas de permutation test"
+      body: |
+        Plan : "permutation SI pas clean fail". 3/3 gates fail clean (Sharpe << 0.5, DD >> -20%, dominé SPY) → certitude, permutation ne change rien. Économie de 5-10 min compute.
+    - heading: "Application capture_ratio lens v2 (3e fois en G4)"
+      body: |
+        Conformément au standard méthodologique 2026-04-25 : capture_summary inclus systémiquement. V1/V2 mixed ; V3 short = exit_broken_too_late révélateur. Lens préservée, application 3e verdict (post-VIX VRP, post-flag retrospective).
+    - heading: "Honnêteté : PEAD pas mort universellement, mais non-actionnable retail format actuel"
+      body: |
+        Le diagnostic clé per-event +6% mais portfolio 0.03 est important : ça signifie qu'avec **paid options data + paid earnings precision + sophisticated sizing**, le PEAD pourrait être exploitable. Mais notre périmètre (free yfinance + equal-weight portfolio + SP500 current) ne le permet pas. Conclusion S+2 : PEAD ARCHIVED, mais pas "edge mort" — "edge non-extractible à notre échelle".
+
+next_action: |
+  **Pivot S+3 — décision user requise** post-18e data point :
+
+  1. **(A) Russell 2000 cross-sectional** : universe less arbitrated, capacity-constrained edges. ~3-5j P0 supplémentaire (universe builder Russell 2000 + small-cap quality_report extension) puis smoke variantes (low vol anomaly, momentum cross-sectional, mean-rev). Risque : data quality variable, bid/ask large, peut aussi être saturé.
+  2. **(D) Pivot fondamental projet** :
+     - **D.1** Paid data Polygon ($200/mois) → vraie PEAD precision earnings + options chain pour vol selling direct
+     - **D.2** Prop firm (FTMO/Topstep/MyForexFunds) → capital + infra + leverage 1:50-100 amplifie Sharpe modeste en P&L absolu
+     - **D.3** Accept role infra-only → Dexterio = exécution disciplined pour TSMOM Moskowitz publique + paper baseline IBKR ~5-7j Sprint 4
+     - **D.4** Plus de capital propre ($200k+) → Sharpe 0.8 × $200k = $20k+/an absolu
+
+  **Briques préservées (réutilisables Branche A ou D)** :
+  - Provider abstraction (yahoo_price + yahoo_earnings + manifest schema)
+  - quality_report.py + data_manage.py CLI
+  - feature_store.py + label_factory.py + capture_ratio diagnostic
+  - SP500 prices 6.5y dataset (809k rows, 503 tickers)
+  - SP500 earnings 6.5y dataset (6093 events, 272 tickers)

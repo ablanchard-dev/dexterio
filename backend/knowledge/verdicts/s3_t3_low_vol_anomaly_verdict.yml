@@ -1,0 +1,156 @@
+title: "S+3 T3 Low Volatility Anomaly SP500 — ARCHIVED clean (kill rule + dominé par 2/2 benchmarks)"
+date: "2026-04-26"
+plan: "S+3 T3 amendement plan refais-moi-le-plan-swirling-orbit.md"
+status: "ARCHIVED clean — Sharpe 0.49 < 0.5 kill rule + Sharpe 0.49 < SPY 0.78 < EW 0.75 + Calmar 0.21 < bench 0.38-0.43"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse", "Low volatility anomaly Frazzini-Pedersen 2014 : long bottom-decile realized vol 60d, equal-weight, monthly rebalance. Sharpe historique 0.4-0.6 documenté."]
+    - ["Univers", "SP500 503 tickers (data 6.5y) — filter coverage ≥90% → **486 stocks** retenus (drop mid-period additions)"]
+    - ["Stratégie pré-déclarée frozen", "vol_lookback 60d / Bottom decile / Equal-weight / Monthly rebal / 10 bps cost"]
+    - ["Benchmarks", "(1) SPY cap-weighted buy-hold (2) Equal-weight SP500 sample (same 486 tickers)"]
+    - ["Caveat documenté", "Survivorship bias current SP500 universe — vraies low-vol stocks ayant sous-performed sont sortis de l'index ; potentiellement inflate result vs realité historique"]
+    - ["Fix infra appliqué pré-smoke (one-shot)", "Coverage filter ≥90% + ffill in-history gaps → résout aggregation portfolio sous-évaluation vol initial bug (vol portfolio 1.8% irréaliste pré-fix → 16.6% post-fix, normal pour low-vol)"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Métriques portfolio (post coverage filter + ffill fix)"
+      tables:
+        - headers: ["Strategy", "CAGR", "Sharpe", "maxDD", "Calmar", "vol", "%mNeg"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["**Low-Vol Bottom Decile SP500**", "+7.05%", "**+0.49**", "-33.6%", "**+0.21**", "16.6%", "45.3%"]
+            - ["REF SPY buy-and-hold cap-weighted", "**+14.76%**", "**+0.78**", "-34.1%", "**+0.43**", "20.5%", "33.3%"]
+            - ["REF Equal-weight SP500 sample", "+14.48%", "+0.75", "-38.3%", "+0.38", "21.2%", "40.0%"]
+    - heading: "Niveau exploitation — capture_summary per-position 21d-forward"
+      tables:
+        - headers: ["n", "cap_med", "% signal_weak", "% exit_early", "% exit_late", "% efficient", "headline"]
+          align: ["---:", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["3,577", "+0.401", "13.8%", "11.6%", "26.8%", "34.6%", "mixed"]
+    - heading: "Sub-sample stability 2019-2022 vs 2022-2025"
+      tables:
+        - headers: ["Strategy", "2019-2022 Sharpe", "2019-2022 CAGR", "2022-2025 Sharpe", "2022-2025 CAGR", "ΔSharpe"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["**Low-Vol Bottom Decile**", "+0.57", "+10.1%", "+0.43", "+4.7%", "**-0.14**"]
+            - ["SPY", "+0.65", "+13.5%", "+0.93", "+15.8%", "+0.28"]
+            - ["Equal-weight SP500", "+0.72", "+16.5%", "+0.81", "+12.9%", "+0.09"]
+    - heading: "Gate plan S+3 T3"
+      tables:
+        - headers: ["Critère", "Low-Vol", "Verdict"]
+          align: ["---", "---:", "---:"]
+          rows:
+            - ["Sharpe ≥ 0.8 (PASS bar)", "0.49", "**FAIL**"]
+            - ["Sharpe ≥ 0.5 (kill rule)", "0.49", "**KILL** (just under)"]
+            - ["Calmar > best bench (0.43)", "0.21", "**FAIL**"]
+            - ["Sharpe > best bench (0.78)", "0.49", "**FAIL**"]
+            - ["Beat ≥1 bench Sharpe ET Calmar", "loses to both SPY + EW", "**FAIL**"]
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit"
+      body: |
+        **STRUCTURAL_KILL via Sharpe sous kill rule + dominance benchmarks 2/2** : Low-vol anomaly produit Sharpe 0.49 cohérent avec littérature académique (Frazzini-Pedersen 2014 : 0.4-0.6 historique), MAIS strictement dominé par SPY cap-weighted et Equal-weight sur Sharpe + Calmar + CAGR. L'anomalie existe à l'état "défendable statistiquement" mais pas "supérieure au passif simple".
+    - heading: "Pourquoi low-vol fail vs SPY 2019-2025"
+      body: |
+        Le résultat (Sharpe 0.49) est **dans la fourchette littéraire** (0.4-0.6). Donc l'implémentation est probablement correcte. Le fail vient du contexte 2019-2025 :
+
+        - **Bull market tech-dominated** : NVDA +1500%, AAPL +400%, MSFT +200%, TSLA +800% — toutes high-vol
+        - **Cap-weighted SPY capture cette concentration** (top 5 = ~25% poids)
+        - **Low-vol bottom decile** = utilities/staples (XLU/XLP-ish stocks) qui ont eu rendements moyens 5-8% CAGR — sous-performent vs SPY 14%
+        - **2022 bear** où low-vol traditionnellement outperforms : oui Sharpe sub-sample 2019-2022 +0.57 > équivalent ratio mais pas suffisant
+
+        Pour que low-vol batte cap-weighted, il faudrait soit (a) régime bear prolongé (2008-2009 typique), (b) cycle de hausse rates qui pénalise tech (2022 partiel), (c) leverage low-vol portfolio (Frazzini-Pedersen Betting Against Beta utilise leverage pour scaler edge).
+    - heading: "Survivorship bias caveat — pourrait être encore pire en réalité"
+      body: |
+        On a testé sur 486 stocks SP500 actuels (filter coverage ≥90%). Les vraies low-vol stocks qui ont sous-performé MASSIVEMENT et sont sorties de l'index ne sont pas dans notre univers. Donc :
+
+        - Notre 486 = surviving SP500 = inclut tendance positive structurelle
+        - Vraies low-vol historique inclurait stocks sortis (bankrupt, acquired, demerged)
+        - Performance réelle low-vol historique vraisemblablement encore PLUS faible que notre Sharpe 0.49
+
+        Conclusion : même avec biais survivorship qui devrait avantager low-vol, on ne bat pas SPY. Confirmation forte que low-vol anomaly est compressé sur cette ère.
+    - heading: "21e data point — 9/9 classes d'edge ARCHIVED, pattern empirique inattaquable"
+      body: |
+        | Classe | Tests | Statut |
+        |---|---:|---|
+        | ICT canon-faithful | 3 | 3/3 ARCHIVED |
+        | Momentum daily long-only (J&T + TSMOM) | 2 | 2/2 ARCHIVED |
+        | Directional intraday continuation | 1 | 1/1 ARCHIVED |
+        | Crypto basis/funding | 1 | 1/1 ARCHIVED |
+        | Vol risk premium structural | 1 | 1/1 ARCHIVED |
+        | Event-driven (PEAD) | 1 | 1/1 ARCHIVED |
+        | Cross-asset allocation (Risk Parity) | 1 | 1/1 ARCHIVED |
+        | Cross-sectional sector momentum | 1 | 1/1 ARCHIVED MARGINAL |
+        | **Volatility anomaly (Low-Vol)** | 1 | **1/1 ARCHIVED clean** |
+
+        **9/9 classes d'edge ARCHIVED. 21 data points cumulés**. Conclusion empirique structurelle inattaquable :
+
+        > **Le périmètre "free retail data + univers US/crypto majeurs liquides + edge publics documentés équal-weight" est entièrement saturé.**
+
+        S+3 livre ce qu'il devait livrer : épuisement disciplined de la dernière fenêtre de découverte free-data raisonnable.
+
+bloc4_decision:
+  body: |
+    **Low-Vol Bottom Decile SP500 = ARCHIVED clean** par discipline plan S+3 T3.
+
+    5/5 critères FAIL convergent. Permutation skipped (multiple kill rules clean).
+
+    Réponse explicite question verdict :
+    > "Est-ce que cette stratégie sort réellement assez de R / assez de bénéfice pour mériter d'être dans Dexterio ?"
+
+    **NON sans ambiguïté**. Sharpe 0.49 cohérent avec littérature mais sous SPY 0.78 buy-hold. Inclure low-vol dans Dexterio = stratégie complexe (rebalance mensuel, screening 486 stocks) pour résultat strictement worse que SPY simple. Aucun bénéfice.
+
+    **21e data point négatif. 9/9 classes d'edge ARCHIVED. S+3 = 0/3 PASS = épuisement free-data confirmé**.
+
+    **Pivot S+4 obligatoire** per branching pré-écrit S+3 amendement plan :
+    - **D.3 PAPER BASELINE INFRA-ONLY (coût zéro) D'ABORD** — pas paid data automatique
+    - Stratégie publique TSMOM Moskowitz exact sur SPY/QQQ/GLD/TLT (no custom edge)
+    - Sprint 4 IBKR adapter + paper jobs API + kill-switch + regime classifier câblé
+    - But : valider pipeline live (slippage réel + broker behavior + reconnect + DST + monitoring)
+    - ~5-7j budget
+    - Ensuite éventuellement D.1 paid data avec hypothèse spec, D.2 prop firm si edge validé, D.4 plus capital
+
+bloc5_why:
+  subsections:
+    - heading: "Pas de variantes vol_lookback (30d / 120d / 252d)"
+      body: |
+        Spec pré-déclarée 60d. Tester d'autres lookbacks post-FAIL = grid search interdit.
+    - heading: "Pas de quintile/quartile alternatif"
+      body: |
+        Spec pré-déclarée decile. Tester quintile = grid search.
+    - heading: "Pas de leverage low-vol portfolio"
+      body: |
+        Frazzini-Pedersen Betting Against Beta utilise leverage pour amplifier l'edge low-vol. Implémenter post-FAIL = scope expansion. Sur retail $50k capital sans leverage IBKR Reg-T 2:1, expérience pas réaliste sans prop firm.
+    - heading: "Pas de permutation"
+      body: |
+        Multiple gates fail clean (Sharpe sous kill rule + dominé 2/2 benchmarks). Permutation économisée.
+    - heading: "Coverage filter + ffill = fix infra one-shot non-grid"
+      body: |
+        Premier run avait vol portfolio 1.8% irréaliste (bug aggregation NaN). Fix coverage ≥90% + ffill = correction infrastructure (pas optimization paramètre stratégie). Distinction p-hacking préservée : aucun outcome regardé pour décider du fix, juste réalisme aggregation portfolio. Identique au flag_breakout 0.6→1.0 calibration structurelle pré-test 2026-04-25.
+    - heading: "Honnêteté Sharpe 0.49 'in line with literature' mais FAIL"
+      body: |
+        Le Sharpe 0.49 confirme : low-vol anomaly **existe** historiquement comme documentée. Mais "exister statistiquement" ≠ "supérieur au benchmark passif simple disponible". Sur 2019-2025 dans contexte bull tech-dominé, SPY cap-weighted bat toute stratégie défensive equal-weight. C'est un fail légitime, pas un bug.
+
+next_action: |
+  **Pivot S+4 = D.3 Paper Baseline Infra-Only** per branching pré-écrit S+3 amendement plan v4.0 :
+
+  Sprint 4 ~5-7j budget :
+  - IBKR adapter (broker_ibkr.py) : place_order / get_positions / cancel
+  - paper_jobs.py miroir backtest_jobs.py
+  - kill-switch API (POST /api/paper/kill idempotent)
+  - regime_classifier câblé runtime tagging
+  - Stratégie : TSMOM Moskowitz exact (long si r_252d > 0 sinon cash, sur SPY/QQQ/GLD/TLT vol-target 10% monthly rebalance) — aucun custom edge cherché
+  - But : valider pipeline live (slippage réel mesuré + broker behavior + reconnect overnight + DST + monitoring + manifest paper résultats)
+  - 1 mois paper minimum avant analyse réelle vs backtest reconcile
+
+  **Pas D.1 paid data automatique** — sequence verrouillée per amendement S+3.
+
+  Briques préservées (réutilisables S+4) :
+  - feature_store + label_factory + capture_ratio diagnostic + portfolio metrics framework
+  - Provider abstraction yahoo_price + earnings + manifest schema
+  - SP500 prices + earnings + sectors + ETF daily + crypto datasets
+  - Allocator (equal_weight + risk_parity + momentum + tsmom + vol_target overlay)
+  - Backtester run_backtest agnostic + ConservativeFillModel + LatencyModel + spread bps
+  - 22 verdicts G4 documented (architecture/gouvernance preserved)

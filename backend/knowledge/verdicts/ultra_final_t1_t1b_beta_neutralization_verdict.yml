@@ -1,0 +1,156 @@
+title: "Sprint Ultra-Final T_final_1 + T_final_1b — Beta-neutralization 5 strats T1 + TSMOM hedgé validation"
+date: "2026-04-26"
+plan: "Sprint Ultra-Final amendement plan refais-moi-le-plan-swirling-orbit.md"
+status: "ARCHIVE / WATCHLIST non-promoted — TSMOM résidu positif brut mais non-significatif statistiquement + bull-dependency catastrophique"
+
+bloc1_identity:
+  rows:
+    - ["Hypothèse T1", "Diagnostic structurel : est-ce qu'il reste un alpha pur après neutralisation du beta SPY sur les 5 stratégies T1 portfolio combination ?"]
+    - ["Hypothèse T1b", "TSMOM résiduel +0.66 (T1 finding) survit-il à validation rigoureuse (permutation simple + max-stat selection bias correction + hedge costs + sub-sample) ?"]
+    - ["Inputs", "5 strats T1 daily returns 1382 days 2020-06 → 2025-11 : TSMOM 4 ETFs + Risk Parity 9 ETFs + Sector Momentum + Low-Vol SP500 + Equal-Weight 9 ETFs"]
+    - ["Méthode T1", "Rolling beta SPY 252d frozen, no lookahead, residual = strat - beta_(t-1) × spy_t, combo equal-weight 1/5 résiduels"]
+    - ["Méthode T1b", "(1) hedge cost 5bps × |Δβ| daily, (2) permutation simple 1000 iter shuffle TSMOM only, (3) permutation max-stat 1000 iter shuffle 5 strats max résidual, (4) sub-sample 2020-2022 vs 2022-2025, (5) residual beta post-hedge"]
+
+bloc2_metrics:
+  sections:
+    - heading: "T_final_1 — Per-strategy beta + alpha pur"
+      tables:
+        - headers: ["Strategy", "avg β SPY", "min β", "max β", "orig Sharpe", "residual Sharpe", "alpha annualisé"]
+          align: ["---", "---:", "---:", "---:", "---:", "---:", "---:"]
+          rows:
+            - ["**TSMOM**", "+0.442", "-0.005", "+0.818", "+0.896", "**+0.663**", "**+5.54%**"]
+            - ["Risk Parity", "+0.575", "+0.387", "+0.791", "+0.518", "-0.255", "-1.41%"]
+            - ["Equal-Weight 9", "+0.742", "+0.657", "+0.866", "+0.458", "-0.389", "-2.69%"]
+            - ["Sector Momentum", "+0.862", "+0.607", "+1.194", "+0.428", "-0.473", "-4.55%"]
+            - ["Low-Vol", "+0.469", "+0.273", "+0.628", "+0.498", "-0.017", "-0.16%"]
+    - heading: "T_final_1 combo 1/5 EW résiduels — diagnostic structurel"
+      body: |
+        - Combo Sharpe résidual : **-0.14** (négatif)
+        - Combo Calmar : -0.08
+        - Original combo non-hedgée Sharpe : +0.63
+
+        **Diagnostic confirmé** : 4/5 stratégies = beta SPY déguisé (alpha pur ≤ 0). Seul TSMOM ressort avec résiduel positif +0.66.
+    - heading: "T_final_1b TSMOM hedgé validation — 6 gates"
+      tables:
+        - headers: ["Gate", "Result", "Verdict"]
+          align: ["---", "---:", "---:"]
+          rows:
+            - ["1. Sharpe net hedge costs ≥ 0.5", "**0.657**", "✅ PASS"]
+            - ["2. p-value simple < 0.10", "**0.930**", "❌ **FAIL massif**"]
+            - ["3. p-value max-stat < 0.10", "**0.996**", "❌ **FAIL massif** (selection bias)"]
+            - ["4. Beta résiduel ≈ 0 (|β| < 0.1)", "-0.145", "❌ FAIL hedge imparfait"]
+            - ["5. Sub-sample stable", "2020-22: -0.14 / 2022-25: +0.87 ΔSharpe +1.0", "❌ **FAIL bull dependency catastrophique**"]
+            - ["6. Calmar > 0.3 défendable", "0.434", "✅ PASS"]
+    - heading: "T_final_1b métriques détaillées"
+      body: |
+        - **TSMOM hedgé Sharpe net** : 0.657
+        - Hedge cost annualized : 0.03% (négligeable)
+        - Beta moyen avant hedge : 0.444
+        - Beta résiduel post-hedge : -0.145 (devrait être proche de 0)
+        - Returns mean annualisé : +5.49%
+        - Vol annualized : 8.36%
+        - CAGR : +4.29%
+        - Max DD : -9.9%
+        - Calmar : +0.43
+
+        **Permutation simple distribution** :
+        - Real Sharpe : 0.657
+        - Permuted mean : **0.943** (random shuffle TSMOM bat réelle 93% du temps)
+        - Std : 0.196
+
+        **Permutation max-stat distribution** :
+        - Real Sharpe : 0.657
+        - Max-perm mean : **1.056** (random max sur 5 strats bat réelle 99.6% du temps)
+        - p95 max-perm : 1.328
+        - Std : 0.155
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorie audit"
+      body: |
+        **WATCHLIST non-promoted** (pas STRUCTURAL_KILL absolu) — TSMOM hedgé contient un résidu positif brut +5.49%/an réel, mais ce résidu n'est :
+        1. Pas statistiquement significatif (p simple 0.93, p max-stat 0.996)
+        2. Pas stable cross-régime (sub-sample 2020-2022 négatif, alpha entièrement 2022-2025)
+        3. Pas market-neutral propre (beta résiduel -0.145, hedge imparfait)
+    - heading: "Nuance méthodologique IMPORTANTE"
+      body: |
+        **Le verdict ne dit PAS** "TSMOM était une illusion totale" ou "rien n'existe du tout".
+
+        **Le verdict dit précisément** : TSMOM hedgé contient un résidu positif brut après hedge (Sharpe 0.66, alpha +5.49%/an) MAIS :
+        - Ce résidu n'est pas statistiquement significatif (permutation simple ET max-stat fail)
+        - Ce résidu n'est pas stable cross-régime (bull dependency 2022-2025)
+        - Ce résidu ne survit pas à la correction post-hoc max-stat (selection bias parmi 5 strats)
+        - Ce résidu n'est pas market-neutral propre (beta résiduel -0.145)
+
+        Donc il est **non-promouvable per discipline Dexterio** mais pas "absolument mort".
+    - heading: "Limite de la permutation simple"
+      body: |
+        Important caveat à documenter : shuffle TSMOM casse la relation temporelle avec SPY (qui reste fixe). La permutation génère des séries de returns avec mêmes statistiques marginales mais beta dynamique différent → la p-value 0.93 doit être interprétée prudemment.
+
+        **Cependant** : tous les autres gates (max-stat 0.996 + sub-sample catastrophique + hedge imparfait) échouent ÉGALEMENT, donc le verdict reste **archive non-promoted** robust à cette limite.
+
+        Si on doutait du seul gate p_simple (à cause de cette limite), on aurait quand même : sub-sample 2020-2022 Sharpe -0.14 = killer. p_maxstat 0.996 = killer. Convergence des fails = certitude qualitative.
+    - heading: "Selection bias post-hoc — leçon clé"
+      body: |
+        Le finding TSMOM résiduel +0.66 (T_final_1) était impressionnant en isolation. Mais nous avions **sélectionné parmi 5 stratégies** post-hoc. Quand on shuffle 5 strats randomly et on prend le max résiduel Sharpe, le mean est 1.056 — soit **meilleur en moyenne** que notre TSMOM réel 0.66.
+
+        Ça veut dire : sous l'hypothèse nulle "aucune des 5 stratégies n'a d'alpha pur", la sélection du best résiduel produit typiquement Sharpe > 1. Notre 0.66 est donc **EN DESSOUS du noise floor de selection bias**.
+
+        **Sans correction max-stat**, on aurait pu être tenté de promote TSMOM hedgé comme "premier vrai edge du projet". La discipline plan a évité ce faux positif. **C'est une leçon méthodologique cruciale**.
+    - heading: "26e data point cross-playbook"
+      body: |
+        TSMOM hedgé = **26e data point négatif**. Pattern empirique étendu :
+
+        - 25 data points S+3 + S+3-bis cumulés
+        - + T_final_1b TSMOM hedgé permutation FAIL
+        - = **26 data points négatifs**
+
+        14 classes d'edge testées maintenant ARCHIVED ou MARGINAL non-promoted (incluant ce TSMOM hedgé selection-bias-corrected).
+    - heading: "Audit T_final_1 confirmé MAIS étendu"
+      body: |
+        Audit T_final_1 disait : "5 strats long-equity-biased disguised, TSMOM seul = vrai alpha pur". **Étendue T_final_1b** : TSMOM "alpha pur" était **lui-même un faux positif** issu de selection bias parmi 5 strats. Vraie conclusion :
+
+        > **Les 5 stratégies T1 portfolio combination sont toutes du beta SPY à différents niveaux (0.35-0.86), aucune n'a d'alpha pur exploitable et statistiquement significatif sur 2020-2025.**
+
+bloc4_decision:
+  body: |
+    **T_final_1 + T_final_1b combinés = ARCHIVE / WATCHLIST non-promoted**.
+
+    TSMOM hedgé pour Stage 2 candidat : **REFUSÉ** par discipline plan strict (2/6 gates seulement, p-values catastrophiques, bull dependency, hedge imparfait).
+
+    Pas de promotion paper. Pas de "premier vrai edge". Note watchlist forward-only si user veut, mais sans re-backtest optimisé.
+
+    **Suite Sprint Ultra-Final per branching pré-écrit** :
+    - **T_final_2 EOD momentum data gate** : vérifier 1m intraday depth, skip cleanly si insuffisant (probable per memory : 4 weeks calib_corpus_v1 ou 60d max yfinance)
+    - **T_final_3 VIX term structure** : si ^VIX/^VIX9D/^VIX3M propres yfinance, test pré-déclaré
+    - **Verdict global Ultra-Final** post T2/T3 séparant : tested & failed / non-testable data / watchlist non-promoted (BTC Donchian + TSMOM hedgé)
+
+bloc5_why:
+  subsections:
+    - heading: "Pas de variantes lookback beta (126/63/504)"
+      body: |
+        Plan explicite : "Beta lookback frozen 252d, pas de tuning post-FAIL". Tester d'autres lookbacks après FAIL = grid search caché.
+    - heading: "Pas de variantes hedge frequency (monthly/weekly)"
+      body: |
+        Idem grid search post-FAIL interdit. Daily hedge = standard académique frozen.
+    - heading: "Discipline max-stat préservée"
+      body: |
+        User a explicitement exigé max-stat correction (selection bias). Sans cette correction, on aurait pu être tenté par TSMOM "alpha caché". **C'est exactement le type d'erreur que la rigueur statistique évite**. Précédent méthodologique pour tous futurs tests "best of N" findings.
+    - heading: "Watchlist non-promoted vs ARCHIVE strict"
+      body: |
+        Différence clé : "ARCHIVE strict" = mort empirique definitif. "Watchlist non-promoted" = pas promu mais pas réfuté universellement (résidu positif brut existe, juste non-significatif). Documentation honnête de la nuance, pas overstatement.
+    - heading: "Pourquoi pas re-essayer avec autre univers/sample"
+      body: |
+        Re-tester sur autre univers (ex: 10 ETFs au lieu de 4) = changer hypothèse post-FAIL = nouveau test, pas amélioration de celui-ci. Si user veut explorer "TSMOM hedgé sur autre univers" un jour, c'est nouveau plan amendment, pas continuation Sprint Ultra-Final.
+
+next_action: |
+  **T_final_2 EOD momentum data gate check** :
+  - Verify 1m intraday SPY/QQQ depth in `data/market/`
+  - If ≥250 sessions exploitables : run test
+  - If insuffisant (probable) : SKIP cleanly, document "non-testable data constraint"
+  - PAS de proxy daily contamination
+
+  Briques préservées :
+  - Per-strategy beta + residual analysis framework — réutilisable pour autre futur edge analysis
+  - Permutation simple + max-stat methodology = standard désormais pour tout finding "best of N"
+  - Discipline post-hoc selection bias correction = précédent méthodologique acquis

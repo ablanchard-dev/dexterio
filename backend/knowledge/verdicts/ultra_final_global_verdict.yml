@@ -1,0 +1,185 @@
+title: "Sprint Ultra-Final GLOBAL — 0/4 PASS, 29 data points cumulés, décision Sprint 4 production"
+date: "2026-04-26"
+plan: "Sprint Ultra-Final amendement plan refais-moi-le-plan-swirling-orbit.md"
+status: "0/4 PASS Sprint Ultra-Final → Sprint 4 paper baseline TSMOM Moskowitz justifié comme fallback discipliné assumé (pas abandon prématuré)"
+
+bloc1_identity:
+  rows:
+    - ["Tests Ultra-Final", "T_final_1 Beta-neutralization 5 strats / T_final_1b TSMOM hedgé validation max-stat / T_final_2 EOD momentum SPY+QQQ / T_final_3 VIX term structure"]
+    - ["Discipline appliquée", "Scope frozen 3 tests + extension T1b (selection bias correction) per discipline user, pas grid search, pas tuning post-FAIL, sequential early-stop"]
+    - ["Cumul projet post Sprint Ultra-Final", "**29 data points négatifs / 14 classes ARCHIVED** sur DexterioBOT 2025-2026 free retail data + univers US/crypto majeurs liquides"]
+    - ["Méthodologie acquise", "Permutation simple + max-stat selection bias correction = standard tous tests futurs 'best of N' findings"]
+
+bloc2_metrics:
+  sections:
+    - heading: "Résumé 4 tests Ultra-Final"
+      tables:
+        - headers: ["Test", "Best Sharpe", "Verdict gate", "Diagnostic"]
+          align: ["---", "---:", "---:", "---"]
+          rows:
+            - ["T_final_1 Combo résiduel", "**-0.14**", "❌ FAIL", "4/5 strats = beta déguisé confirmé, combo équipondéré résiduel négatif"]
+            - ["T_final_1b TSMOM hedgé validé", "0.657", "❌ 2/6 gates", "Résidu brut positif MAIS p_simple=0.93 + p_maxstat=0.996 + sub-sample -0.14/+0.87 = selection bias"]
+            - ["T_final_2 EOD momentum SPY", "**-0.48**", "❌ KILL", "Anti-prédictif. Buy-hold overnight seul Sharpe **+1.07** (incidental finding)"]
+            - ["T_final_2 EOD momentum QQQ", "**-0.58**", "❌ KILL", "Idem. Buy-hold overnight QQQ Sharpe **+1.22**"]
+            - ["T_final_3 VIX term structure", "0.18", "❌ KILL", "Dominé par SVXY 0.48 + SPY 0.79. Seul DD améliore (-44% vs -62%)"]
+    - heading: "Métriques détaillées par test"
+      body: |
+        - **T_final_1** : combo 1/5 EW résiduels → Sharpe -0.14, Calmar -0.08
+        - **T_final_1b** : TSMOM hedgé Sharpe 0.66, max-perm mean 1.06 (real < random max), beta résiduel -0.15
+        - **T_final_2 SPY** : strat -0.48 vs overnight +1.07 vs total +1.02
+        - **T_final_2 QQQ** : strat -0.58 vs overnight +1.22 vs total +0.99
+        - **T_final_3** : strat 0.18 vs SVXY BH 0.48 vs SPY BH 0.79
+    - heading: "Sub-sample stability cross-régime (récurrent dans tous tests)"
+      body: |
+        Pattern systématique : ΔSharpe sub-sample positif important (bull dependency 2022-2025) sur quasi-toutes nos stratégies testées :
+        - T1b TSMOM hedgé : -0.14 → +0.87 = ΔSharpe +1.0
+        - T3 VIX term : -0.10 → +0.52 = +0.62
+        - T2 EOD SPY : -0.15 → -1.05 (worsens, atypique)
+        - SPY simple : +0.69 → +0.92 = +0.23
+
+        Conclusion : **toute apparence d'alpha post-2022 = bull dependency, pas robust cross-régime**.
+
+bloc3_structural:
+  subsections:
+    - heading: "Catégorisation rigoureuse demandée par user"
+      body: |
+        ### EDGES TESTÉS ET ÉCHOUÉS (ARCHIVE strict, pas re-test)
+
+        **14 classes confirmées mortes sur ce périmètre** :
+        1. ICT canon-faithful (3 plays)
+        2. Momentum daily long-only (J&T cross-sect + TSMOM per-asset)
+        3. Directional intraday continuation (Flag breakout)
+        4. Crypto basis/funding harvest
+        5. Vol risk premium structural (VIX VRP retail)
+        6. Event-driven cross-sectional (PEAD)
+        7. Cross-asset allocation (Risk Parity)
+        8. Cross-sectional sector momentum
+        9. Volatility anomaly (Low-Vol)
+        10. Portfolio combination 5 strats T1 (selection bias confirmed)
+        11. Calendar effects 4×4 (turn-of-month + day-of-week + FOMC)
+        12. Intramarket SPY-QQQ differential standalone
+        13. Donchian breakout per-asset (3/4 fail, 1/4 marginal BTC borderline)
+        14. **EOD momentum SPY/QQQ + VIX term structure timing (Sprint Ultra-Final ajout)**
+
+        ### EDGES NON-TESTABLES PAR CONTRAINTE DATA (deferred si data future)
+
+        - **VIX VRP réel options-based** (vrai vol selling direct) : exige paid Polygon options chain
+        - **PEAD precision earnings** (time-of-day exact + analyst revisions) : exige paid Refinitiv ou similar
+        - **Microstructure intraday tick-precision** : exige paid L2 data
+        - **Russell 2000 small caps cross-sectional** : data accessible yfinance mais explicitement deferred per user scope discipline
+        - **Pairs trading sectorielles single-name** : data accessible mais hors scope Sprint Ultra-Final
+        - **K-means + PIP novel pattern discovery** : hors scope (high data-mining risk per author quant corpus)
+
+        ### WATCHLIST NON-PROMOTED (forward-monitor seulement)
+
+        **3 candidats avec résidu positif brut mais non-significatif statistiquement** :
+
+        1. **BTC Donchian breakout** (S+3-bis T4) :
+           - Sharpe 0.76 vs BTC BH 0.74 (beat)
+           - Permutation p=0.12 (sous gate 0.10)
+           - z-score +1.23 = signal réel mais pas statistiquement clean
+           - DD divisé par 1.4× (-54% vs -76%)
+           - Statut : **forward-monitor 6 mois zero capital, pas re-backtest**
+
+        2. **TSMOM hedgé β SPY 252d** (T_final_1b) :
+           - Sharpe résiduel 0.66 brut
+           - Max-stat permutation 0.996 = clear selection bias
+           - Sub-sample 2020-2022 -0.14 négatif catastrophique
+           - **Statut : non-promoted, leçon méthodologique selection bias**
+
+        3. **Overnight drift SPY/QQQ buy-hold** (incidental finding T_final_2) :
+           - Sharpe 1.07 (SPY) / 1.22 (QQQ) sur 1.9y
+           - Documenté académiquement (Knuteson 2018, Cliff-Cooper-Gulen 2008)
+           - Mécanisme economic (close auction, gamma hedging) connu
+           - **Statut : non-actionnable direct retail (exige execution close-to-open friction-light), mais effect réel à monitorer**
+
+        ### DÉCISION SPRINT 4 PRODUCTION/R&D
+
+        **Production arm** : Sprint 4 Paper Baseline IBKR avec **TSMOM Moskowitz publique exact** sur SPY/QQQ/GLD/TLT.
+        - Stratégie publique académique connue, no custom edge claim
+        - But : valider pipeline live (slippage réel + broker behavior + DST + reconnect + monitoring)
+        - 5-7j Sprint 4 budget
+        - Coût $0
+        - Justifié comme **fallback discipliné assumé** post-29-data-points-convergents
+
+        **R&D arm** (asynchrone, parallèle) : continue
+        - BTC Donchian forward-monitor 6 mois
+        - Nouveaux edges externes papers SSRN/arXiv future ideas
+        - Pas paid data automatique
+        - Pas prop firm sans edge validé
+    - heading: "Conclusion empirique inattaquable post 29 data points"
+      body: |
+        > **Sur le périmètre testé (free retail data + univers US/crypto majeurs liquides + edges publics documentés simple equal-weight retail), 14/14 classes d'edge ARCHIVED. Aucune stratégie ne franchit gates Dexterio (Sharpe + permutation + dominance benchmark + sub-sample).**
+
+        Ce **n'est PAS** :
+        - "Aucun edge n'existe nulle part dans le ciel financier"
+        - "DexterioBOT est inutile"
+        - "L'infra n'a pas de valeur"
+
+        Ce **EST** :
+        - Périmètre free retail saturated empiriquement
+        - 14/14 publics retail equal-weight dead sur 2019-2025/2024-2026 corpus testés
+        - Edge privé reste possible via : transformation propriétaire / matching asset spécifique / forward monitoring / paid data sur hypothèse pré-spec / prop firm leverage post-edge / academic external research hors corpus YouTube
+    - heading: "Leçons méthodologiques acquises (réutilisables S+4+)"
+      body: |
+        1. **Beta-neutralization comme test diagnostic** : isoler alpha pur post β SPY révèle si signal = alpha vrai ou beta déguisé. Standard désormais pour tout signal "long-bias suspecté"
+        2. **Permutation max-stat / family-wise** : correction selection bias quand "best of N" examiné. SANS cette correction, T_final_1 nous aurait fait promote TSMOM hedgé qui était noise. Standard pour tout finding "best parmi plusieurs"
+        3. **Hedge cost realistic** : beta change turnover cost daily, pas zéro. Important pour valider si hedge pratique
+        4. **Data gate strict pre-test** : skip cleanly si data insuffisante, pas proxy contamination (T_final_2 surprise PASS data gate avec 469 sessions au lieu d'attendu skip)
+        5. **Overnight drift incidental finding académique** : à noter même si non-actionnable direct, peut informer Stage 4 paper monitor
+
+bloc4_decision:
+  body: |
+    **Sprint Ultra-Final = 0/4 PASS clean**. Diagnostic structurel T1 a révélé le problème (beta déguisé), T1b a INVALIDÉ le faux positif TSMOM via max-stat, T2 et T3 ont confirmé saturation autres angles.
+
+    **29 data points cumulés. 14 classes ARCHIVED**. Périmètre free retail saturé empiriquement.
+
+    **Décision Sprint 4 = GO Paper Baseline TSMOM Moskowitz publique** avec :
+    - **Justification claire** : fallback discipliné post-29-data-points-convergents, pas abandon prématuré
+    - **Mission Sprint 4** : valider pipeline live infrastructure (slippage + broker + DST + reconnect + monitoring)
+    - **R&D arm parallèle** : BTC Donchian watchlist + nouvelles idées externes hors corpus YouTube
+    - **Coût** : $0, ~5-7 jours
+    - **Pas de paid data automatique**, pas de prop firm sans edge validé
+
+bloc5_why:
+  subsections:
+    - heading: "Sprint 4 paper TSMOM = pas abandon"
+      body: |
+        Justification empirique : 29 data points sur 14 classes = nous avons VRAIMENT testé exhaustivement avec discipline. Aller paper sur TSMOM publique = livrer infrastructure, pas signaler "j'ai trouvé l'edge". User explicit : "même si on déploie paper, R&D continue parallèlement, c'est ça un système quant pro". Aligned.
+    - heading: "Pas de re-test avec autre univers"
+      body: |
+        Russell 2000 + paid data + prop firm = nouveaux scopes nécessitant escalation user explicite, pas continuation Sprint Ultra-Final. La discipline frontière non-négociable est respectée.
+    - heading: "Watchlist 3 candidats noted but non-promoted"
+      body: |
+        BTC Donchian / TSMOM hedgé / Overnight drift = **noted comme intéressant** mais **PAS promoted** par discipline. Documentation honnête de la nuance vs simplification "tout est mort".
+    - heading: "Permutation max-stat = standard méthodologique acquis"
+      body: |
+        T_final_1b sans max-stat aurait été un faux positif. Avec max-stat = catch propre. Précédent méthodologique pour tous futurs tests "best of N" findings dans Dexterio R&D arm.
+    - heading: "Pourquoi pas paid data en Sprint 4"
+      body: |
+        Sequence verrouillée : (D.3 paper baseline coût zéro) PUIS (D.1 paid data avec hypothèse pré-spec ET kill rule pré-écrite ET cancel 3 mois max) seulement si après paper baseline 1 mois OK et hypothèse spécifique justifiée. Pas avant.
+
+next_action: |
+  **Sprint 4 GO Paper Baseline TSMOM Moskowitz** :
+
+  Architecture (5-7 jours) :
+  1. **`backend/engines/execution/broker_ibkr.py`** — IBKR adapter (place_order, cancel, get_positions, get_account)
+  2. **`backend/jobs/paper_jobs.py`** — miroir backtest_jobs.py (start, stop, status, manifest, logs, reconcile)
+  3. **`POST /api/paper/kill`** — kill-switch idempotent
+  4. **regime_classifier câblé runtime** — bull/bear/range tagging par décision
+  5. **TSMOM Moskowitz exact** — long si r_252d > 0 sinon cash, vol-target 10%, monthly rebal SPY/QQQ/GLD/TLT
+  6. **Reconcile backtest vs paper** — mesurer slippage réel post-G3 budget -0.097R/trade prediction
+
+  Critères Sprint 4 success :
+  - Pipeline stable, ordres traçables
+  - Kill-switch fiable
+  - Aucun comportement dangereux
+  - Logs suffisants pour comprendre chaque décision
+  - Paper/backtest réconciliable
+  - 1 mois paper minimum avant analyse réelle
+
+  R&D arm parallèle (asynchrone, ouvert) :
+  - BTC Donchian forward-monitor 6 mois zero capital
+  - Backlog idées externes hors corpus YouTube (papers SSRN/arXiv, GitHub repos quant)
+  - Pas paid data automatique
+  - Promotion vers production via standard pipeline (Stage 1 backtest → Stage 2 robustness → Stage 4 paper) si edge validé
