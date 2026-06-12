@@ -124,10 +124,10 @@ class TestCanonicalGuardNotInAllowlist:
 class TestCanonicalGuardAllowlist:
     """Guard passes setups whose playbook is in AGGRESSIVE_ALLOWLIST."""
 
-    def test_ny_open_reversal_passes(self, risk_engine_aggressive):
-        """NY_Open_Reversal is in ALLOWLIST → must NOT be blocked."""
-        assert "NY_Open_Reversal" in AGGRESSIVE_ALLOWLIST
-        setup = _make_setup(["NY_Open_Reversal"])
+    def test_news_fade_passes(self, risk_engine_aggressive):
+        """News_Fade is in ALLOWLIST → must NOT be blocked."""
+        assert "News_Fade" in AGGRESSIVE_ALLOWLIST
+        setup = _make_setup(["News_Fade"])
         accepted, blocked = _apply_canonical_guard([setup], risk_engine_aggressive)
         assert len(accepted) == 1
         assert len(blocked) == 0
@@ -152,15 +152,15 @@ class TestCanonicalGuardMixed:
     """Guard behavior on mixed/multiple setups."""
 
     def test_mixed_batch_filters_correctly(self, risk_engine_aggressive):
-        """Batch: NY_Open (pass) + London_Sweep (block) → only NY_Open survives."""
+        """Batch: News_Fade (pass) + London_Sweep (block) → only News_Fade survives."""
         setups = [
-            _make_setup(["NY_Open_Reversal"]),
+            _make_setup(["News_Fade"]),
             _make_setup(["London_Sweep"]),
             _make_setup(["London_Sweep_NY_Continuation"]),
         ]
         accepted, blocked = _apply_canonical_guard(setups, risk_engine_aggressive)
         assert len(accepted) == 1
-        assert accepted[0].playbook_matches[0].playbook_name == "NY_Open_Reversal"
+        assert accepted[0].playbook_matches[0].playbook_name == "News_Fade"
         assert len(blocked) == 2
 
     def test_setup_with_blocked_match_among_multiple(self, risk_engine_aggressive):
