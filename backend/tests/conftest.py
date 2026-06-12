@@ -16,7 +16,6 @@ if str(BACKEND_DIR) not in sys.path:
 # sont marqués `xfail` avec leur cause exacte plutôt que d'être supprimés, pour
 # rester visibles et traçables. À lever un par un quand le sujet est traité.
 # ---------------------------------------------------------------------------
-_R_TZ = "HTF bar flooring is naive-UTC, not ET-session-aware (known gap in _floor_timestamp)"
 _R_PYTZ = "timezone policy: pytz still imported in some production modules"
 _R_ALLOWLIST = "aggressive playbook allowlist evolved in knowledge/modes.yml; these baseline tests still assert the previous set"
 _R_YAML = "asserts specific YAML strategy values (stop/TP/RR) that have since been re-tuned"
@@ -35,14 +34,8 @@ _KNOWN_XFAILS = {
     "test_pipeline_canonical_guard.py::TestCanonicalGuardAllowlist::test_ny_open_reversal_passes": _R_ALLOWLIST,
     "test_pipeline_canonical_guard.py::TestCanonicalGuardMixed::test_mixed_batch_filters_correctly": _R_ALLOWLIST,
     "test_risk_engine_p0.py::TestPlaybookAllowlist::test_aggressive_allowlist_contains_baseline": _R_ALLOWLIST,
-    "test_timeframe_aggregator.py::TestHTFDSTAware::test_1d_close_est": _R_TZ,
-    "test_timeframe_aggregator.py::TestHTFDSTAware::test_1d_old_bug_est_hour19": _R_TZ,
-    "test_timeframe_aggregator.py::TestHTFDSTAware::test_4h_bar1_close_edt": _R_TZ,
-    "test_timeframe_aggregator.py::TestHTFDSTAware::test_4h_bar1_close_est": _R_TZ,
-    "test_timeframe_aggregator.py::TestFloorTimestamp::test_floor_4h_bar1_edt": _R_TZ,
-    "test_timeframe_aggregator.py::TestFloorTimestamp::test_floor_4h_bar2_edt": _R_TZ,
-    "test_timeframe_aggregator.py::TestFloorTimestamp::test_floor_1d_edt": _R_TZ,
-    "test_timeframe_aggregator.py::TestFloorTimestamp::test_floor_4h_bar1_est": _R_TZ,
+    # NB : le gap ET-flooring du TimeframeAggregator a été CORRIGÉ — ses tests
+    # passent désormais et ne sont donc plus listés ici.
     "test_timezone_consistency.py::TestNoPytzInProduction::test_no_pytz_imports": _R_PYTZ,
 }
 
