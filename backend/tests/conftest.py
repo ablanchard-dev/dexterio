@@ -16,7 +16,6 @@ if str(BACKEND_DIR) not in sys.path:
 # sont marqués `xfail` avec leur cause exacte plutôt que d'être supprimés, pour
 # rester visibles et traçables. À lever un par un quand le sujet est traité.
 # ---------------------------------------------------------------------------
-_R_ALLOWLIST = "aggressive playbook allowlist evolved in knowledge/modes.yml; these baseline tests still assert the previous set"
 _R_YAML = "asserts specific YAML strategy values (stop/TP/RR) that have since been re-tuned"
 _R_DATA = "requires market-data files that are not versioned in the public repo"
 _R_WIN = "Windows cp1252 console cannot encode the '<=' glyph written by the CLI (passes under UTF-8/CI)"
@@ -24,16 +23,11 @@ _R_WIN = "Windows cp1252 console cannot encode the '<=' glyph written by the CLI
 _KNOWN_XFAILS = {
     "test_build_verdict.py::test_cli_produces_file": _R_WIN,
     "test_date_slicing.py::test_date_slicing": _R_DATA,
-    "test_modes_loader.py::test_loader_returns_yaml_values": _R_ALLOWLIST,
-    "test_modes_loader.py::test_risk_engine_constants_match_expected": _R_ALLOWLIST,
     "test_phase2_news_fade_context.py::test_generate_setups_market_context_contains_day_type_and_volatility": _R_DATA,
     "test_phase2_news_fade_context.py::test_news_fade_yaml_stop_option_a_sl_distance_entry_percent_half": _R_YAML,
     "test_phase2_news_fade_context.py::test_news_fade_yaml_phase_c_tp1_min_rr_one_r": _R_YAML,
     "test_phase3b_execution.py::test_legacy_playbook_breakeven_uses_yaml_value": _R_YAML,
-    "test_pipeline_canonical_guard.py::TestCanonicalGuardAllowlist::test_ny_open_reversal_passes": _R_ALLOWLIST,
-    "test_pipeline_canonical_guard.py::TestCanonicalGuardMixed::test_mixed_batch_filters_correctly": _R_ALLOWLIST,
-    "test_risk_engine_p0.py::TestPlaybookAllowlist::test_aggressive_allowlist_contains_baseline": _R_ALLOWLIST,
-    # NB : le gap ET-flooring du TimeframeAggregator ET la migration pytz→zoneinfo
+    # NB : ET-flooring, migration pytz→zoneinfo et drift d'allowlist (modes.yml)
     # ont été CORRIGÉS — ces tests passent désormais et ne sont plus listés ici.
 }
 

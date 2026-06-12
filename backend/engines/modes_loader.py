@@ -36,6 +36,9 @@ _FALLBACK_AGGRESSIVE_ALLOWLIST: List[str] = [
     "VWAP_Bounce_5m",
     "RSI_MeanRev_5m",
     "News_Fade",
+    "SMT_Divergence_SPY_QQQ_v1",
+    "Aplus_01_v2_TRUE_HTF",
+    "HTF_Bias_15m_BOS_v2",
 ]
 
 _FALLBACK_AGGRESSIVE_DENYLIST: List[str] = [
