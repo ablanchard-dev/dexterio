@@ -16,7 +16,6 @@ if str(BACKEND_DIR) not in sys.path:
 # sont marqués `xfail` avec leur cause exacte plutôt que d'être supprimés, pour
 # rester visibles et traçables. À lever un par un quand le sujet est traité.
 # ---------------------------------------------------------------------------
-_R_PYTZ = "timezone policy: pytz still imported in some production modules"
 _R_ALLOWLIST = "aggressive playbook allowlist evolved in knowledge/modes.yml; these baseline tests still assert the previous set"
 _R_YAML = "asserts specific YAML strategy values (stop/TP/RR) that have since been re-tuned"
 _R_DATA = "requires market-data files that are not versioned in the public repo"
@@ -34,9 +33,8 @@ _KNOWN_XFAILS = {
     "test_pipeline_canonical_guard.py::TestCanonicalGuardAllowlist::test_ny_open_reversal_passes": _R_ALLOWLIST,
     "test_pipeline_canonical_guard.py::TestCanonicalGuardMixed::test_mixed_batch_filters_correctly": _R_ALLOWLIST,
     "test_risk_engine_p0.py::TestPlaybookAllowlist::test_aggressive_allowlist_contains_baseline": _R_ALLOWLIST,
-    # NB : le gap ET-flooring du TimeframeAggregator a été CORRIGÉ — ses tests
-    # passent désormais et ne sont donc plus listés ici.
-    "test_timezone_consistency.py::TestNoPytzInProduction::test_no_pytz_imports": _R_PYTZ,
+    # NB : le gap ET-flooring du TimeframeAggregator ET la migration pytz→zoneinfo
+    # ont été CORRIGÉS — ces tests passent désormais et ne sont plus listés ici.
 }
 
 

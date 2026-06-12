@@ -6,7 +6,6 @@ import logging
 import os
 import pandas as pd
 import numpy as np
-import pytz
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime, timedelta, timezone
@@ -1958,7 +1957,7 @@ class BacktestEngine:
         # Data is stored in UTC; convert here for any session/time-window logic.
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=timezone.utc)
-        current_time_et = current_time.astimezone(pytz.timezone('US/Eastern'))
+        current_time_et = current_time.astimezone(ZoneInfo('America/New_York'))
         hour = current_time_et.hour
         if 3 <= hour < 8:
             session = 'London'

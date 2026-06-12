@@ -16,11 +16,11 @@ from datetime import date, datetime, time
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
-import pytz
+from zoneinfo import ZoneInfo
 
 
-ET_TZ = pytz.timezone("US/Eastern")
-UTC_TZ = pytz.UTC
+ET_TZ = ZoneInfo("America/New_York")
+UTC_TZ = ZoneInfo("UTC")
 
 
 @dataclass(frozen=True)
