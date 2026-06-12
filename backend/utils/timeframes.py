@@ -1,8 +1,8 @@
 """Gestion des timeframes et sessions"""
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, Optional
 import pandas as pd
-import pytz
 import json
 import logging
 from pathlib import Path
@@ -75,12 +75,12 @@ def get_session_info(timestamp: datetime, debug_log: bool = False) -> Dict[str, 
         Dict avec 'name', 'start', 'end', 'description' et metadata debug
     """
     # Convertir en ET (Eastern Time)
-    et_tz = pytz.timezone('US/Eastern')
+    et_tz = ZoneInfo('America/New_York')
     
     # Gérer les timestamps naïfs
     if timestamp.tzinfo is None:
         # Assumer UTC si naïf
-        timestamp = pytz.UTC.localize(timestamp)
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
     
     et_time = timestamp.astimezone(et_tz)
     current_time = et_time.time()
@@ -131,7 +131,7 @@ def get_session_info(timestamp: datetime, debug_log: bool = False) -> Dict[str, 
     debug_start = time(9, 20)
     debug_end = time(9, 40)
     if debug_log and debug_start <= current_time <= debug_end and len(SESSION_DEBUG_BUFFER) < SESSION_DEBUG_MAX:
-        utc_time = timestamp.astimezone(pytz.UTC)
+        utc_time = timestamp.astimezone(timezone.utc)
         is_dst = bool(et_time.dst())
         
         debug_entry = {
@@ -171,7 +171,7 @@ def is_in_kill_zone(timestamp: datetime) -> Dict[str, Any]:
     Returns:
         Dict avec 'in_kill_zone' (bool), 'zone_name' (str)
     """
-    et_tz = pytz.timezone('US/Eastern')
+    et_tz = ZoneInfo('America/New_York')
     et_time = timestamp.astimezone(et_tz)
     current_time = et_time.time()
     
