@@ -197,7 +197,7 @@ def build_json(cfg: dict) -> dict:
 
 
 def load_config(path: Path) -> dict:
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -215,13 +215,14 @@ def main() -> int:
     cfg = load_config(args.config)
     md = render_markdown(cfg)
     if args.out_md:
-        args.out_md.write_text(md)
+        args.out_md.write_text(md, encoding="utf-8")
     else:
         sys.stdout.write(md)
 
     if args.out_json:
         args.out_json.write_text(json.dumps(build_json(cfg), indent=2,
-                                           ensure_ascii=False) + "\n")
+                                           ensure_ascii=False) + "\n",
+                                 encoding="utf-8")
 
     return 0
 

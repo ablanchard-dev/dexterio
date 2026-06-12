@@ -84,7 +84,7 @@ def test_all_five_blocs_present():
 # ---------------------------------------------------------------------------
 def test_cli_produces_file(tmp_path):
     cfg_path = tmp_path / "cfg.yml"
-    cfg_path.write_text(yaml.dump(MINIMAL_CFG, allow_unicode=True))
+    cfg_path.write_text(yaml.dump(MINIMAL_CFG, allow_unicode=True), encoding="utf-8")
     out_md = tmp_path / "out.md"
     out_json = tmp_path / "out.json"
     result = subprocess.run(
@@ -94,10 +94,10 @@ def test_cli_produces_file(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert out_md.exists()
-    content = out_md.read_text()
+    content = out_md.read_text(encoding="utf-8")
     assert "## Bloc 1" in content
     assert out_json.exists()
-    data = json.loads(out_json.read_text())
+    data = json.loads(out_json.read_text(encoding="utf-8"))
     assert data["title"] == "Test verdict minimal"
 
 
