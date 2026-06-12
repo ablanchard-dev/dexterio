@@ -104,7 +104,7 @@ def test_generate_setups_market_context_contains_day_type_and_volatility():
     """PREUVE: le dict passé à l'évaluateur inclut day_type et volatility."""
     captured: dict = {}
 
-    def capture_evaluate(symbol, market_state, ict_patterns, candle_patterns, current_time, trading_mode):
+    def capture_evaluate(symbol, market_state, ict_patterns, candle_patterns, current_time, trading_mode, **kwargs):
         captured.clear()
         captured.update(market_state)
         return []
@@ -161,8 +161,8 @@ def test_volatility_on_synthetic_intraday_candles():
     assert v > 0
 
 
-def test_news_fade_yaml_stop_option_a_sl_distance_entry_percent_half():
-    """OPTION A : le YAML NF documente le stop ±0,5 % (vérité moteur actuelle)."""
+def test_news_fade_yaml_stop_is_spike_extreme():
+    """playbooks.yml : le stop de News_Fade est 'spike_extreme' (valeur courante)."""
     from pathlib import Path
 
     from engines.playbook_loader import PLAYBOOKS_PATH, PlaybookLoader
@@ -170,11 +170,11 @@ def test_news_fade_yaml_stop_option_a_sl_distance_entry_percent_half():
     loader = PlaybookLoader(playbooks_path=Path(PLAYBOOKS_PATH))
     nf = loader.get_playbook_by_name("News_Fade")
     assert nf is not None
-    assert nf.sl_distance == "entry_percent_0.5"
+    assert nf.sl_distance == "spike_extreme"
 
 
-def test_news_fade_yaml_phase_c_tp1_min_rr_one_r():
-    """PHASE C : candidat paper provisoire — TP1 et min_rr alignés à 1.0R dans le YAML canonique."""
+def test_news_fade_yaml_tp1_min_rr():
+    """playbooks.yml : TP1 et min_rr de News_Fade = 3.0R (valeurs courantes re-tunées)."""
     from pathlib import Path
 
     from engines.playbook_loader import PLAYBOOKS_PATH, PlaybookLoader
@@ -182,8 +182,8 @@ def test_news_fade_yaml_phase_c_tp1_min_rr_one_r():
     loader = PlaybookLoader(playbooks_path=Path(PLAYBOOKS_PATH))
     nf = loader.get_playbook_by_name("News_Fade")
     assert nf is not None
-    assert nf.tp1_rr == 1.0
-    assert nf.min_rr == 1.0
+    assert nf.tp1_rr == 3.0
+    assert nf.min_rr == 3.0
 
 
 def test_news_fade_stop_executed_as_half_percent_via_setup_engine_v2_path():

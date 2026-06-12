@@ -16,19 +16,18 @@ if str(BACKEND_DIR) not in sys.path:
 # sont marqués `xfail` avec leur cause exacte plutôt que d'être supprimés, pour
 # rester visibles et traçables. À lever un par un quand le sujet est traité.
 # ---------------------------------------------------------------------------
-_R_YAML = "asserts specific YAML strategy values (stop/TP/RR) that have since been re-tuned"
-_R_DATA = "requires market-data files that are not versioned in the public repo"
-_R_WIN = "Windows cp1252 console cannot encode the '<=' glyph written by the CLI (passes under UTF-8/CI)"
+_R_BREAKEVEN = (
+    "ExecutionEngine moves the breakeven stop to entry+0.7R (profit-lock) whereas paper_trading "
+    "moves it to exact entry; this test asserts exact-entry. Needs a domain decision on the "
+    "intended breakeven target (and the two engines reconciled) before changing the assertion."
+)
 
 _KNOWN_XFAILS = {
-    "test_build_verdict.py::test_cli_produces_file": _R_WIN,
-    "test_date_slicing.py::test_date_slicing": _R_DATA,
-    "test_phase2_news_fade_context.py::test_generate_setups_market_context_contains_day_type_and_volatility": _R_DATA,
-    "test_phase2_news_fade_context.py::test_news_fade_yaml_stop_option_a_sl_distance_entry_percent_half": _R_YAML,
-    "test_phase2_news_fade_context.py::test_news_fade_yaml_phase_c_tp1_min_rr_one_r": _R_YAML,
-    "test_phase3b_execution.py::test_legacy_playbook_breakeven_uses_yaml_value": _R_YAML,
-    # NB : ET-flooring, migration pytz→zoneinfo et drift d'allowlist (modes.yml)
-    # ont été CORRIGÉS — ces tests passent désormais et ne sont plus listés ici.
+    "test_phase3b_execution.py::test_legacy_playbook_breakeven_uses_yaml_value": _R_BREAKEVEN,
+    # Résolus depuis (donc plus listés ici) : gap ET-flooring, migration pytz→zoneinfo,
+    # drift d'allowlist (modes.yml), valeurs YAML News_Fade re-tunées, signature du mock
+    # evaluate_all_playbooks, encodage Windows UTF-8 ; test_date_slicing -> skip si la
+    # donnée parquet est absente.
 }
 
 

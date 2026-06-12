@@ -17,8 +17,15 @@ from models.backtest import BacktestConfig
 from backtest.engine import BacktestEngine
 from utils.path_resolver import historical_data_path
 import pandas as pd
+import pytest
+
+_SPY_1M = Path(str(historical_data_path("1m", "SPY.parquet")))
 
 
+@pytest.mark.skipif(
+    not _SPY_1M.exists(),
+    reason="historical SPY 1m parquet absent (market data non versionnée dans le repo public)",
+)
 def test_date_slicing():
     """Test que le date slicing réduit correctement le dataset."""
     
