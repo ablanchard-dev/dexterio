@@ -3,8 +3,16 @@ Timeframe Aggregator - Agrégation incrémentale des TF supérieurs
 Maintient les buffers 1m et agrège vers 5m/10m/15m/1h uniquement à la clôture
 """
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
 from models.market_data import Candle
+
+# Marché US (indices) : la session RTH est 9h30–16h00 heure de New York.
+# Les bougies HTF (4h, 1d) s'alignent sur la session ET — PAS sur l'UTC —
+# pour rester correctes des deux côtés du changement d'heure (EST/EDT).
+NY_TZ = ZoneInfo("America/New_York")
+MIDSESSION_4H = (13, 30)  # ET : frontière entre la bougie 4h n°1 et n°2
 
 
 class TimeframeAggregator:
@@ -76,13 +84,17 @@ class TimeframeAggregator:
         is_close_15m = (minute % 15 == 14)
         is_close_1h = (minute == 59)
         
-        # 4H: Clôture à 11:59, 15:59, 19:59 UTC (7:59, 11:59, 15:59 ET)
-        # Le marché trade 9:30-16:00 ET = 13:30-20:00 UTC
-        # Les bougies 4h s'alignent sur : 12:00, 16:00, 20:00 UTC
-        is_close_4h = (minute == 59 and hour in [11, 15, 19])
-        
-        # 1D: Clôture à 19:59 UTC (15:59 ET = market close 16:00 ET)
-        is_close_1d = (minute == 59 and hour == 19)
+        # 4H et 1D s'alignent sur la SESSION ET (et non sur l'UTC), ce qui les
+        # garde corrects à travers le changement d'heure EST/EDT.
+        et = candle.timestamp.replace(tzinfo=timezone.utc).astimezone(NY_TZ)
+        et_hm = (et.hour, et.minute)
+
+        # 4H : 2 bougies de session — n°1 (9:30→13:30) clôt à 13:29 ET,
+        #      n°2 (13:30→16:00) clôt à 15:59 ET (clôture du marché).
+        is_close_4h = et_hm in ((13, 29), (15, 59))
+
+        # 1D : clôture à 15:59 ET (dernière minute avant la fermeture 16:00 ET).
+        is_close_1d = et_hm == (15, 59)
         
         # Mettre à jour les bougies HTF
         self._update_htf_candle(symbol, candle, "5m", is_close_5m)
@@ -167,10 +179,18 @@ class TimeframeAggregator:
         elif tf == "1h":
             return ts.replace(minute=0, second=0, microsecond=0)
         elif tf == "4h":
-            hour = (ts.hour // 4) * 4
-            return ts.replace(hour=hour, minute=0, second=0, microsecond=0)
+            # Début de la bougie 4h de session : 9:30 ET (n°1) ou 13:30 ET (n°2).
+            et = ts.replace(tzinfo=timezone.utc).astimezone(NY_TZ)
+            if (et.hour, et.minute) >= MIDSESSION_4H:
+                start_et = et.replace(hour=13, minute=30, second=0, microsecond=0)
+            else:
+                start_et = et.replace(hour=9, minute=30, second=0, microsecond=0)
+            return start_et.astimezone(timezone.utc).replace(tzinfo=None)
         elif tf == "1d":
-            return ts.replace(hour=0, minute=0, second=0, microsecond=0)
+            # Début de la session : 9:30 ET.
+            et = ts.replace(tzinfo=timezone.utc).astimezone(NY_TZ)
+            start_et = et.replace(hour=9, minute=30, second=0, microsecond=0)
+            return start_et.astimezone(timezone.utc).replace(tzinfo=None)
         return ts
     
     def get_candles(self, symbol: str, tf: str) -> List[Candle]:
