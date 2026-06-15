@@ -1,6 +1,6 @@
 # Dossier — IFVG_5m_Sweep solo 12w (Leg 2.1 Quarantine PROMOTE)
 
-**Source** : CEO arbre §0.5 Leg 2 — candidats spec.md "quarantine" E[R]>0 sur n=3-11 : **besoin data, pas calibration**.
+**Source** : CEO arbre §0.5 Leg 2 — candidats operator spec "quarantine" E[R]>0 sur n=3-11 : **besoin data, pas calibration**.
 
 ---
 
@@ -16,7 +16,7 @@
 | Timeframes | 5m setup + 1m confirmation |
 | Direction | both (contrarian candlestick) |
 | Régime visé | trend + manipulation_reversal, htf_bias bullish/bearish allowed |
-| Statut initial | quarantine (spec.md — E[R]>0 sur n=3-11 à valider sur corpus élargi) |
+| Statut initial | quarantine (operator spec — E[R]>0 sur n=3-11 à valider sur corpus élargi) |
 | Auteur | baseline playbook v0 (MASTER Family A transcripts) |
 | Dernière review | 2026-04-22 (Leg 2.1 démarrage) |
 

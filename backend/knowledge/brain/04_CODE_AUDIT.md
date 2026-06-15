@@ -143,7 +143,7 @@ Ordonnés par probabilité de succès (ratio axes déjà présents / axes à ajo
 
 1. **HTF_Bias_15m_BOS → HTF_Bias_15m_BOS_v2_TRUE_HTF** — mécaniques à ajouter : structure_k9 bias (remplace SMA), SMT HTF-anchored gate, pool_tf=["4h","1h"] + freshness, macro kill zone. QQQ SHORT +0.076 n=13 précédent + structure playbook déjà PARTIAL.
 2. **Aplus_01_full_v1 → Aplus_01_v2 TRUE HTF enrichi** (§0.5bis #1 existant) — mécaniques à ajouter : bias 7-step structure_k9 + EQ most-recent + SMT + pool freshness + macro kill zone.
-3. **NY_Open_Reversal → NY_Open_Reversal_v2** — london_sweep déjà required ; ajouter IFVG 5m gate + pre-sweep structure + SMT + pool 4H freshness + pattern_close narrower. User spec.md "ne jamais toucher NY_Open_Reversal YAML sans justification forte" → rewrite = nouvelle version parallèle (pas override).
+3. **NY_Open_Reversal → NY_Open_Reversal_v2** — london_sweep déjà required ; ajouter IFVG 5m gate + pre-sweep structure + SMT + pool 4H freshness + pattern_close narrower. L'operator spec "ne jamais toucher NY_Open_Reversal YAML sans justification forte" → rewrite = nouvelle version parallèle (pas override).
 4. **IFVG_5m_Sweep → IFVG_5m_Sweep_v2** (post-freshness brick) — ajouter pre-sweep gate + structure_k9 anchor + pool 4H freshness + tp α'' + reject_on_fallback. Signal IFVG 5m n'a jamais eu de pre-sweep gate = **axe A2 canon TRUE absent**.
 5. **Engulfing_Bar_V056 → Engulfing_IFVG_Hybrid_v1** — engulfing brick comme confluence sur IFVG 5m flip + HTF + pool freshness. Test si engulfing ajoute signal à IFVG v2 (Stage 1 comparatif).
 6. **Liquidity_Sweep_Scalp → Sweep_Reaction_IFVG_v1** — ajouter reaction gate (canon TRUE `pKIo-aVic-c`) + IFVG flip + pool 4H freshness.

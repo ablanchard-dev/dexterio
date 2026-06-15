@@ -3,7 +3,7 @@
 Dossier §18 — 8 pièces obligatoires avant run.
 Statut initial : `SPECIFIED_READY` (infra full existe, c'est une calibration YAML-only, pas un nouveau playbook).
 
-**Note budget §19.3** : itération **4/3 exceptionnelle terminale** — spec.md user-marked "1 dernier levier TP peak-R calibrated avant KILL" suite au cumul B1→B2→C.1→M (-0.147 → -0.123 → -0.081 → +0.003 gross M / -0.062 net). Si ARCHIVED → **KILL définitif Morning_Trap_Reversal**, aucune nouvelle tentative.
+**Note budget §19.3** : itération **4/3 exceptionnelle terminale** — operator spec "1 dernier levier TP peak-R calibrated avant KILL" suite au cumul B1→B2→C.1→M (-0.147 → -0.123 → -0.081 → +0.003 gross M / -0.062 net). Si ARCHIVED → **KILL définitif Morning_Trap_Reversal**, aucune nouvelle tentative.
 
 ---
 
@@ -46,7 +46,7 @@ Morning_Trap = rejet d'un faux breakout dans la première heure NY (après swing
 - Trend continuation (pas vraiment "trap") : pattern vocab match mais contexte exige continuation, pas reversal
 
 ### Risque principal (falsifiabilité)
-Si WR < 54.7 % avec TP1=0.83R sur 4w canonical, l'hypothèse est réfutée — le signal n'a pas assez de winners pour compenser le RR défavorable, même en capturant p60 peak_R. **Baseline survivor_v1 Morning_Trap WR = 16 %** (n=25) et **M baseline WR = 26 %** (n=34) — le gap jusqu'à 54.7 % est énorme. Hypothèse réaliste : cette calibration améliore E[R] sans croiser zéro, confirmant que **le signal Morning_Trap est structurellement incapable de WR cohérent** quel que soit le TP — et donc **KILL définitif** per spec.md user-marked.
+Si WR < 54.7 % avec TP1=0.83R sur 4w canonical, l'hypothèse est réfutée — le signal n'a pas assez de winners pour compenser le RR défavorable, même en capturant p60 peak_R. **Baseline survivor_v1 Morning_Trap WR = 16 %** (n=25) et **M baseline WR = 26 %** (n=34) — le gap jusqu'à 54.7 % est énorme. Hypothèse réaliste : cette calibration améliore E[R] sans croiser zéro, confirmant que **le signal Morning_Trap est structurellement incapable de WR cohérent** quel que soit le TP — et donc **KILL définitif** per l'operator spec.
 
 Corollaire : si E[R]_net ≤ 0 sur 4w canonical, Morning_Trap rejoint le cimetière des signaux vocab-borrowing ICT sans edge (0/7 Phase D.2 MASTER faithful audit + Engulfing_Bar_V056 Leg 1.1 ARCHIVED 2026-04-22).
 
@@ -159,7 +159,7 @@ cd backend && .venv/bin/python scripts/run_mini_lab_week.py \
 2. `WR < 40 %` (distribution winners trop faible pour RR 0.83:1 soutenable)
 3. `PF < 1.0` (gross_profit < gross_loss, perte algébrique certaine à long terme)
 
-**Conformément à spec.md user-marked "1 dernier levier TP peak-R calibrated avant KILL"** — si UNE kill rule est atteinte, aucune nouvelle tentative sans hypothèse structurellement nouvelle (§10 réouverture branche morte interdite).
+**Conformément à l'operator spec "1 dernier levier TP peak-R calibrated avant KILL"** — si UNE kill rule est atteinte, aucune nouvelle tentative sans hypothèse structurellement nouvelle (§10 réouverture branche morte interdite).
 
 ### Gate passage Stage 1 (Validate Edge, §0.6)
 **Pour passer à Stage 2 (Amplify R), TOUTES les conditions suivantes doivent être vraies :**
@@ -176,5 +176,5 @@ cd backend && .venv/bin/python scripts/run_mini_lab_week.py \
 ### Budget d'itération §19.3
 Cette calibration compte comme **itération 4/3 exceptionnelle terminale** du budget post-smoke Morning_Trap_Reversal.
 - Déjà tenté : B1 review (Morning_Trap flagged CALIBRATE) + B2 BE patch (E[R] -0.147 → -0.123) + C.1 vwap_regime (-0.123 → -0.081) + M baseline (+0.003 gross / -0.062 net)
-- Calibration actuelle : 4/3 (exception spec.md user-marked)
+- Calibration actuelle : 4/3 (exception operator spec)
 - **Si ARCHIVED, terminal** — aucune nouvelle tentative sans hypothèse structurellement nouvelle (§10 + §19.3).

@@ -1,6 +1,6 @@
 # Dossier — HTF_Bias_15m_BOS solo 12w (Leg 2.3 Quarantine PROMOTE)
 
-**Source** : CEO arbre §0.5 Leg 2 — candidats spec.md "quarantine" E[R]>0 sur n=3-11 : **besoin data, pas calibration**.
+**Source** : CEO arbre §0.5 Leg 2 — candidats operator spec "quarantine" E[R]>0 sur n=3-11 : **besoin data, pas calibration**.
 
 ---
 
@@ -16,7 +16,7 @@
 | Timeframes | 15m setup + 1m confirmation |
 | Direction | with_bias (aligné HTF bullish/bearish) |
 | Régime visé | trend + manipulation_reversal, structure uptrend/downtrend |
-| Statut initial | quarantine (spec.md — E[R]>0 sur n=3-11 à valider sur corpus élargi) |
+| Statut initial | quarantine (operator spec — E[R]>0 sur n=3-11 à valider sur corpus élargi) |
 | Auteur | baseline playbook v0 (MASTER Family B transcripts) |
 | Dernière review | 2026-04-22 (Leg 2.3 démarrage) |
 

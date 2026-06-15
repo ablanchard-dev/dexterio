@@ -70,7 +70,7 @@ Stratégie **options calendar spread** pilotée par un seul indicateur, le **"Fo
 - **Croisement QUANT** : QUANT corpus mentionne calendar spreads et vol trading de manière générique ; ici on a une **recette complète + seuils + sizing + backtest 19 ans**. Apporte du concret opérationnel que QUANT n'avait pas.
 - **Implications pour le bot** :
   - **Pivot stratégique possible** : notre bot actuel (SPY/QQQ 1m-5m intraday RTH ICT) a 10 data points négatifs. Un pivot vers **options sur SPY + underlying liquides** changerait complètement la thèse.
-  - Cependant, **infra actuelle ne supporte pas options** (pas de chain data, pas de pricing Black-Scholes, pas d'expiration management). Sprint complet requis → hors-scope immédiat (cf. spec.md "Hors scope : UI, live IBKR, refonte moteur").
+  - Cependant, **infra actuelle ne supporte pas options** (pas de chain data, pas de pricing Black-Scholes, pas d'expiration management). Sprint complet requis → hors-scope immédiat (cf. operator spec "Hors scope : UI, live IBKR, refonte moteur").
   - **Tag pour backlog §0.5bis entrée future** si toutes autres pistes ICT échouent : "Options forward-factor calendar spread SPY/liquid-names 19-year backtest edge".
   - Le **Kelly fractional + position cap + diversification 20-30 noms** est une leçon portfolio-level applicable aussi à notre futur full-portfolio discipline, même sur underlying.
 

@@ -23,7 +23,7 @@
 | Playbook | Trades | E[R] | WR | total_R | Commentaire |
 |----------|--------|------|----|---------|-------------|
 | DAY_Aplus_1_Liquidity_Sweep_OB_Retest | 2157 | -0.1993 | 17.0% | -429.94 | Déjà DENYLIST. Signal spam confirmé. |
-| NY_Open_Reversal | 17 | -0.2106 | 11.8% | -3.58 | **Contredit spec.md "only legacy non-négatif"**. À sortir de AGGRESSIVE_ALLOWLIST. |
+| NY_Open_Reversal | 17 | -0.2106 | 11.8% | -3.58 | **Contredit la règle de l'operator spec "only legacy non-négatif"**. À sortir de AGGRESSIVE_ALLOWLIST. |
 | ORB_Breakout_5m | 16 | -0.1025 | 25.0% | -1.64 | Trop tôt pour calibrer. À sortir de AGGRESSIVE_ALLOWLIST. |
 
 ### CALIBRATE (5, trades ≥ 15 & -0.1 ≤ E[R] ≤ 0.15 & avg|mae_r| > 0.3)
@@ -58,7 +58,7 @@
 
 1. **"Famine de cap = seul blocker" est FAUX.** Avec caps bypassés, 11 playbooks restent silents. Le problème est **détecteur**, pas risk filter.
 2. **`RISK_EVAL_RELAX_CAPS=true` désactive aussi le cooldown 5 min + cap 10/session/playbook** ([risk_engine.py:379-380](../engines/risk_engine.py)). Les 2868 SCALP_Aplus_1 + 2157 DAY_Aplus_1 sont **partiellement un artefact d'audit** → calibrer dessus produit des valeurs non-production.
-3. **NY_Open_Reversal contredit la règle spec.md "only legacy non-négatif"** — E[R] = -0.21 sur 17 trades fair, WR = 12%. À sortir de l'allowlist opérationnelle.
+3. **NY_Open_Reversal contredit la règle de l'operator spec "only legacy non-négatif"** — E[R] = -0.21 sur 17 trades fair, WR = 12%. À sortir de l'allowlist opérationnelle.
 4. **Variance inter-semaines forte :** DAY_Aplus_1 = -246R (jun) / +8.69R (aug) / -207R (oct) / -67R (nov). Audit 1-semaine insuffisant, 4-semaines nécessaires.
 5. **Gate formel échoué (13/28 vs ≥20/28)** mais verdict exploitable : l'enseignement "silent = détecteur, pas cap" est plus précieux que la règle initiale.
 
@@ -66,7 +66,7 @@
 
 ## Suite (révision roadmap 2026-04-19)
 
-- **A-Close** : commit + spec.md sync + ce document. **EN COURS.**
+- **A-Close** : commit + sync de l'operator spec + ce document. **EN COURS.**
 - **B0.1** : spam audit SCALP_Aplus_1 + DAY_Aplus_1 (distinguer volume légitime vs artefact RELAX_CAPS).
 - **B0.2** : silent playbook funnel diagnosis, taxonomie 2 niveaux.
 - **B0.3** : retirer NY_Open_Reversal + ORB_Breakout_5m de AGGRESSIVE_ALLOWLIST.

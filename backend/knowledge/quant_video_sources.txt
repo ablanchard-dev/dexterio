@@ -2,7 +2,7 @@
 # One URL per line. Comments start with '#'. Blank lines ignored.
 # Regeneration script: backend/scripts/fetch_quant_videos.py (standalone, not imported by bot)
 # Idempotent: re-runs skip already-transcribed video_ids.
-# No runtime bot integration until Phase Q gate is cleared (spec.md Bloc C).
+# No runtime bot integration until Phase Q gate is cleared (operator spec Bloc C).
 
 https://youtu.be/NLBXgSmRBgU
 https://youtu.be/9HD6xo2iO1g

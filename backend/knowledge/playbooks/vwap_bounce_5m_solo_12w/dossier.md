@@ -1,6 +1,6 @@
 # Dossier — VWAP_Bounce_5m solo 12w (Leg 2.2 Quarantine PROMOTE)
 
-**Source** : CEO arbre §0.5 Leg 2 — candidats spec.md "quarantine" E[R]>0 sur n=3-11 : **besoin data, pas calibration**.
+**Source** : CEO arbre §0.5 Leg 2 — candidats operator spec "quarantine" E[R]>0 sur n=3-11 : **besoin data, pas calibration**.
 
 ---
 
@@ -16,7 +16,7 @@
 | Timeframes | 5m setup + 5m confirmation (no 1m) |
 | Direction | both (RSI<35 long, RSI>65 short) |
 | Régime visé | toutes htf_bias + day_type confondus (bruit permis — volatility libre) |
-| Statut initial | quarantine (spec.md — E[R]>0 sur n=3-11 à valider sur corpus élargi) |
+| Statut initial | quarantine (operator spec — E[R]>0 sur n=3-11 à valider sur corpus élargi) |
 | Auteur | baseline playbook v0 (non-ICT, quant mean-rev) |
 | Dernière review | 2026-04-22 (Leg 2.2 démarrage) |
 
