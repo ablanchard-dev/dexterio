@@ -8,13 +8,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
-from utils.path_resolver import results_path
+from utils.path_resolver import historical_data_path, results_path
 import json
 
 config = BacktestConfig(
     run_name='funnel_june2025',
     symbols=['SPY'],
-    data_paths=['data/historical/1m/SPY.parquet'],
+    data_paths=[str(historical_data_path('1m', 'SPY.parquet'))],
     initial_capital=100000.0,
     trading_mode='AGGRESSIVE',
     trade_types=['DAILY', 'SCALP'],

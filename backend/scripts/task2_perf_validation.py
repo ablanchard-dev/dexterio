@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.ERROR)
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
-from utils.path_resolver import results_path
+from utils.path_resolver import historical_data_path, results_path
 
 print("="*80)
 print("TASK 2 - BENCHMARK PERFORMANCE RÉELLE")
@@ -30,7 +30,7 @@ print("="*80)
 # PRÉPARATION : Extraire exactement 3 jours de données
 # ============================================================================
 print("\n[PREP] Extracting 3-day dataset...")
-source_path = Path('data/historical/1m/SPY.parquet')
+source_path = historical_data_path('1m', 'SPY.parquet')
 df = pd.read_parquet(source_path)
 
 # Reset index to get datetime column

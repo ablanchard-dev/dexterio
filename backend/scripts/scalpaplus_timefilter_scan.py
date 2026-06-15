@@ -17,6 +17,7 @@ from datetime import time
 import pandas as pd
 from zoneinfo import ZoneInfo
 
+from utils.path_resolver import historical_data_path
 from utils.timeframes import get_session_info
 
 NY = ZoneInfo("America/New_York")
@@ -24,7 +25,7 @@ NY = ZoneInfo("America/New_York")
 
 def main() -> None:
     # Use SPY as timeline reference (1m index in UTC)
-    df = pd.read_parquet("data/historical/1m/SPY.parquet", columns=["open"])
+    df = pd.read_parquet(historical_data_path("1m", "SPY.parquet"), columns=["open"])
     idx = pd.to_datetime(df.index)
 
     n_total = len(idx)

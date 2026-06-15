@@ -1,7 +1,7 @@
 """P0.6.4 checkpoint monitor (non-intrusive).
 
 Writes JSONL checkpoints to:
-  data/backtest_results/p064_checkpoint.log
+  <repo_root>/data/backtest_results/p064_checkpoint.log
 
 Checkpoint cadence:
 - every ~10% progress *per scenario* (based on BacktestEngine "Processed X/Y minutes" lines)
@@ -29,9 +29,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from utils.path_resolver import backtest_results_path, historical_data_path
 
-LOG_PATH = Path("data/backtest_results/p064_ablation_6m.log")
-OUT_PATH = Path("data/backtest_results/p064_checkpoint.log")
+
+LOG_PATH = backtest_results_path("p064_ablation_6m.log")
+OUT_PATH = backtest_results_path("p064_checkpoint.log")
 
 TOTAL_RE = re.compile(r"Processed\s+(\d+)/(\d+)\s+minutes\s+\(([^%]+)%\)")
 SCEN_RE = re.compile(r"ABLATION:\s+([a-zA-Z0-9_\-]+)")
@@ -82,7 +84,7 @@ def main() -> None:
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     # Build once (lightweight: ~116k items)
-    timeline = _build_timeline(Path("data/historical/1m"))
+    timeline = _build_timeline(historical_data_path("1m"))
 
     state = {
         "current_scenario": None,

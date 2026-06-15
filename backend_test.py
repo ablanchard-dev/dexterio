@@ -253,10 +253,10 @@ class P063Tester:
             # Change to backend directory
             os.chdir(self.backend_root)
             
-            # Test discovery function
-            test_code = """
+            # Test discovery function (use the real portable data dir)
+            test_code = f"""
 from backtest.run import discover_data_paths
-result = discover_data_paths('data/historical/1m', ['SPY'])
+result = discover_data_paths({str(self.data_dir)!r}, ['SPY'])
 print(result)
 """
             
@@ -273,7 +273,7 @@ print(result)
                 logger.info("Discovery function output: %s", output)
                 
                 # Check if SPY.parquet path is returned
-                expected_path = "data/historical/1m/SPY.parquet"
+                expected_path = str(spy_file)
                 if expected_path in output:
                     logger.info("✅ Data discovery patch working correctly")
                     self.results["data_discovery"] = {

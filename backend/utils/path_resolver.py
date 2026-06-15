@@ -130,7 +130,7 @@ def backtest_results_path(*parts: str) -> Path:
     
     Example:
         backtest_results_path("equity_baseline_1d.parquet")
-        -> data/backtest_results/equity_baseline_1d.parquet
+        -> <repo_root>/data/backtest_results/equity_baseline_1d.parquet
     """
     return data_path("backtest_results", *parts)
 
@@ -141,7 +141,7 @@ def historical_data_path(timeframe: str = "1m", *parts: str) -> Path:
     
     Example:
         historical_data_path("1m", "SPY.parquet")
-        -> data/historical/1m/SPY.parquet
+        -> <repo_root>/data/historical/1m/SPY.parquet
     """
     return data_path("historical", timeframe, *parts)
 

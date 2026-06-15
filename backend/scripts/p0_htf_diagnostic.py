@@ -11,7 +11,7 @@ from datetime import datetime
 # Setup path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.path_resolver import backend_path, results_path
+from utils.path_resolver import backend_path, historical_data_path, results_path
 
 _LOG_PATH = backend_path("logs", "p0_htf_diagnostic.log")
 _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,7 @@ def main():
     logger.info("=" * 80)
     
     # Charger seulement 200 bars pour diagnostic rapide
-    data_path = Path("data/historical/1m/SPY.parquet")
+    data_path = historical_data_path("1m", "SPY.parquet")
     
     if not data_path.exists():
         logger.error(f"❌ Data file not found: {data_path}")

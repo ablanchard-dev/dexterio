@@ -2,8 +2,8 @@
 
 Contract (non negotiable):
 - Output Parquet per symbol:
-  - data/historical/1m/SPY.parquet
-  - data/historical/1m/QQQ.parquet
+  - <repo_root>/data/historical/1m/SPY.parquet
+  - <repo_root>/data/historical/1m/QQQ.parquet
 - Pipeline: download chunk(N days) → concat → sort → dedupe → normalize tz(UTC) → quality gates → write parquet
 - Quality gates minimum:
   (1) timestamps timezone unique (UTC)
@@ -12,7 +12,7 @@ Contract (non negotiable):
   (4) report missing bars % per day + tag corrupted days (>5%)
 - Outputs:
   - Parquet final per symbol
-  - data/historical/1m/data_quality_{SYMBOL}.json
+  - <repo_root>/data/historical/1m/data_quality_{SYMBOL}.json
   - Logs de progression par fenêtre (dates + nb lignes + retries)
 
 Providers:

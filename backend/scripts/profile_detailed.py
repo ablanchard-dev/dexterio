@@ -16,6 +16,7 @@ logging.basicConfig(level=logging.WARNING)
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import historical_data_path
 
 def run_backtest_10min():
     """Test 10 minutes avec logique complète"""
@@ -24,7 +25,7 @@ def run_backtest_10min():
         start_date=datetime(2024, 6, 12, 9, 30, 0),
         end_date=datetime(2024, 6, 12, 9, 40, 0),
         symbols=['SPY'],  # 1 symbole pour profiling clair
-        data_paths=['data/historical/1m/SPY.parquet'],
+        data_paths=[str(historical_data_path('1m', 'SPY.parquet'))],
         initial_capital=10000.0,
         trading_mode='AGGRESSIVE',
         trade_types=['DAILY', 'SCALP']

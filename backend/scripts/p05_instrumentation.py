@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.ERROR)
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import historical_data_path
 
 print("="*80)
 print("P0.5 - INSTRUMENTATION create_market_state() + 500 BARS TRAITÉES")
@@ -25,7 +26,7 @@ config = BacktestConfig(
     start_date=datetime(2024, 6, 2, 8, 0, 0),  # Début de journée
     end_date=datetime(2024, 6, 12, 16, 0, 0),  # ~10 jours pour avoir 500+ bars after warmup
     symbols=['SPY'],
-    data_paths=['data/historical/1m/SPY.parquet'],
+    data_paths=[str(historical_data_path('1m', 'SPY.parquet'))],
     initial_capital=10000.0,
     trading_mode='AGGRESSIVE',
     trade_types=['DAILY', 'SCALP']

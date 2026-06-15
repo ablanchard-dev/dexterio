@@ -17,6 +17,7 @@ logging.basicConfig(level=logging.WARNING)
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import historical_data_path
 
 print("="*80)
 print("BENCHMARK COMPLET - 1 SEMAINE")
@@ -29,8 +30,8 @@ config = BacktestConfig(
     end_date=datetime(2024, 6, 7, 16, 0, 0),
     symbols=['SPY', 'QQQ'],  # Les 2 symboles
     data_paths=[
-        'data/historical/1m/SPY.parquet',
-        'data/historical/1m/QQQ.parquet'
+        str(historical_data_path('1m', 'SPY.parquet')),
+        str(historical_data_path('1m', 'QQQ.parquet'))
     ],
     initial_capital=10000.0,
     trading_mode='AGGRESSIVE',

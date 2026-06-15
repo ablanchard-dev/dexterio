@@ -11,14 +11,15 @@ from backtest.engine import BacktestEngine
 import engines.risk_engine as risk_module
 import json
 from datetime import datetime
+from utils.path_resolver import historical_data_path
 
 print("="*80)
 print("SANITY CHECK - DexterioBOT_HF")
 print("="*80)
 
 # Load data
-spy = pd.read_parquet('data/historical/1m/SPY.parquet')
-qqq = pd.read_parquet('data/historical/1m/QQQ.parquet')
+spy = pd.read_parquet(historical_data_path('1m', 'SPY.parquet'))
+qqq = pd.read_parquet(historical_data_path('1m', 'QQQ.parquet'))
 
 if isinstance(spy.index, pd.DatetimeIndex):
     spy['datetime'] = spy.index

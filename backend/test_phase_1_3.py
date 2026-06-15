@@ -23,6 +23,7 @@ from engines.execution.paper_trading import ExecutionEngine
 from engines.journal import TradeJournal, PerformanceStats
 from models.setup import Setup, ICTPattern, PlaybookMatch
 from models.trade import Trade
+from utils.path_resolver import data_path
 
 # Configure logging
 logging.basicConfig(
@@ -288,7 +289,7 @@ def test_trade_journal():
     print("="*80)
     
     # Nettoyer journal existant
-    journal_path = Path('data/trade_journal.parquet')
+    journal_path = data_path('trade_journal.parquet')
     if journal_path.exists():
         journal_path.unlink()
         print("✓ Ancien journal supprimé")

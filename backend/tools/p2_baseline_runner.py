@@ -243,10 +243,10 @@ def main():
     logger.info(f"  - {path_1d}")
     logger.info(f"  - {path_5d}")
     logger.info(f"\nCopy equity/trades from:")
-    logger.info(f"  - data/backtest_results/equity_baseline_1d_*.parquet")
-    logger.info(f"  - data/backtest_results/trades_baseline_1d_*.parquet")
-    logger.info(f"  - data/backtest_results/equity_baseline_5d_*.parquet")
-    logger.info(f"  - data/backtest_results/trades_baseline_5d_*.parquet")
+    logger.info(f"  - <repo_root>/data/backtest_results/equity_baseline_1d_*.parquet")
+    logger.info(f"  - <repo_root>/data/backtest_results/trades_baseline_1d_*.parquet")
+    logger.info(f"  - <repo_root>/data/backtest_results/equity_baseline_5d_*.parquet")
+    logger.info(f"  - <repo_root>/data/backtest_results/trades_baseline_5d_*.parquet")
 
 
 if __name__ == "__main__":

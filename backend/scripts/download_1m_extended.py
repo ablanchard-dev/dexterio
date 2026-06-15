@@ -21,6 +21,8 @@ from typing import List, Dict, Any, Optional, Tuple
 import pandas as pd
 import numpy as np
 
+from utils.path_resolver import historical_data_path
+
 try:
     import yfinance as yf
 except ImportError:
@@ -37,7 +39,7 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # ============================================================================
 
-DATA_DIR = Path("data/historical/1m")
+DATA_DIR = historical_data_path("1m")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SYMBOLS = ["SPY", "QQQ"]

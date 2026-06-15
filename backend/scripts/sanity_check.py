@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import historical_data_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,8 +64,8 @@ def run_sanity_check(duration: str = "5d"):
         end_date=end_date,
         symbols=['SPY', 'QQQ'],
         data_paths=[
-            'data/historical/1m/SPY.parquet',
-            'data/historical/1m/QQQ.parquet'
+            str(historical_data_path('1m', 'SPY.parquet')),
+            str(historical_data_path('1m', 'QQQ.parquet'))
         ],
         initial_capital=10000.0,
         trading_mode='AGGRESSIVE',

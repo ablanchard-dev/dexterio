@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import historical_data_path
 
 # Monkey patch pour timer les fonctions clés
 original_process_bar = BacktestEngine._process_bar
@@ -39,7 +40,7 @@ config = BacktestConfig(
     start_date=datetime(2024, 6, 12, 9, 30, 0),
     end_date=datetime(2024, 6, 12, 9, 40, 0),
     symbols=['SPY'],
-    data_paths=['data/historical/1m/SPY.parquet'],
+    data_paths=[str(historical_data_path('1m', 'SPY.parquet'))],
     initial_capital=10000.0,
     trading_mode='AGGRESSIVE',
     trade_types=['DAILY', 'SCALP']

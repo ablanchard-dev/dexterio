@@ -12,6 +12,7 @@ logging.basicConfig(level=logging.ERROR)  # MINIMAL logs
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import historical_data_path
 
 print("BUGFIX TEST - 2 minutes MINIMAL")
 
@@ -20,7 +21,7 @@ config = BacktestConfig(
     start_date=datetime(2024, 6, 12, 9, 30, 0),
     end_date=datetime(2024, 6, 12, 9, 32, 0),  # 2 minutes seulement
     symbols=['SPY'],  # 1 symbole
-    data_paths=['data/historical/1m/SPY.parquet'],
+    data_paths=[str(historical_data_path('1m', 'SPY.parquet'))],
     initial_capital=10000.0,
     trading_mode='AGGRESSIVE',
     trade_types=['DAILY', 'SCALP']

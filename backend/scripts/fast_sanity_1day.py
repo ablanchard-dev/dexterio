@@ -18,6 +18,7 @@ logging.getLogger('engines.risk_engine').setLevel(logging.WARNING)
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import historical_data_path
 
 # Test 1 JOUR (09:30-16:00 = 390 minutes)
 config = BacktestConfig(
@@ -25,7 +26,7 @@ config = BacktestConfig(
     start_date=datetime(2024, 6, 12, 9, 30, 0),
     end_date=datetime(2024, 6, 12, 16, 0, 0),
     symbols=['SPY'],  # 1 symbole pour aller vite
-    data_paths=['data/historical/1m/SPY.parquet'],
+    data_paths=[str(historical_data_path('1m', 'SPY.parquet'))],
     initial_capital=10000.0,
     trading_mode='AGGRESSIVE',
     trade_types=['DAILY', 'SCALP']

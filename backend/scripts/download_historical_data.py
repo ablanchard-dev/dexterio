@@ -9,11 +9,13 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import logging
 
+from utils.path_resolver import data_path
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Créer les répertoires de données
-DATA_DIR = Path("data/historical")
+DATA_DIR = data_path("historical")
 DATA_DIR_1M = DATA_DIR / "1m"
 DATA_DIR_5M = DATA_DIR / "5m"
 
