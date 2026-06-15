@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Sanity Check: 5j + 1 mois validation avant 6 mois"""
 import sys
-sys.path.insert(0, 'backend')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent / "backend"))
 
 import pandas as pd
 from pathlib import Path

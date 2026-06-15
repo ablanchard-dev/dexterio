@@ -6,7 +6,7 @@
 
 ## Regenerate
 ```bash
-cd /opt/app/dexterio/backend
+cd backend
 .venv/bin/python scripts/generate_full_portfolio_map.py
 ```
 

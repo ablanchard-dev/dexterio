@@ -1,7 +1,7 @@
 """F2 Portfolio-first — fetch daily ETF universe via yfinance.
 
 Univers : SPY, QQQ, IWM, DIA, EFA, EEM (6 ETFs couvrant US large/small/intl
-développé + ). Data daily OHLCV adj-close, 2023-01-01 → today.
+marchés développés + marchés émergents). Data daily OHLCV adj-close, 2023-01-01 → today.
 Stockée parquet dans backend/data/f2_daily/<ticker>_1d.parquet.
 
 Usage :

@@ -14,8 +14,9 @@ from typing import Dict, Any, List
 import pandas as pd
 
 
-BASELINE_ROOT = Path('/opt/app/dexterio/backend/results/labs/mini_week/calib_corpus_v1')
-CAMPAIGN_ROOT = Path('/opt/app/dexterio/backend/results/labs/mini_week/c3_entry_confirm_v1')
+_RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results" / "labs" / "mini_week"
+BASELINE_ROOT = _RESULTS_ROOT / "calib_corpus_v1"
+CAMPAIGN_ROOT = _RESULTS_ROOT / "c3_entry_confirm_v1"
 WEEKS = ['jun_w3', 'aug_w3', 'oct_w2', 'nov_w4']
 TARGETS = ['BOS_Scalp_1m', 'Morning_Trap_Reversal', 'Engulfing_Bar_V056', 'Liquidity_Sweep_Scalp']
 SLIPPAGE_BUDGET_R = 0.065  # reconcile harness verdict (-0.065 R / trade)

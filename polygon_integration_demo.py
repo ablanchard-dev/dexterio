@@ -29,7 +29,7 @@ def demo_polygon_integration():
     
     # 3. Code structure verification
     print("\n3. Code Structure:")
-    polygon_provider = Path("backend/scripts/providers/polygon_provider.py")
+    polygon_provider = Path(__file__).resolve().parent / "backend" / "scripts" / "providers" / "polygon_provider.py"
     if polygon_provider.exists():
         print("   ✅ Polygon provider implementation exists")
         

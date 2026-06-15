@@ -74,4 +74,4 @@
 - **B1** : calibration ciblée sur 4-5 playbooks max (Morning_Trap, Engulfing, BOS_Scalp, Liquidity_Sweep, +SCALP_Aplus_1 conditionnel).
 - **B2** : re-audit calibré avec caps normales + split train/test anti-overfit.
 
-Roadmap complète : `/opt/app/.claude/plans/parsed-nibbling-kettle.md`.
+Roadmap complète : voir le plan de roadmap interne.

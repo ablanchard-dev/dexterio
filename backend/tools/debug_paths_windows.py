@@ -6,7 +6,7 @@ Prouve exactement où repo_root() pointe et pourquoi.
 Produit un artefact JSON falsifiable.
 
 Usage:
-    cd C:\bots\dexterio\backend
+    cd backend
     python tools\debug_paths_windows.py
 """
 

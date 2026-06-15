@@ -71,7 +71,7 @@ bloc5_why:
         Valider que le modèle est linéaire en spread (ratio adverse 1.20 vs 1.40 cohérent) — pas de pathologie cachée.
     - heading: "Reconcile harness, pas re-run mini_lab_week"
       body: |
-        Fidèle à la directive user "pas de long run tant qu'on est pas dans le vert" (cf [feedback_no_long_runs.md](.claude/projects/-home-dexter-dexterio/memory/feedback_no_long_runs.md)). Budget slippage est mesurable à partir des trades existants ; re-run smoke avec `ConservativeFillModel(spread_bps=1.0)` viendra à G4 (verdict templating) ou §0.5bis entrée #1.
+        Fidèle à la directive "pas de long run tant qu'on est pas dans le vert" (cf note feedback_no_long_runs). Budget slippage est mesurable à partir des trades existants ; re-run smoke avec `ConservativeFillModel(spread_bps=1.0)` viendra à G4 (verdict templating) ou §0.5bis entrée #1.
     - heading: "Gate pré-backlog 3/4 DONE, 1 PENDING"
       body: |
         G1 + G2 + G3 livrés. Reste **G4 verdict templating** (`build_verdict.py`) avant §0.5bis entrée #1.

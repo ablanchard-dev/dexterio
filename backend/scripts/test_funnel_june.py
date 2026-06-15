@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import results_path
 import json
 
 config = BacktestConfig(
@@ -17,7 +18,7 @@ config = BacktestConfig(
     initial_capital=100000.0,
     trading_mode='AGGRESSIVE',
     trade_types=['DAILY', 'SCALP'],
-    output_dir='backend/results'
+    output_dir=str(results_path())
 )
 
 print("="*80)
@@ -37,7 +38,7 @@ print(f"   Bars processed: {result.total_bars}")
 print(f"   Trades: {result.total_trades}")
 
 # Afficher funnel
-funnel_path = Path('backend/results/funnel_by_playbook.json')
+funnel_path = results_path('funnel_by_playbook.json')
 if funnel_path.exists():
     with open(funnel_path) as f:
         funnel = json.load(f)

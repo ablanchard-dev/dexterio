@@ -3,7 +3,7 @@
 This repository stores executable scripts under backend/scripts.
 User workflows expect to run:
   python -m scripts.<module>
-from the repo root (/app).
+from the repo root.
 
 To make that work without moving files, we extend this package's module search
 path to include backend/scripts.

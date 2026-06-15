@@ -1,7 +1,7 @@
 # 02_MASTER_REFINED — Cross MASTER × TRUE
 
 **Objectif** : valider/invalider l'hypothèse "MASTER dit les bonnes choses mais le bot les a mal codées".
-**Sources** : `/opt/app/Documents/MASTER_FINAL.txt` (71 transcripts ICT, 48115 lignes) × 20 fiches TRUE (`01_TRUE_EXTRACTION.md` + `true_extraction/*.md`).
+**Sources** : `MASTER_FINAL.txt` (71 transcripts ICT, 48115 lignes) × 20 fiches TRUE (`01_TRUE_EXTRACTION.md` + `true_extraction/*.md`).
 **Date** : 2026-04-24.
 **Méthode** : grep stratégique MASTER sur chaque concept N1-N4, lecture contextuelle ±30 lignes, comparaison précision vs TRUE.
 

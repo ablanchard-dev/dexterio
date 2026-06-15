@@ -224,4 +224,4 @@ Gate Stage 3 (après Stage 2 PASS) : 3 mois cross-regime ≥5 régimes + O5.3 (b
 - **Protocol run** : [protocol.md](./protocol.md) (à créer)
 - **Verdicts** : [verdicts/](./verdicts/) (post-smoke)
 - **Briques canon §0.B** : voir [backend/knowledge/brain/01-04_*.md](../../brain/) + code dans backend/engines/features/ + patterns/ + execution/
-- **Plan source** : `/opt/app/.claude/plans/parsed-nibbling-kettle.md` §0.5bis entrée #1
+- **Plan source** : plan de roadmap interne §0.5bis entrée #1

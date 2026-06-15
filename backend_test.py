@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 class P063Tester:
     def __init__(self):
-        self.app_root = Path("/app")
-        self.backend_root = Path("backend")
-        self.data_dir = Path("data/historical/1m")
+        self.app_root = Path(__file__).resolve().parent
+        self.backend_root = self.app_root / "backend"
+        self.data_dir = self.app_root / "data" / "historical" / "1m"
         self.results = {}
         
         # Check for Polygon API key

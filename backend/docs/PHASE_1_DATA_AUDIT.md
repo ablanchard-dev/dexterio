@@ -10,7 +10,7 @@
 
 - **Ingestion backtest** : `BacktestEngine.load_data` force une colonne `datetime` **tz-aware UTC** (`tz_localize` / `tz_convert`).
 
-```277:283:/opt/app/dexterio/backend/backtest/engine.py
+```277:283:backend/backtest/engine.py
                 # Step 4: Ensure datetime column is tz-aware UTC
                 df['datetime'] = pd.to_datetime(df['datetime'], utc=True, errors='coerce')
                 if df['datetime'].dt.tz is None:

@@ -11,7 +11,7 @@
 
 Champs déjà présents : `breakeven_trigger_rr`, `max_hold_minutes`, `session_window_end_utc`, `breakeven_moved`.
 
-```100:104:/opt/app/dexterio/backend/models/trade.py
+```100:104:backend/models/trade.py
     # Phase 3B: paramètres d'exécution spécifiques par playbook (optionnels)
     breakeven_trigger_rr: Optional[float] = None
     breakeven_moved: bool = False

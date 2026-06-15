@@ -15,7 +15,7 @@ from pathlib import Path
 
 from youtube_transcript_api import YouTubeTranscriptApi
 
-ROOT = Path("/opt/app/dexterio/backend/knowledge/master_expansion_batch_01/videos")
+ROOT = Path(__file__).resolve().parents[1] / "backend" / "knowledge" / "master_expansion_batch_01" / "videos"
 
 
 def ingest(video_id: str) -> dict:

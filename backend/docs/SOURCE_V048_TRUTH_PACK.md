@@ -214,7 +214,7 @@ FILTERS:
 
 ## 7. Comparaison avec `Session_Open_Scalp` playbook actuel
 
-Fichier: `/opt/app/dexterio/backend/knowledge/playbooks.yml` L630-696
+Fichier: `backend/knowledge/playbooks.yml` L630-696
 
 | Paramètre | Session_Open_Scalp (actuel) | V048 (vérité source) | Écart |
 |-----------|----------------------------|---------------------|-------|
@@ -237,13 +237,13 @@ Fichier: `/opt/app/dexterio/backend/knowledge/playbooks.yml` L630-696
 ## 8. Gaps engine
 
 ### GAP 1 — Marubozu unilatéral non implémenté (CRITIQUE)
-- **Fichier**: `/opt/app/dexterio/backend/engines/patterns/candlesticks.py` L216-226
+- **Fichier**: `backend/engines/patterns/candlesticks.py` L216-226
 - **Problème**: `_is_bullish_marubozu` requiert `upper_wick ≤ 0.05×body AND lower_wick ≤ 0.05×body` (bilatéral). V048 requiert seulement l'absence du wick du côté de l'ouverture (unilatéral): bullish = `lower_wick ≤ X×body` (sans contrainte sur upper_wick). Un bullish Marubozu V048 avec un long upper_wick est REJETÉ par l'engine actuel.
 - **Impact**: L'engine ne peut pas détecter correctement les candles "no bottom wick" (bullish) ou "no top wick" (bearish) au sens V048.
 - **Correction nécessaire**: Ajouter `_is_bullish_no_bottom_wick` et `_is_bearish_no_top_wick` avec seuil configurable (ex: `lower_wick ≤ 0.02×body` pour bullish).
 
 ### GAP 2 — required_signals gate non branché aux candlestick patterns
-- **Fichier**: `/opt/app/dexterio/backend/engines/playbook_loader.py` L735-777
+- **Fichier**: `backend/engines/playbook_loader.py` L735-777
 - **Problème**: `required_signals` gate cherche dans `ict_patterns` (IFVG, OB, EQ, BRKR) via `type_map`. Le mot clé `marubozu` n'est pas dans le `type_map` et le système ne connecte pas `CandlestickPatternEngine` à ce gate. On ne peut pas écrire `required_signals: ["marubozu_bullish@1m"]` et obtenir un vrai gate.
 - **Impact**: Le champ `candlestick_patterns.required_families` dans le playbook est une déclaration non contraignante — non vérifiée dans le gate d'activation du playbook. Le gate est cosmétique.
 - **Correction nécessaire**: Étendre `required_signals` pour inclure les patterns candlestick dans la recherche, OU ajouter un gate dédié `required_candlestick_patterns` qui vérifie `CandlestickPatternEngine` output.

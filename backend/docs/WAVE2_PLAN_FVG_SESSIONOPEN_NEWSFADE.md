@@ -67,7 +67,7 @@
 **Commande type (manuel) :**
 
 ```powershell
-Set-Location c:\bots\dexterio\backend
+Set-Location backend
 python -m pytest tests/... -q
 ```
 

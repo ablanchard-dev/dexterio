@@ -621,7 +621,7 @@ def main() -> int:
     lines.append("")
     lines.append("## Regenerate")
     lines.append("```bash")
-    lines.append("cd /opt/app/dexterio/backend")
+    lines.append("cd backend")
     lines.append(".venv/bin/python scripts/generate_full_portfolio_map.py")
     lines.append("```")
     lines.append("")

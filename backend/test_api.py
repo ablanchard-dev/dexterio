@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+import os
 import requests
 import time
 import json
 
-API_URL = "https://dexteriobot.preview.example.com"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # Run backtest
 request = {

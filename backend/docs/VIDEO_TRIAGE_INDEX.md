@@ -1,6 +1,6 @@
 # VIDEO_TRIAGE_INDEX — Classification des 71 vidéos MASTER
 
-> Source : `/opt/app/Documents/MASTER_FINAL.txt` (48115 lignes)
+> Source : `MASTER_FINAL.txt` (48115 lignes)
 > Mise à jour : 2026-04-19
 
 ## Catégories

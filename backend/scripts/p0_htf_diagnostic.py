@@ -11,13 +11,18 @@ from datetime import datetime
 # Setup path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from utils.path_resolver import backend_path, results_path
+
+_LOG_PATH = backend_path("logs", "p0_htf_diagnostic.log")
+_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 # Configure logging pour capturer l'instrumentation
 logging.basicConfig(
     level=logging.WARNING,  # WARNING pour voir les logs d'instrumentation
     format='%(levelname)s | %(name)s | %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('backend/logs/p0_htf_diagnostic.log', mode='w')
+        logging.FileHandler(str(_LOG_PATH), mode='w')
     ]
 )
 
@@ -69,7 +74,7 @@ def main():
         initial_capital=100000.0,
         trading_mode='AGGRESSIVE',
         trade_types=['SCALP', 'DAILY'],
-        output_dir='backend/results',
+        output_dir=str(results_path()),
         run_name='p0_htf_diagnostic'
     )
     
@@ -87,7 +92,7 @@ def main():
         logger.info(f"Bars processed: {result.total_bars}")
         
         # Afficher un résumé des logs capturés
-        log_file = Path('backend/logs/p0_htf_diagnostic.log')
+        log_file = _LOG_PATH
         if log_file.exists():
             with open(log_file, 'r') as f:
                 lines = f.readlines()

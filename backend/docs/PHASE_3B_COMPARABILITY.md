@@ -57,7 +57,7 @@ Interprétation baseline : une part significative des NY se termine encore en `*
 ## Run de validation post-3B (même protocole que le lab court P2)
 
 ```powershell
-Set-Location c:\bots\dexterio
+Set-Location .
 python backend/scripts/run_full_playbooks_lab.py `
   --months 1 --anchor-end 2025-11-28 --symbols SPY,QQQ `
   --respect-allowlists --risk-bypass-dynamic-quarantine-lss-only
@@ -69,7 +69,7 @@ Après exécution :
 2. Agréger les sorties sur le parquet trades :
 
 ```powershell
-Set-Location c:\bots\dexterio\backend
+Set-Location backend
 python -c "import pandas as pd; df=pd.read_parquet('results/labs/full_playbooks_24m/trades_labfull_202511_AGGRESSIVE_DAILY_SCALP.parquet'); print(df.groupby(['playbook','exit_reason']).size())"
 ```
 

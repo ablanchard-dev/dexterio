@@ -1,4 +1,4 @@
-generated_from: C:\bots\dexterio\backend\results\playbooks_leaderboard_24m.json
+generated_from: backend/results/playbooks_leaderboard_24m.json
 quarantine:
 - playbook: Liquidity_Sweep_Scalp
   reason: high_loss_r

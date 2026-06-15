@@ -5,7 +5,8 @@ Tests le flux complet backend de l'API de backtests
 """
 import sys
 import os
-sys.path.insert(0, 'backend')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import time
 from jobs.backtest_jobs import BacktestJobRequest, submit_job, get_job_status, list_jobs

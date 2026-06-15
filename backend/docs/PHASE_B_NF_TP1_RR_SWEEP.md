@@ -25,7 +25,7 @@ YAML canonique (inchangé sur disque) : `knowledge/playbooks.yml`.
 
 ```json
 {
-  "canonical_playbooks_path": "/opt/app/dexterio/backend/knowledge/playbooks.yml",
+  "canonical_playbooks_path": "backend/knowledge/playbooks.yml",
   "cross_variant_ny_funnel": {
     "202511_w01": {
       "ny_funnel_identical_across_tp1_variants": true,

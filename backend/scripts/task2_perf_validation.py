@@ -20,6 +20,7 @@ logging.basicConfig(level=logging.ERROR)
 
 from backtest.engine import BacktestEngine
 from models.backtest import BacktestConfig
+from utils.path_resolver import results_path
 
 print("="*80)
 print("TASK 2 - BENCHMARK PERFORMANCE RÉELLE")
@@ -65,7 +66,7 @@ config = BacktestConfig(
     initial_capital=100000.0,
     trading_mode='AGGRESSIVE',
     trade_types=['DAILY', 'SCALP'],
-    output_dir='backend/results'
+    output_dir=str(results_path())
 )
 
 print(f"\n🎯 Target: ≤15 minutes execution")
@@ -236,7 +237,7 @@ metrics = {
     }
 }
 
-output_path = Path('backend/results/task2_metrics.json')
+output_path = results_path('task2_metrics.json')
 with output_path.open('w') as f:
     json.dump(metrics, f, indent=2)
 
