@@ -1,8 +1,8 @@
-"""Repository convenience: make backend importable as a top-level module path.
+"""Repository convenience: make backend/ importable as a top-level module path.
 
 This enables running CLI modules like:
   python -m scripts.download_intraday_windowed ...
-from the repo root (/app) without needing to set PYTHONPATH manually.
+from the repo root without needing to set PYTHONPATH manually.
 
 It is intentionally minimal and only affects module resolution.
 """

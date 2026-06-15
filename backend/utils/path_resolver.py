@@ -97,8 +97,7 @@ def backend_path(*parts: str) -> Path:
     
     Example:
         backend_path("results", "summary.json")
-        -> backend/results/summary.json (Docker)
-        -> C:/Users/.../backend/results/summary.json (Windows)
+        -> <repo_root>/backend/results/summary.json
     """
     return repo_root() / "backend" / Path(*parts)
 
@@ -109,7 +108,7 @@ def data_path(*parts: str) -> Path:
     
     Example:
         data_path("historical", "1m", "SPY.parquet")
-        -> data/historical/1m/SPY.parquet
+        -> <repo_root>/data/historical/1m/SPY.parquet
     """
     return repo_root() / "data" / Path(*parts)
 
@@ -120,7 +119,7 @@ def results_path(*parts: str) -> Path:
     
     Example:
         results_path("baseline_1d.json")
-        -> backend/results/baseline_1d.json
+        -> <repo_root>/backend/results/baseline_1d.json
     """
     return backend_path("results", *parts)
 
