@@ -4,9 +4,15 @@
 .idea/
 .vscode/
 
-# Dependencies
+# Environment files and secrets
+*.env
+*.env.*
+*token.json*
+*credentials.json*
+*.pem
+
+# Node / frontend dependencies
 node_modules/
-/node_modules
 /.pnp
 .pnp.js
 .yarn/install-state.gz
@@ -16,61 +22,67 @@ node_modules/
 !.yarn/releases
 !.yarn/versions
 
-# Testing
-/coverage
-
-# Next.js
+# Build output
+/build
+/out
+dist/
+dist
 /.next/
-/out/
 next-env.d.ts
 *.tsbuildinfo
 
-# Production builds
-/build
-dist/
-dist
+# Caches
+.cache/
+.ipynb_checkpoints/
 
-# Environment files (comprehensive coverage)
-
-*token.json*
-*credentials.json*
+# Testing / coverage
+/coverage
 
 # Logs and debug files
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 dump.rdb
-
-# System files
-.DS_Store
-*.pem
+backend/logs/
 
 # Python
 __pycache__/
-*pyc*
+*.pyc
 venv/
 .venv/
 
+# OS files
+.DS_Store
+
+# Deployment
+.vercel
+
+# Mobile / Android SDK
+android-sdk/
+
+# Data and databases
+agenthub/agents/youtube/db
+data/trade_journal.parquet
+*.parquet
+
 # Local video assets (too large for GitHub)
 videos/
+
+# Archives and large binaries
+**/*.zip
+**/*.tar.gz
+**/*.tar
+**/*.tgz
+*.pack
+*.deb
+*.dylib
 
 # Large validity reports (>100MB, debug artifacts)
 backend/results/**/validity_report_*.jsonl
 backend/results/**/bt_*.log
 backend/results/bt_*.log
-
-# Development tools
-chainlit.md
-.chainlit
-.ipynb_checkpoints/
-.ac
-
-# Deployment
-.vercel
-
-# Data and databases
-agenthub/agents/youtube/db
 
 # Local-generated backtest outputs (timestamped)
 backend/data/backtest_results/*_backtest_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*
@@ -87,87 +99,8 @@ backend/results/labs/mini_week/*_probe_*/
 backend/results/labs/mini_week/*_postfix*/
 backend/results/debug/
 
-# Archive files and large assets
-**/*.zip
-**/*.tar.gz
-**/*.tar
-**/*.tgz
-*.pack
-*.deb
-*.dylib
-
-# Build caches
-.cache/
-
-# Mobile development
-android-sdk/ frontend/node_modules/.cache/default-development/0.pack
-frontend/node_modules/.cache/default-development/0.pack
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
-frontend/node_modules/.cache/default-development/1.pack
-frontend/node_modules/.cache/default-development/2.pack
--e 
-# Environment files
-*.env
-*.env.*
-frontend/node_modules/.cache/default-development/3.pack
-frontend/node_modules/.cache/default-development/4.pack
-
-# Artefacts générés au runtime (journaux de trades)
-data/trade_journal.parquet
-*.parquet
-
-# dev artifacts (ne pas committer)
+# Dev tooling artifacts
+chainlit.md
+.chainlit
+.ac
 test_result.md
-*.log
-backend/logs/

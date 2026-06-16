@@ -1,8 +1,8 @@
 # DexterioBOT
 
 A **backtesting and strategy-research platform** for US index futures / ETFs
-(SPY, QQQ and others), built around one principle: **prove an edge with rigorous,
-honest testing before trusting it** — and archive it cleanly when it fails.
+(SPY, QQQ and others), built around one principle: **prove an edge with honest,
+disciplined testing before trusting it** — and archive it cleanly when it fails.
 
 > ⚠️ **Status: research.** This is not a live or profitable trading system. Its value
 > is the engineering and the methodology: a disciplined pipeline that tested ~20
@@ -17,7 +17,7 @@ honest testing before trusting it** — and archive it cleanly when it fails.
   results can be reconciled against a realistic baseline.
 - **Strategy definitions as data** — strategies ("playbooks") are described in YAML and
   loaded by the engine, so new ideas can be added without touching the core.
-- **Rigorous validation** — every strategy is judged on **expectancy per trade**, with
+- **Statistical validation** — every strategy is judged on **expectancy per trade**, with
   walk-forward / out-of-sample windows, and **permutation tests** to check that results
   aren't just luck. Strategies that look good in-sample but fail a permutation test are
   archived, not shipped.
@@ -49,16 +49,26 @@ uvicorn backend.server:app --reload
 cd frontend && npm install && npm start
 ```
 
+## Tests
+
+The `pytest` suite is run locally. CI (GitHub Actions) runs a smoke check on the
+backtest-campaign tooling (`backend/scripts/backtest_campaign_smoke.py`) rather
+than the full suite, to keep the pipeline fast.
+
+```bash
+pytest
+```
+
 ## Repository layout
 
 ```
 backend/
-├── engines/        # backtest engine, execution, fill models, pattern detectors
+├── engines/         # backtest engine, execution, fill models, pattern detectors
 ├── backtest/        # campaign runner
 ├── knowledge/       # YAML strategy definitions & campaigns
-├── scripts/         # research / audit scripts (one-off analyses)
-└── docs/            # methodology, roadmaps, verdicts
+└── scripts/         # research / audit scripts (one-off analyses)
 frontend/            # React UI
+docs/                # methodology, roadmaps, verdicts, spec
 ```
 
 ---
