@@ -104,3 +104,5 @@ chainlit.md
 .chainlit
 .ac
 test_result.md
+
+*.backup

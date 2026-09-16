@@ -40,12 +40,13 @@ YAML-driven strategy config
 ## Run (dev)
 
 ```bash
-# Backend
+# Backend (run from backend/: server.py imports its routes relative to it)
+cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn backend.server:app --reload
+uvicorn server:app --reload     # API docs at http://127.0.0.1:8000/docs
 
-# Frontend
+# Frontend (from the repository root, in another terminal)
 cd frontend && npm install && npm start
 ```
 
