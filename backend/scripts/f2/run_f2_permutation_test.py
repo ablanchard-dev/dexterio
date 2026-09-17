@@ -116,7 +116,8 @@ def main() -> None:
     elapsed_total = time.time() - t0
     mean_shuffled = float(np.mean(shuffled_sharpes))
     std_shuffled = float(np.std(shuffled_sharpes))
-    p_value = float(np.mean([s >= sharpe_real for s in shuffled_sharpes]))
+    # (k+1)/(n+1) : la valeur observee compte comme un tirage (k/n pouvait valoir 0).
+    p_value = float((sum(s >= sharpe_real for s in shuffled_sharpes) + 1) / (len(shuffled_sharpes) + 1))
     z_score = (sharpe_real - mean_shuffled) / std_shuffled if std_shuffled > 0 else 0
 
     print()

@@ -53,7 +53,7 @@ cd frontend && npm install && npm start
 ## Tests
 
 CI (GitHub Actions) runs the full `pytest` suite on every push to `main`
-(594 passed, 6 skipped, 1 xfailed — no network or API keys required), plus a
+(590+ tests, no network or API keys required), plus a
 separate smoke check on the backtest-campaign tooling
 (`backend/scripts/backtest_campaign_smoke.py`).
 

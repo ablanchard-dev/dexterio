@@ -83,9 +83,11 @@ def permutation_test(r_multiples: np.ndarray, iterations: int = 1000, seed: int 
         if pm <= obs_mean:
             count_le += 1
 
-    p_one_sided_ge = count_ge / iterations
-    p_one_sided_le = count_le / iterations
-    p_two_sided = float(2 * min(p_one_sided_ge, p_one_sided_le))
+    # (k+1)/(n+1) : la valeur observee compte comme un tirage. k/n pouvait donner p = 0 et
+    # biaisait la porte p < 0.05 vers la significativite (revue 17/09).
+    p_one_sided_ge = (count_ge + 1) / (iterations + 1)
+    p_one_sided_le = (count_le + 1) / (iterations + 1)
+    p_two_sided = float(min(1.0, 2 * min(p_one_sided_ge, p_one_sided_le)))
 
     return {
         "n": n,
