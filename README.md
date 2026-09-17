@@ -66,8 +66,13 @@ separate smoke check on the backtest-campaign tooling
 (`backend/scripts/backtest_campaign_smoke.py`).
 
 ```bash
+# from the repository root (pytest.ini lives there), backend venv active
+pip install pytest
 pytest
 ```
+
+Run from `backend/`, pytest ignores `pytest.ini` and also collects the integration
+scripts, which need market data and a running server.
 
 ## Repository layout
 
