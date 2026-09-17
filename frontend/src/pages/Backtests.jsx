@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { backendBaseUrl, buildFetchHeaders } from '@/apiClient';
+import { backendBaseUrl, buildFetchHeaders, fetchBackend } from '@/apiClient';
 
 const API_URL = backendBaseUrl;
 
@@ -48,7 +48,7 @@ export default function Backtests() {
     async (filename) => {
       if (!jobId) return;
       try {
-        const res = await fetch(
+        const res = await fetchBackend(
           `${API_URL}/api/backtests/${jobId}/download?file=${encodeURIComponent(filename)}`,
           { headers: buildFetchHeaders(false) }
         );
@@ -79,7 +79,7 @@ export default function Backtests() {
 
   const fetchRecentJobs = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/backtests?limit=10`, {
+      const res = await fetchBackend(`${API_URL}/api/backtests?limit=10`, {
         headers: buildFetchHeaders(false),
       });
       // P0 FIX: Lire le body UNE SEULE FOIS
@@ -96,7 +96,7 @@ export default function Backtests() {
 
   const fetchJobStatus = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/backtests/${jobId}`, {
+      const res = await fetchBackend(`${API_URL}/api/backtests/${jobId}`, {
         headers: buildFetchHeaders(false),
       });
       // P0 FIX: Lire le body UNE SEULE FOIS
@@ -119,7 +119,7 @@ export default function Backtests() {
 
   const fetchJobLog = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/backtests/${jobId}/log`, {
+      const res = await fetchBackend(`${API_URL}/api/backtests/${jobId}/log`, {
         headers: buildFetchHeaders(false),
       });
       // P0 FIX: Lire le body UNE SEULE FOIS
@@ -161,7 +161,7 @@ export default function Backtests() {
       const url = `${API_URL}/api/backtests/run`;
       console.log(`🚀 Starting backtest: POST ${url}`, request);
       
-      const res = await fetch(url, {
+      const res = await fetchBackend(url, {
         method: 'POST',
         headers: buildFetchHeaders(true),
         body: JSON.stringify(request)
@@ -385,13 +385,13 @@ export default function Backtests() {
               </div>
               
               {jobStatus.error && (
-                <div className="bg-red-50 border border-red-200 rounded p-3 text-red-800">
+                <div className="bg-red-500/10 border border-red-500/40 rounded p-3 text-red-400">
                   <strong>Error:</strong> {jobStatus.error}
                 </div>
               )}
               
               {jobStatus.metrics && (
-                <div className="bg-blue-50 border border-blue-200 rounded p-4 mt-4">
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded p-4 mt-4">
                   <h3 className="font-semibold mb-2 text-foreground">Results</h3>
                   <div className="grid grid-cols-4 gap-4 text-sm">
                     <div>
@@ -408,7 +408,7 @@ export default function Backtests() {
                     </div>
                     <div>
                       <div className="text-muted-foreground">Total Costs</div>
-                      <div className="font-bold text-red-600">${(jobStatus.metrics.total_costs_dollars || 0).toFixed(2)}</div>
+                      <div className="font-bold text-red-400">${(jobStatus.metrics.total_costs_dollars || 0).toFixed(2)}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Win Rate</div>
@@ -424,7 +424,7 @@ export default function Backtests() {
                     </div>
                     <div>
                       <div className="text-muted-foreground">Max DD</div>
-                      <div className="font-bold text-red-600">{(jobStatus.metrics.max_drawdown_r || 0).toFixed(2)}R</div>
+                      <div className="font-bold text-red-400">{(jobStatus.metrics.max_drawdown_r || 0).toFixed(2)}R</div>
                     </div>
                   </div>
                   

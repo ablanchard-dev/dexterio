@@ -34,6 +34,18 @@ api.interceptors.response.use(
   }
 );
 
+/** fetch() qui renseigne la meme banniere : Backtests n'utilise pas axios (revue 17/09). */
+export async function fetchBackend(url, opts) {
+  try {
+    const res = await fetch(url, opts);
+    window.dispatchEvent(new CustomEvent(BACKEND_STATUS_EVENT, { detail: { reachable: true } }));
+    return res;
+  } catch (e) {
+    window.dispatchEvent(new CustomEvent(BACKEND_STATUS_EVENT, { detail: { reachable: false } }));
+    throw e;
+  }
+}
+
 export default api;
 
 export const backendBaseUrl = BACKEND;
