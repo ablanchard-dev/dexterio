@@ -22,6 +22,7 @@ from engines.setup_engine import SetupEngine, filter_setups_safe_mode, filter_se
 from engines.setup_engine_v2 import SetupEngineV2
 from engines.risk_engine import RiskEngine, AGGRESSIVE_ALLOWLIST, AGGRESSIVE_DENYLIST, SAFE_ALLOWLIST
 from engines.execution.paper_trading import ExecutionEngine
+from engines.execution.fill_model import ConservativeFillModel
 from engines.journal import TradeJournal, PerformanceStats
 from models.setup import Setup, ICTPattern
 from models.trade import Trade
@@ -57,7 +58,8 @@ class TradingPipeline:
         
         # Phase 1.3 engines
         self.risk_engine = RiskEngine(initial_capital=initial_capital)
-        self.execution_engine = ExecutionEngine(risk_engine=self.risk_engine)
+        # Paper PnL pays spread + slippage: the bare IdealFillModel default fills at the exact target.
+        self.execution_engine = ExecutionEngine(risk_engine=self.risk_engine, fill_model=ConservativeFillModel())
         self.trade_journal = TradeJournal()
         self.performance_stats = PerformanceStats(self.trade_journal)
         
