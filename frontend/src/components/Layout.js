@@ -1,11 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Target, TrendingUp, BookOpen, BarChart3, Shield, PlayCircle, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Target, TrendingUp, BookOpen, BarChart3, Shield, PlayCircle, Menu, X, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { backendBaseUrl, BACKEND_STATUS_EVENT } from '@/apiClient';
 
 const Layout = ({ children }) => {
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [backendDown, setBackendDown] = useState(false);
+  useEffect(() => {
+    const onStatus = (e) => setBackendDown(!e.detail.reachable);
+    window.addEventListener(BACKEND_STATUS_EVENT, onStatus);
+    return () => window.removeEventListener(BACKEND_STATUS_EVENT, onStatus);
+  }, []);
+  // Open by default on wide screens only: on a phone the panel covers the content.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  );
 
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -77,7 +87,19 @@ const Layout = ({ children }) => {
 
       {/* Main content */}
       <div className={`transition-all duration-200 ${sidebarOpen ? 'lg:pl-64' : ''}`}>
-        <main className="min-h-screen">
+        <main className="min-h-screen pt-12 lg:pt-0">
+          {backendDown && (
+            <div role="alert" className="m-6 mb-0 flex items-start gap-3 rounded-lg border border-red-500 bg-red-900/20 p-4 text-sm">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-red-500" />
+              <div>
+                <div className="font-semibold text-red-400">Backend unreachable at {backendBaseUrl}</div>
+                <div className="text-gray-400 mt-1">
+                  Start it from <code>backend/</code> with <code>uvicorn server:app --port 8001</code>, or set{' '}
+                  <code>REACT_APP_BACKEND_URL</code>. The page will fill in on its own once it answers.
+                </div>
+              </div>
+            </div>
+          )}
           {children}
         </main>
       </div>

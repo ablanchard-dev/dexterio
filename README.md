@@ -52,7 +52,7 @@ YAML-driven strategy config
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn server:app --reload     # API docs at http://127.0.0.1:8000/docs
+uvicorn server:app --reload --port 8001   # the frontend expects 8001 ; API docs at http://127.0.0.1:8001/docs
 
 # Frontend (from the repository root, in another terminal)
 cd frontend && npm install && npm start

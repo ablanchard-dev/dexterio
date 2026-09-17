@@ -17,6 +17,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// The pages only log a failed request, so without this the UI would sit on
+// "Loading…" forever when the backend is not running. A request that never
+// reaches a server (no HTTP response) raises a window event; Layout shows it.
+export const BACKEND_STATUS_EVENT = 'dexterio:backend-status';
+api.interceptors.response.use(
+  (response) => {
+    window.dispatchEvent(new CustomEvent(BACKEND_STATUS_EVENT, { detail: { reachable: true } }));
+    return response;
+  },
+  (error) => {
+    if (!error.response) {
+      window.dispatchEvent(new CustomEvent(BACKEND_STATUS_EVENT, { detail: { reachable: false } }));
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;
 
 export const backendBaseUrl = BACKEND;

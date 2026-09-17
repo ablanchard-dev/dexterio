@@ -226,15 +226,15 @@ export default function Backtests() {
       <h1 className="text-3xl font-bold mb-6 text-white">Backtests</h1>
       
       {/* Form */}
-      <div className="bg-white shadow rounded-lg p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4 text-gray-900">Run Backtest</h2>
+      <div className="bg-card border rounded-xl shadow p-6 mb-6">
+        <h2 className="text-xl font-semibold mb-4 text-foreground">Run Backtest</h2>
         
         <div className="grid grid-cols-2 gap-4">
           {/* Symbols */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Symbols</label>
+            <label className="block text-sm font-medium mb-1 text-muted-foreground">Symbols</label>
             <div className="flex gap-4">
-              <label className="flex items-center text-gray-700">
+              <label className="flex items-center text-muted-foreground">
                 <input 
                   type="checkbox" 
                   checked={symbols.includes('SPY')}
@@ -243,7 +243,7 @@ export default function Backtests() {
                 />
                 SPY
               </label>
-              <label className="flex items-center text-gray-700">
+              <label className="flex items-center text-muted-foreground">
                 <input 
                   type="checkbox" 
                   checked={symbols.includes('QQQ')}
@@ -257,33 +257,33 @@ export default function Backtests() {
           
           {/* Start Date */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Start Date</label>
+            <label className="block text-sm font-medium mb-1 text-muted-foreground">Start Date</label>
             <input 
               type="date" 
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           
           {/* End Date */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">End Date</label>
+            <label className="block text-sm font-medium mb-1 text-muted-foreground">End Date</label>
             <input 
               type="date" 
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           
           {/* Trading Mode */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Trading Mode</label>
+            <label className="block text-sm font-medium mb-1 text-muted-foreground">Trading Mode</label>
             <select 
               value={tradingMode}
               onChange={(e) => setTradingMode(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="AGGRESSIVE">AGGRESSIVE</option>
               <option value="SAFE">SAFE</option>
@@ -292,9 +292,9 @@ export default function Backtests() {
           
           {/* Trade Types */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Trade Types</label>
+            <label className="block text-sm font-medium mb-1 text-muted-foreground">Trade Types</label>
             <div className="flex gap-4">
-              <label className="flex items-center text-gray-700">
+              <label className="flex items-center text-muted-foreground">
                 <input 
                   type="checkbox" 
                   checked={tradeTypes.includes('DAILY')}
@@ -303,7 +303,7 @@ export default function Backtests() {
                 />
                 DAILY
               </label>
-              <label className="flex items-center text-gray-700">
+              <label className="flex items-center text-muted-foreground">
                 <input 
                   type="checkbox" 
                   checked={tradeTypes.includes('SCALP')}
@@ -317,12 +317,12 @@ export default function Backtests() {
           
           {/* HTF Warmup Days */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">HTF Warmup (days)</label>
+            <label className="block text-sm font-medium mb-1 text-muted-foreground">HTF Warmup (days)</label>
             <input 
               type="number" 
               value={htfWarmupDays}
               onChange={(e) => setHtfWarmupDays(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               min="0"
               max="60"
             />
@@ -330,11 +330,11 @@ export default function Backtests() {
           
           {/* Commission Model */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Commission Model</label>
+            <label className="block text-sm font-medium mb-1 text-muted-foreground">Commission Model</label>
             <select 
               value={commissionModel}
               onChange={(e) => setCommissionModel(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="ibkr_fixed">IBKR Fixed ($0.005/sh)</option>
               <option value="ibkr_tiered">IBKR Tiered ($0.0035/sh)</option>
@@ -344,12 +344,12 @@ export default function Backtests() {
           
           {/* Initial Capital */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">Initial Capital ($)</label>
+            <label className="block text-sm font-medium mb-1 text-muted-foreground">Initial Capital ($)</label>
             <input 
               type="number" 
               value={initialCapital}
               onChange={(e) => setInitialCapital(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               min="1000"
               step="1000"
             />
@@ -367,18 +367,18 @@ export default function Backtests() {
       
       {/* Job Status */}
       {jobId && (
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4 text-gray-900">Job: {jobId}</h2>
+        <div className="bg-card border rounded-xl shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4 text-foreground">Job: {jobId}</h2>
           
           {jobStatus && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="font-medium">Status:</span>
                 <span className={`px-3 py-1 rounded text-sm ${
-                  jobStatus.status === 'done' ? 'bg-green-100 text-green-800' :
-                  jobStatus.status === 'failed' ? 'bg-red-100 text-red-800' :
-                  jobStatus.status === 'running' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-gray-100 text-gray-800'
+                  jobStatus.status === 'done' ? 'bg-green-500/20 text-green-400' :
+                  jobStatus.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                  jobStatus.status === 'running' ? 'bg-yellow-500/20 text-yellow-400' :
+                  'bg-muted text-foreground'
                 }`}>
                   {jobStatus.status}
                 </span>
@@ -392,38 +392,38 @@ export default function Backtests() {
               
               {jobStatus.metrics && (
                 <div className="bg-blue-50 border border-blue-200 rounded p-4 mt-4">
-                  <h3 className="font-semibold mb-2 text-gray-900">Results</h3>
+                  <h3 className="font-semibold mb-2 text-foreground">Results</h3>
                   <div className="grid grid-cols-4 gap-4 text-sm">
                     <div>
-                      <div className="text-gray-600">Trades</div>
-                      <div className="font-bold text-gray-900">{jobStatus.metrics.total_trades || 0}</div>
+                      <div className="text-muted-foreground">Trades</div>
+                      <div className="font-bold text-foreground">{jobStatus.metrics.total_trades || 0}</div>
                     </div>
                     <div>
-                      <div className="text-gray-600">Total R Net</div>
-                      <div className="font-bold text-gray-900">{(jobStatus.metrics.total_R_net || 0).toFixed(3)}R</div>
+                      <div className="text-muted-foreground">Total R Net</div>
+                      <div className="font-bold text-foreground">{(jobStatus.metrics.total_R_net || 0).toFixed(3)}R</div>
                     </div>
                     <div>
-                      <div className="text-gray-600">Total R Gross</div>
+                      <div className="text-muted-foreground">Total R Gross</div>
                       <div className="font-bold text-gray-500">{(jobStatus.metrics.total_R_gross || 0).toFixed(3)}R</div>
                     </div>
                     <div>
-                      <div className="text-gray-600">Total Costs</div>
+                      <div className="text-muted-foreground">Total Costs</div>
                       <div className="font-bold text-red-600">${(jobStatus.metrics.total_costs_dollars || 0).toFixed(2)}</div>
                     </div>
                     <div>
-                      <div className="text-gray-600">Win Rate</div>
-                      <div className="font-bold text-gray-900">{(jobStatus.metrics.winrate || 0).toFixed(1)}%</div>
+                      <div className="text-muted-foreground">Win Rate</div>
+                      <div className="font-bold text-foreground">{(jobStatus.metrics.winrate || 0).toFixed(1)}%</div>
                     </div>
                     <div>
-                      <div className="text-gray-600">Profit Factor</div>
-                      <div className="font-bold text-gray-900">{(jobStatus.metrics.profit_factor || 0).toFixed(2)}</div>
+                      <div className="text-muted-foreground">Profit Factor</div>
+                      <div className="font-bold text-foreground">{(jobStatus.metrics.profit_factor || 0).toFixed(2)}</div>
                     </div>
                     <div>
-                      <div className="text-gray-600">Expectancy</div>
-                      <div className="font-bold text-gray-900">{(jobStatus.metrics.expectancy_r || 0).toFixed(3)}R</div>
+                      <div className="text-muted-foreground">Expectancy</div>
+                      <div className="font-bold text-foreground">{(jobStatus.metrics.expectancy_r || 0).toFixed(3)}R</div>
                     </div>
                     <div>
-                      <div className="text-gray-600">Max DD</div>
+                      <div className="text-muted-foreground">Max DD</div>
                       <div className="font-bold text-red-600">{(jobStatus.metrics.max_drawdown_r || 0).toFixed(2)}R</div>
                     </div>
                   </div>
@@ -453,8 +453,8 @@ export default function Backtests() {
           {/* Log */}
           {jobLog && (
             <div className="mt-4">
-              <h3 className="font-medium text-gray-900 mb-2">Job Log</h3>
-              <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-64 text-gray-800 whitespace-pre-wrap">
+              <h3 className="font-medium text-foreground mb-2">Job Log</h3>
+              <pre className="bg-muted p-3 rounded text-xs overflow-auto max-h-64 text-foreground whitespace-pre-wrap">
                 {jobLog}
               </pre>
             </div>
@@ -463,8 +463,8 @@ export default function Backtests() {
       )}
       
       {/* Recent Jobs */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-xl font-semibold mb-4 text-gray-900">Recent Jobs</h2>
+      <div className="bg-card border rounded-xl shadow p-6">
+        <h2 className="text-xl font-semibold mb-4 text-foreground">Recent Jobs</h2>
         
         {recentJobs.length === 0 ? (
           <p className="text-gray-500">No jobs yet</p>
@@ -474,15 +474,15 @@ export default function Backtests() {
               <div
                 key={job.job_id}
                 onClick={() => setJobId(job.job_id)}
-                className="border rounded p-3 hover:bg-gray-50 cursor-pointer"
+                className="border rounded p-3 hover:bg-muted cursor-pointer"
               >
                 <div className="flex justify-between items-start">
                   <div>
                     <span className="font-mono text-sm font-medium">{job.job_id}</span>
                     <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
-                      job.status === 'done' ? 'bg-green-100 text-green-800' :
-                      job.status === 'failed' ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
+                      job.status === 'done' ? 'bg-green-500/20 text-green-400' :
+                      job.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                      'bg-yellow-500/20 text-yellow-400'
                     }`}>
                       {job.status}
                     </span>
@@ -492,7 +492,7 @@ export default function Backtests() {
                   </div>
                 </div>
                 {job.config && (
-                  <div className="text-sm text-gray-600 mt-1">
+                  <div className="text-sm text-muted-foreground mt-1">
                     {job.config.symbols.join(', ')} · {job.config.start_date} → {job.config.end_date} · {job.config.trading_mode}
                   </div>
                 )}
