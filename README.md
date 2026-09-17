@@ -24,6 +24,14 @@ disciplined testing before trusting it** — and archive it cleanly when it fail
 - **Full-stack** — Python/FastAPI backend with a React frontend for running and
   inspecting backtest campaigns.
 
+## Known limitations
+
+- **Entries fill at the close of the signal bar**, with slippage and commission from the
+  cost model, while exits under the conservative model fill at the next bar's open. Real
+  execution could only act after that close, so entries are slightly optimistic. Since no
+  strategy survived, a stricter entry would only reinforce the negative result.
+- Max drawdown is computed on realized equity (trade closes), not marked to market.
+
 ## What I learned building it
 
 Across ~20 strategy families (pattern-based, momentum, mean-reversion, stat-arb,
