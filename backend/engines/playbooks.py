@@ -1,13 +1,29 @@
 """Playbook Engine - NY Open, London Sweep, Continuation, ICT Manipulation"""
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from models.market_data import MarketState
 from models.setup import PlaybookMatch, ICTPattern
 from engines.liquidity import LiquidityEngine
 from utils.timeframes import get_session_info, is_in_kill_zone
 
 logger = logging.getLogger(__name__)
+
+
+def _seconds_since(now: datetime, then: datetime) -> float:
+    """Age of `then` in seconds, whatever the tz-awareness of each side.
+
+    The live pipeline passes an aware UTC clock while sweep timestamps are
+    stamped with a naive `datetime.utcnow()`; subtracting the two raises
+    TypeError and used to drop the whole symbol from the pipeline.
+    """
+    if (now.tzinfo is None) != (then.tzinfo is None):
+        if now.tzinfo is not None:
+            now = now.astimezone(timezone.utc).replace(tzinfo=None)
+        if then.tzinfo is not None:
+            then = then.astimezone(timezone.utc).replace(tzinfo=None)
+    return (now - then).total_seconds()
+
 
 class NYOpenReversalPlaybook:
     """Playbook NY Open Reversal (Fake Breakout)"""
@@ -45,7 +61,7 @@ class NYOpenReversalPlaybook:
         swept_levels = liquidity_engine.get_swept_levels(market_state.symbol)
         recent_sweeps = [
             s for s in swept_levels
-            if (current_time - s.sweep_timestamp).total_seconds() < 1800
+            if _seconds_since(current_time, s.sweep_timestamp) < 1800
         ]
         conditions_met['sweep_detected'] = len(recent_sweeps) > 0
         
@@ -145,7 +161,7 @@ class LondonSweepPlaybook:
         swept_levels = liquidity_engine.get_swept_levels(market_state.symbol)
         asia_swept = any(
             'asia' in s.level_type for s in swept_levels
-            if (current_time - s.sweep_timestamp).total_seconds() < 3600  # 1h
+            if _seconds_since(current_time, s.sweep_timestamp) < 3600  # 1h
         )
         conditions_met['asia_sweep_detected'] = asia_swept
         
@@ -261,7 +277,7 @@ class ICTManipulationReversalPlaybook:
         swept_levels = liquidity_engine.get_swept_levels(market_state.symbol)
         recent_sweeps = [
             s for s in swept_levels
-            if (current_time - s.sweep_timestamp).total_seconds() < 1800  # 30min
+            if _seconds_since(current_time, s.sweep_timestamp) < 1800  # 30min
         ]
         conditions_met['liquidity_swept'] = len(recent_sweeps) > 0
         
