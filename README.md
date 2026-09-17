@@ -24,6 +24,8 @@ disciplined testing before trusting it** — and archive it cleanly when it fail
 - **Full-stack** — Python/FastAPI backend with a React frontend for running and
   inspecting backtest campaigns.
 
+![DexterioBOT dashboard: paper account, daily P&L, SPY/QQQ bias and structure, all-time stats](docs/dashboard.png)
+
 ## Known limitations
 
 - **Entries fill at the close of the signal bar**, with slippage and commission from the
